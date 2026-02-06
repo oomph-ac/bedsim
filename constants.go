@@ -21,6 +21,11 @@ const (
 	DefaultPlayerHeightOffset  = 1.62
 	SneakingPlayerHeightOffset = 1.27
 
+	// TerminalVelocity is the natural convergence of the gravity formula:
+	// (v - 0.08) * 0.98 = v → v = -3.92. This is not explicitly clamped;
+	// it emerges from the per-tick gravity and drag multipliers.
+	TerminalVelocity = -3.92
+
 	JumpDelayTicks  = 10
 	GlideBoostTicks = 20
 )

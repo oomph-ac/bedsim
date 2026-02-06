@@ -309,6 +309,18 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	oldY := state.Pos.Y()
 
 	tryCollisions(state, s.World, s.Options.UseSlideOffset, s.Options.PositionCorrectionThreshold, clientJumpPrevented, s)
+
+	// Track fall distance based on Y movement after collision resolution.
+	yDelta := state.Pos.Y() - oldY
+	if yDelta < 0 && !state.OnGround {
+		state.FallDistance -= yDelta
+	} else if yDelta > 0 {
+		state.FallDistance = 0
+	}
+	if state.OnGround && state.FallDistance > 0 {
+		state.FallDistance = 0
+	}
+
 	if state.SupportingBlockPos != nil {
 		blockUnder = s.blockAtPos(*state.SupportingBlockPos)
 	} else {
