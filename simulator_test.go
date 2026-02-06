@@ -337,3 +337,68 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 		t.Fatalf("expected jump-block debug log, logs=%v", logs)
 	}
 }
+
+func TestResultFromStateCorrectionModes(t *testing.T) {
+	tests := []struct {
+		name    string
+		mode    SimulationMode
+		mutate  func(*MovementState)
+		wantSet bool
+	}{
+		{
+			name: "authoritative velocity-only drift",
+			mode: SimulationModeAuthoritative,
+			mutate: func(state *MovementState) {
+				state.Vel = mgl64.Vec3{0.5, 0, 0}
+				state.Client.Vel = mgl64.Vec3{}
+			},
+			wantSet: true,
+		},
+		{
+			name: "permissive velocity-only drift",
+			mode: SimulationModePermissive,
+			mutate: func(state *MovementState) {
+				state.Vel = mgl64.Vec3{0.5, 0, 0}
+				state.Client.Vel = mgl64.Vec3{}
+			},
+			wantSet: false,
+		},
+		{
+			name: "permissive position drift",
+			mode: SimulationModePermissive,
+			mutate: func(state *MovementState) {
+				state.Pos = mgl64.Vec3{0.5, 0, 0}
+				state.Client.Pos = mgl64.Vec3{}
+			},
+			wantSet: true,
+		},
+		{
+			name: "passive position drift",
+			mode: SimulationModePassive,
+			mutate: func(state *MovementState) {
+				state.Pos = mgl64.Vec3{0.5, 0, 0}
+				state.Client.Pos = mgl64.Vec3{}
+			},
+			wantSet: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			state := newBaseState()
+			tc.mutate(state)
+
+			sim := &Simulator{
+				Options: SimulationOptions{
+					Mode:                        tc.mode,
+					PositionCorrectionThreshold: 0.1,
+					VelocityCorrectionThreshold: 0.1,
+				},
+			}
+			result := sim.resultFromState(state, SimulationOutcomeNormal)
+			if result.NeedsCorrection != tc.wantSet {
+				t.Fatalf("mode=%v needsCorrection=%v want=%v", tc.mode, result.NeedsCorrection, tc.wantSet)
+			}
+		})
+	}
+}

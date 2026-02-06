@@ -4,8 +4,11 @@ package bedsim
 type SimulationMode uint8
 
 const (
+	// SimulationModeAuthoritative flags corrections when either position or velocity drift exceeds thresholds.
 	SimulationModeAuthoritative SimulationMode = iota
+	// SimulationModePermissive only flags positional drift and ignores velocity-only divergence.
 	SimulationModePermissive
+	// SimulationModePassive never flags corrections; simulation still runs and returns deltas.
 	SimulationModePassive
 )
 

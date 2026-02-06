@@ -1,6 +1,7 @@
 package bedsim
 
 import (
+	"iter"
 	"math"
 
 	"github.com/df-mc/dragonfly/server/block"
@@ -88,7 +89,15 @@ func (s *Simulator) resultFromState(state *MovementState, outcome SimulationOutc
 
 	needsPos := s.Options.PositionCorrectionThreshold > 0 && result.PositionDelta.Len() > s.Options.PositionCorrectionThreshold
 	needsVel := s.Options.VelocityCorrectionThreshold > 0 && result.VelocityDelta.Len() > s.Options.VelocityCorrectionThreshold
-	result.NeedsCorrection = needsPos || needsVel
+	switch s.Options.Mode {
+	case SimulationModePassive:
+		result.NeedsCorrection = false
+	case SimulationModePermissive:
+		// Permissive mode allows velocity drift and only corrects positional divergence.
+		result.NeedsCorrection = needsPos
+	default:
+		result.NeedsCorrection = needsPos || needsVel
+	}
 
 	return result
 }
@@ -314,7 +323,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	oldY := state.Pos.Y()
 
 	tryCollisions(state, s.World, s.Options.UseSlideOffset, s.Options.PositionCorrectionThreshold, clientJumpPrevented, s)
- 
+
 	// Track fall distance based on Y movement after collision resolution.
 	yDelta := state.Pos.Y() - oldY
 	if yDelta < 0 && !state.OnGround {
@@ -377,23 +386,22 @@ func (s *Simulator) simulationIsReliable(state *MovementState) bool {
 
 	stateBB := state.BoundingBox(s.Options.UseSlideOffset)
 	isReliable := true
-	forEachNearbyBlock(stateBB.Grow(1), s.World, func(pos cube.Pos, b world.Block) bool {
+	for pos, b := range nearbyBlocks(stateBB.Grow(1), s.World) {
 		if _, isAir := b.(block.Air); isAir {
-			return true
+			continue
 		}
 		if _, isLiquid := b.(world.Liquid); isLiquid {
 			blockBB := cube.Box(0, 0, 0, 1, 1, 1).Translate(pos.Vec3())
 			if stateBB.IntersectsWith(blockBB) {
 				isReliable = false
-				return false
+				break
 			}
 		}
 		if BlockName(b) == "minecraft:bamboo" {
 			isReliable = false
-			return false
+			break
 		}
-		return true
-	})
+	}
 	if !isReliable {
 		return false
 	}
@@ -902,41 +910,44 @@ func (s *Simulator) isInsideCobweb(state *MovementState) bool {
 
 	bb := state.BoundingBox(s.Options.UseSlideOffset)
 	insideCobweb := false
-	forEachNearbyBlock(bb.Grow(1), s.World, func(pos cube.Pos, b world.Block) bool {
+	for pos, b := range nearbyBlocks(bb.Grow(1), s.World) {
 		if _, isAir := b.(block.Air); isAir {
-			return true
+			continue
 		}
 		if BlockName(b) != "minecraft:web" {
-			return true
+			continue
 		}
 
 		boxes := s.World.BlockCollisions(pos)
 		for _, box := range boxes {
 			if bb.IntersectsWith(box.Translate(pos.Vec3())) {
 				insideCobweb = true
-				return false
+				break
 			}
 		}
-		return true
-	})
+		if insideCobweb {
+			break
+		}
+	}
 	return insideCobweb
 }
 
-func forEachNearbyBlock(aabb cube.BBox, w WorldProvider, visit func(pos cube.Pos, b world.Block) bool) {
-	if w == nil {
-		return
-	}
-	min, max := aabb.Min(), aabb.Max()
-	minX, minY, minZ := int(math.Floor(min[0])), int(math.Floor(min[1])), int(math.Floor(min[2]))
-	maxX, maxY, maxZ := int(math.Ceil(max[0])), int(math.Ceil(max[1])), int(math.Ceil(max[2]))
+func nearbyBlocks(aabb cube.BBox, w WorldProvider) iter.Seq2[cube.Pos, world.Block] {
+	return func(yield func(cube.Pos, world.Block) bool) {
+		if w == nil {
+			return
+		}
+		min, max := aabb.Min(), aabb.Max()
+		minX, minY, minZ := int(math.Floor(min[0])), int(math.Floor(min[1])), int(math.Floor(min[2]))
+		maxX, maxY, maxZ := int(math.Ceil(max[0])), int(math.Ceil(max[1])), int(math.Ceil(max[2]))
 
-	for y := minY; y <= maxY; y++ {
-		for x := minX; x <= maxX; x++ {
-			for z := minZ; z <= maxZ; z++ {
-				pos := cube.Pos{x, y, z}
-				b := w.Block(pos)
-				if !visit(pos, b) {
-					return
+		for y := minY; y <= maxY; y++ {
+			for x := minX; x <= maxX; x++ {
+				for z := minZ; z <= maxZ; z++ {
+					pos := cube.Pos{x, y, z}
+					if !yield(pos, w.Block(pos)) {
+						return
+					}
 				}
 			}
 		}
@@ -964,10 +975,10 @@ func findSupportingBlock(state *MovementState, w WorldProvider, bb cube.BBox) {
 	minDist := math.MaxFloat64 - 1
 	centerPos := cube.PosFromVec3(state.Pos).Vec3().Add(mgl64.Vec3{0.5, 0.5, 0.5})
 
-	forEachNearbyBlock(bb, w, func(pos cube.Pos, _ world.Block) bool {
+	for pos := range nearbyBlocks(bb, w) {
 		boxes := w.BlockCollisions(pos)
 		if len(boxes) == 0 {
-			return true
+			continue
 		}
 
 		for _, box := range boxes {
@@ -982,8 +993,7 @@ func findSupportingBlock(state *MovementState, w WorldProvider, bb cube.BBox) {
 			}
 			break
 		}
-		return true
-	})
+	}
 
 	state.SupportingBlockPos = blockPos
 }
