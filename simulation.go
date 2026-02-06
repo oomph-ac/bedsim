@@ -190,6 +190,11 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 		state.JumpDelay = 0
 	}
 	state.Gravity = NormalGravity
+	if s.Effects != nil {
+		if _, ok := s.Effects.GetEffect(packet.EffectSlowFalling); ok {
+			state.Gravity = SlowFallingGravity
+		}
+	}
 
 	if input.StopGliding {
 		state.Gliding = false
@@ -309,7 +314,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	oldY := state.Pos.Y()
 
 	tryCollisions(state, s.World, s.Options.UseSlideOffset, s.Options.PositionCorrectionThreshold, clientJumpPrevented, s)
-
+ 
 	// Track fall distance based on Y movement after collision resolution.
 	yDelta := state.Pos.Y() - oldY
 	if yDelta < 0 && !state.OnGround {
