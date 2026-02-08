@@ -17,16 +17,16 @@ go get github.com/oomph-ac/bedsim
 Implement the three provider interfaces to bridge your world and player systems:
 
 ```go
-	sim := bedsim.Simulator{
-	    World:     myWorldProvider,     // block lookups, collisions, chunk-loaded checks
-	    Effects:   myEffectsProvider,   // jump boost, levitation, slow falling
-	    Inventory: myInventoryProvider, // elytra equipped check
-	    Options: bedsim.SimulationOptions{
-	        Mode:                        bedsim.SimulationModeAuthoritative,
-	        PositionCorrectionThreshold: 0.5,
-	        VelocityCorrectionThreshold: 0.5,
-	    },
-	}
+sim := bedsim.Simulator{
+    World:     myWorldProvider,     // block lookups, collisions, chunk-loaded checks
+    Effects:   myEffectsProvider,   // jump boost, levitation, slow falling
+    Inventory: myInventoryProvider, // elytra equipped check
+    Options: bedsim.SimulationOptions{
+        Mode:                        bedsim.SimulationModeAuthoritative,
+        PositionCorrectionThreshold: 0.5,
+        VelocityCorrectionThreshold: 0.5,
+    },
+}
 
 result := sim.Simulate(&state, input)
 if result.NeedsCorrection {
