@@ -4,7 +4,7 @@ Server-side Minecraft Bedrock movement simulation library for Go.
 
 `bedsim` replicates the Bedrock client's movement physics (collisions, stepping, edge-avoidance, gliding, teleportation) on the server, producing authoritative position and velocity values that can be compared against client-reported state.
 
-Original code was written by @ethaniccc in [oomph](https://github.com/oomph-ac/oomph) and has been ported over into this library.
+Original code was written by [ethaniccc](https://github.com/ethaniccc) in [oomph](https://github.com/oomph-ac/oomph) and has been ported over into this library.
 
 ## Installation
 
