@@ -59,7 +59,7 @@ func (s *Simulator) simulateCore(state *MovementState) SimulationOutcome {
 		s.resetToClient(state)
 		return SimulationOutcomeUnreliable
 	}
-	if s.World != nil && !s.World.IsChunkLoaded(int32(state.Pos.X())>>4, int32(state.Pos.Z())>>4) {
+	if s.World != nil && !s.World.IsChunkLoaded(int32(math.Floor(state.Pos.X()))>>4, int32(math.Floor(state.Pos.Z()))>>4) {
 		state.SetVel(mgl64.Vec3{})
 		return SimulationOutcomeUnloadedChunk
 	}
@@ -237,7 +237,9 @@ func (s *Simulator) applyLegacySprint(state *MovementState, input InputState) {
 }
 
 func (s *Simulator) tickState(state *MovementState) {
-	state.GlideBoostTicks--
+	if state.GlideBoostTicks > 0 {
+		state.GlideBoostTicks--
+	}
 	state.TicksSinceKnockback++
 	if state.TicksSinceTeleport < math.MaxUint64 {
 		state.TicksSinceTeleport++
@@ -853,13 +855,17 @@ func avoidEdge(state *MovementState, w WorldProvider, useSlideOffset bool, sim *
 
 	edgeBoundry := 0.025
 	offset := 0.05
+	// Cap iterations to avoid excessive work with very large velocities.
+	// should never happen, defensive.
+	const maxIter = 1000
 
 	oldVel := state.Vel
 	newVel := state.Vel
 	bb := state.BoundingBox(useSlideOffset).GrowVec3(mgl64.Vec3{-edgeBoundry, 0, -edgeBoundry})
 	xMov, zMov := newVel.X(), newVel.Z()
 
-	for xMov != 0.0 && !hasNearbyBBoxes(w, bb.Translate(mgl64.Vec3{xMov, -StepHeight * 1.01, 0})) {
+	i := 0
+	for i = 0; i < maxIter && xMov != 0.0 && !hasNearbyBBoxes(w, bb.Translate(mgl64.Vec3{xMov, -StepHeight * 1.01, 0})); i++ {
 		if xMov < offset && xMov >= -offset {
 			xMov = 0
 		} else if xMov > 0 {
@@ -868,8 +874,11 @@ func avoidEdge(state *MovementState, w WorldProvider, useSlideOffset bool, sim *
 			xMov += offset
 		}
 	}
+	if i == maxIter {
+		xMov = 0
+	}
 
-	for zMov != 0.0 && !hasNearbyBBoxes(w, bb.Translate(mgl64.Vec3{0, -StepHeight * 1.01, zMov})) {
+	for i = 0; i < maxIter && zMov != 0.0 && !hasNearbyBBoxes(w, bb.Translate(mgl64.Vec3{0, -StepHeight * 1.01, zMov})); i++ {
 		if zMov < offset && zMov >= -offset {
 			zMov = 0
 		} else if zMov > 0 {
@@ -878,8 +887,11 @@ func avoidEdge(state *MovementState, w WorldProvider, useSlideOffset bool, sim *
 			zMov += offset
 		}
 	}
+	if i == maxIter {
+		zMov = 0
+	}
 
-	for xMov != 0.0 && zMov != 0.0 && !hasNearbyBBoxes(w, bb.Translate(mgl64.Vec3{xMov, -StepHeight * 1.01, zMov})) {
+	for i = 0; i < maxIter && xMov != 0.0 && zMov != 0.0 && !hasNearbyBBoxes(w, bb.Translate(mgl64.Vec3{xMov, -StepHeight * 1.01, zMov})); i++ {
 		if xMov < offset && xMov >= -offset {
 			xMov = 0
 		} else if xMov > 0 {
@@ -895,6 +907,10 @@ func avoidEdge(state *MovementState, w WorldProvider, useSlideOffset bool, sim *
 		} else {
 			zMov += offset
 		}
+	}
+	if i == maxIter {
+		xMov = 0
+		zMov = 0
 	}
 
 	newVel[0] = xMov
