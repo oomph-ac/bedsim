@@ -12,6 +12,23 @@ Original code was written by [ethaniccc](https://github.com/ethaniccc) in [oomph
 go get github.com/oomph-ac/bedsim
 ```
 
+## Setup
+
+Before calling any bedsim function (`BlockName`, `BlockClimbable`, `BlockFriction`, or running a simulation tick), you **must** finalize dragonfly's block registry. Without this, `world.BlockHash` produces collisions and `BlockName` will cache incorrect mappings permanently.
+
+```go
+import _ "unsafe"
+
+//go:linkname finaliseBlockRegistry github.com/df-mc/dragonfly/server/world.finaliseBlockRegistry
+func finaliseBlockRegistry()
+
+func init() {
+    finaliseBlockRegistry()
+}
+```
+
+If you register custom blocks, do so **before** calling `finaliseBlockRegistry`.
+
 ## Usage
 
 Implement the three provider interfaces to bridge your world and player systems:
