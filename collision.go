@@ -38,7 +38,7 @@ func doBBClipCollide(stationary, moving cube.BBox, velocity mgl64.Vec3) (result 
 	axisPenetrations := [3]float64{}
 	axisPenetrationsSigned := [3]float64{}
 	normalDirs := [3]float64{}
-	seperatingAxes, seperatingAxis := 0, 0
+	separatingAxes, separatingAxis := 0, 0
 	resultPenetration := math.MaxFloat64 - 1
 
 	for i := range 3 {
@@ -59,14 +59,14 @@ func doBBClipCollide(stationary, moving cube.BBox, velocity mgl64.Vec3) (result 
 			axisPenetrations[i] = 0
 			axisPenetrationsSigned[i] = minPenetration
 			normalDirs[i] = -1
-			seperatingAxes++
-			seperatingAxis = i
+			separatingAxes++
+			separatingAxis = i
 		} else if maxPositive == 0 {
 			axisPenetrations[i] = 0
 			axisPenetrationsSigned[i] = maxPenetration
 			normalDirs[i] = 1
-			seperatingAxes++
-			seperatingAxis = i
+			separatingAxes++
+			separatingAxis = i
 		} else if minPositive < maxPositive {
 			axisPenetrations[i] = minPositive
 			axisPenetrationsSigned[i] = minPositive
@@ -77,14 +77,14 @@ func doBBClipCollide(stationary, moving cube.BBox, velocity mgl64.Vec3) (result 
 			normalDirs[i] = 1
 		}
 
-		if seperatingAxes > 1 {
+		if separatingAxes > 1 {
 			return
 		}
 		resultPenetration = math.Min(resultPenetration, axisPenetrations[i])
 	}
 
 	// No separating axes means a collision.
-	if seperatingAxes == 0 {
+	if separatingAxes == 0 {
 		result.penetration = resultPenetration
 		bestAxis := 0
 		for i := 1; i < 3; i++ {
@@ -103,14 +103,14 @@ func doBBClipCollide(stationary, moving cube.BBox, velocity mgl64.Vec3) (result 
 		return
 	}
 
-	sweptPenetration := axisPenetrationsSigned[seperatingAxis] - (normalDirs[seperatingAxis] * velocity[seperatingAxis])
+	sweptPenetration := axisPenetrationsSigned[separatingAxis] - (normalDirs[separatingAxis] * velocity[separatingAxis])
 	if sweptPenetration <= 0 {
 		return
 	}
 
-	resolvedVelocity := axisPenetrationsSigned[seperatingAxis] * normalDirs[seperatingAxis]
-	result.clippedVelocity[seperatingAxis] = resolvedVelocity
-	result.depenetratingVelocity[seperatingAxis] = resolvedVelocity
+	resolvedVelocity := axisPenetrationsSigned[separatingAxis] * normalDirs[separatingAxis]
+	result.clippedVelocity[separatingAxis] = resolvedVelocity
+	result.depenetratingVelocity[separatingAxis] = resolvedVelocity
 	return
 }
 
