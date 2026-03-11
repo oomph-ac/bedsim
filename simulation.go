@@ -787,9 +787,12 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 		if !hasStepCollisions && Vec3HzDistSqr(collisionVel) < Vec3HzDistSqr(stepVel) {
 			// Match vanilla's step-vs-collision tie-breaker using client alignment to avoid false
 			// positives where the server predicts a step that the client rejects.
+			// When IgnoreClientStepTiebreaker is set (pathfinder mode), skip the
+			// tie-breaker since the caller drives its own movement and always
+			// wants step-ups accepted.
 			stepPosDist := stepPos.Sub(state.Client.Pos).Len()
 			collisionPosDist := collisionPos.Sub(state.Client.Pos).Len()
-			if collisionPosDist > correctionThreshold || stepPosDist <= collisionPosDist {
+			if sim.Options.IgnoreClientStepTiebreaker || collisionPosDist > correctionThreshold || stepPosDist <= collisionPosDist {
 				collisionVel = stepVel
 				collisionBB = stepBB
 				if useSlideOffset {

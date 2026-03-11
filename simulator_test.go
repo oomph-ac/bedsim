@@ -338,6 +338,105 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 	}
 }
 
+// TestStepUpTiebreaker verifies the client-alignment tie-breaker in tryCollisions:
+//   - Without IgnoreClientStepTiebreaker, a slab/stair step-up is rejected when
+//     the client position matches the pre-step position.
+//   - With IgnoreClientStepTiebreaker, the same step-up is accepted.
+//   - A genuinely blocked step (collision above) is still rejected even with the flag.
+func TestStepUpTiebreaker(t *testing.T) {
+	// Geometry: ground at Y=0, a 0.5-high slab at X=1 (X=1..2, Y=0..0.5).
+	// The player stands on the ground at X≈0.5, walks in +X toward the slab.
+	// The step-up (0.5 blocks) is within StepHeight (0.6).
+	slabBox := cube.Box(1, 0, -1, 2, 0.5, 2)
+	groundBox := cube.Box(-1, -1, -1, 1, 0, 2)
+
+	startPos := mgl64.Vec3{0.5, 0, 0.5}
+
+	runSim := func(ignoreStepTiebreaker bool) (mgl64.Vec3, bool) {
+		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox{slabBox, groundBox}}
+		sim := &Simulator{
+			World:   w,
+			Effects: mockEffects{},
+			Options: SimulationOptions{
+				PositionCorrectionThreshold:    0.3,
+				IgnoreClientStepTiebreaker: ignoreStepTiebreaker,
+			},
+		}
+		state := newBaseState()
+		state.Pos = startPos
+		state.Client.Pos = startPos
+		state.OnGround = true
+		state.JumpHeight = DefaultJumpHeight
+
+		input := InputState{
+			MoveVector: mgl64.Vec2{0, 1},
+			ClientPos:  startPos,
+			ClientVel:  mgl64.Vec3{},
+			Yaw:        -90, // face +X
+			HeadYaw:    -90,
+		}
+
+		// Run enough ticks for the player to reach the slab edge and attempt step-up.
+		for range 10 {
+			sim.Simulate(state, input)
+			input.ClientPos = state.Pos
+			input.ClientVel = state.Vel
+		}
+		stepped := state.Pos.Y() >= 0.45
+		return state.Pos, stepped
+	}
+
+	t.Run("rejected without flag", func(t *testing.T) {
+		pos, stepped := runSim(false)
+		if stepped {
+			t.Fatalf("expected step-up to be rejected by tie-breaker, but player stepped up to Y=%.4f", pos.Y())
+		}
+	})
+
+	t.Run("accepted with flag", func(t *testing.T) {
+		pos, stepped := runSim(true)
+		if !stepped {
+			t.Fatalf("expected step-up to be accepted with IgnoreClientStepTiebreaker, but player at Y=%.4f", pos.Y())
+		}
+	})
+
+	t.Run("blocked step still rejected with flag", func(t *testing.T) {
+		// Place a ceiling directly above the slab so stepping up would cause collision.
+		ceilingBox := cube.Box(1, 1.3, -1, 2, 2.3, 2) // leaves only 0.8 gap, player is 1.8 tall
+		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox{slabBox, groundBox, ceilingBox}}
+		sim := &Simulator{
+			World:   w,
+			Effects: mockEffects{},
+			Options: SimulationOptions{
+				PositionCorrectionThreshold:    0.3,
+				IgnoreClientStepTiebreaker: true,
+			},
+		}
+		state := newBaseState()
+		state.Pos = startPos
+		state.Client.Pos = startPos
+		state.OnGround = true
+		state.JumpHeight = DefaultJumpHeight
+
+		input := InputState{
+			MoveVector: mgl64.Vec2{0, 1},
+			ClientPos:  startPos,
+			ClientVel:  mgl64.Vec3{},
+			Yaw:        -90,
+			HeadYaw:    -90,
+		}
+
+		for range 10 {
+			sim.Simulate(state, input)
+			input.ClientPos = state.Pos
+			input.ClientVel = state.Vel
+		}
+		if state.Pos.Y() >= 0.45 {
+			t.Fatalf("expected blocked step to be rejected even with flag, but player at Y=%.4f", state.Pos.Y())
+		}
+	})
+}
+
 func TestResultFromStateCorrectionModes(t *testing.T) {
 	tests := []struct {
 		name    string

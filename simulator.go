@@ -33,6 +33,12 @@ type SimulationOptions struct {
 	LimitAllVelocity          bool
 	LimitAllVelocityThreshold float64
 
+	// IgnoreClientStepTiebreaker, when true, skips the client-alignment
+	// tie-breaker in the step-up collision logic. Pathfinders that drive their
+	// own movement should set this so that legitimate step-ups are never
+	// rejected due to the client position matching the pre-step position.
+	IgnoreClientStepTiebreaker bool
+
 	// Debugf receives internal simulation trace logs for callers that need deep diagnostics.
 	Debugf func(format string, args ...any)
 }
