@@ -2,6 +2,7 @@ package bedsim
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -76,6 +77,24 @@ type mockInventory struct {
 
 func (m mockInventory) HasElytra() bool {
 	return m.hasElytra
+}
+
+type overrideBlockSemantics struct {
+	name      string
+	friction  float64
+	climbable bool
+}
+
+func (s overrideBlockSemantics) BlockName(world.Block) string {
+	return s.name
+}
+
+func (s overrideBlockSemantics) BlockFriction(world.Block) float64 {
+	return s.friction
+}
+
+func (s overrideBlockSemantics) BlockClimbable(world.Block) bool {
+	return s.climbable
 }
 
 func newBaseState() *MovementState {
@@ -162,6 +181,27 @@ func TestSimulateStateOutcomeTeleport(t *testing.T) {
 	}
 }
 
+func TestSimulateStateTeleportDoesNotUpdateFallDistance(t *testing.T) {
+	sim := &Simulator{
+		World:   mockWorld{},
+		Effects: mockEffects{},
+	}
+
+	state := newBaseState()
+	state.Pos = mgl64.Vec3{0, 70, 0}
+	state.TeleportPos = mgl64.Vec3{0, 60, 0}
+	state.TicksSinceTeleport = 0
+	state.TeleportCompletionTicks = 0
+
+	result := sim.SimulateState(state)
+	if result.Outcome != SimulationOutcomeTeleport {
+		t.Fatalf("expected teleport outcome, got %v", result.Outcome)
+	}
+	if state.FallDistance != 0 {
+		t.Fatalf("expected teleport not to update fall distance, got %v", state.FallDistance)
+	}
+}
+
 func TestSimulateStateOutcomeUnreliable(t *testing.T) {
 	sim := &Simulator{
 		World:   mockWorld{},
@@ -184,6 +224,128 @@ func TestSimulateStateOutcomeUnreliable(t *testing.T) {
 	}
 	if state.Vel != state.Client.Vel {
 		t.Fatalf("expected state reset to client velocity, got %v vs %v", state.Vel, state.Client.Vel)
+	}
+}
+
+func TestSimulateStateNoClipPassesThroughClientState(t *testing.T) {
+	sim := &Simulator{
+		World:   mockWorld{},
+		Effects: mockEffects{},
+	}
+
+	state := newBaseState()
+	state.NoClip = true
+	state.OnGround = true
+	state.Pos = mgl64.Vec3{10, 70, 10}
+	state.Client.Pos = mgl64.Vec3{3, 64, -1}
+	state.Vel = mgl64.Vec3{1, 2, 3}
+	state.Client.Vel = mgl64.Vec3{0.1, 0.2, 0.3}
+
+	result := sim.SimulateState(state)
+	if result.Outcome != SimulationOutcomeUnreliable {
+		t.Fatalf("expected no-clip state to pass through client state, got %v", result.Outcome)
+	}
+	if state.Pos != state.Client.Pos {
+		t.Fatalf("expected no-clip position to reset to client position, got %v vs %v", state.Pos, state.Client.Pos)
+	}
+	if state.Vel != state.Client.Vel {
+		t.Fatalf("expected no-clip velocity to reset to client velocity, got %v vs %v", state.Vel, state.Client.Vel)
+	}
+	if state.OnGround {
+		t.Fatalf("expected no-clip state to clear on-ground")
+	}
+}
+
+func TestUpdateFallDistanceUsesResolvedGroundState(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl64.Vec3{0, 10, 0}
+
+	state.SetPos(mgl64.Vec3{0, 7, 0})
+	updateFallDistance(state, 10)
+	if state.FallDistance != 3 {
+		t.Fatalf("expected fall distance to increase after downward move, got %v", state.FallDistance)
+	}
+
+	state.SetPos(mgl64.Vec3{0, 8, 0})
+	updateFallDistance(state, 7)
+	if state.FallDistance != 0 {
+		t.Fatalf("expected upward move to reset fall distance, got %v", state.FallDistance)
+	}
+
+	state.FallDistance = 4
+	state.OnGround = true
+	state.SetPos(mgl64.Vec3{0, 6, 0})
+	updateFallDistance(state, 8)
+	if state.FallDistance != 0 {
+		t.Fatalf("expected grounded move to clear fall distance, got %v", state.FallDistance)
+	}
+}
+
+func TestSimulatorBlockSemanticsOverridesDefaults(t *testing.T) {
+	sim := &Simulator{
+		World: mockWorld{},
+		BlockSemantics: overrideBlockSemantics{
+			name:      "minecraft:custom_floor",
+			friction:  0.42,
+			climbable: true,
+		},
+	}
+	b := block.Air{}
+
+	if got := sim.blockName(b); got != "minecraft:custom_floor" {
+		t.Fatalf("expected semantic block name, got %q", got)
+	}
+	if got := sim.blockFriction(b); got != 0.42 {
+		t.Fatalf("expected semantic block friction, got %v", got)
+	}
+	if !sim.blockClimbable(b) {
+		t.Fatalf("expected semantic climbable value")
+	}
+}
+
+func TestSimulatorDefaultBlockSemanticsFallback(t *testing.T) {
+	b := block.Air{}
+	sim := &Simulator{World: mockWorld{}}
+
+	if got := sim.blockName(b); got != BlockName(b) {
+		t.Fatalf("expected default block name, got %q", got)
+	}
+	if got := sim.blockFriction(b); got != BlockFriction(b) {
+		t.Fatalf("expected default block friction, got %v", got)
+	}
+	if got := sim.blockClimbable(b); got != BlockClimbable(b) {
+		t.Fatalf("expected default climbable value, got %v", got)
+	}
+}
+
+func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) {
+	b := block.Air{}
+	want := BlockFriction(b)
+
+	tests := []struct {
+		name     string
+		friction float64
+	}{
+		{name: "zero", friction: 0},
+		{name: "negative", friction: -0.42},
+		{name: "nan", friction: math.NaN()},
+		{name: "positive infinity", friction: math.Inf(1)},
+		{name: "negative infinity", friction: math.Inf(-1)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sim := &Simulator{
+				World: mockWorld{},
+				BlockSemantics: overrideBlockSemantics{
+					name:     "minecraft:custom_floor",
+					friction: tt.friction,
+				},
+			}
+			if got := sim.blockFriction(b); got != want {
+				t.Fatalf("expected invalid semantic friction to fall back to %v, got %v", want, got)
+			}
+		})
 	}
 }
 
@@ -358,8 +520,8 @@ func TestStepUpTiebreaker(t *testing.T) {
 			World:   w,
 			Effects: mockEffects{},
 			Options: SimulationOptions{
-				PositionCorrectionThreshold:    0.3,
-				IgnoreClientStepTiebreaker: ignoreStepTiebreaker,
+				PositionCorrectionThreshold: 0.3,
+				IgnoreClientStepTiebreaker:  ignoreStepTiebreaker,
 			},
 		}
 		state := newBaseState()
@@ -408,8 +570,8 @@ func TestStepUpTiebreaker(t *testing.T) {
 			World:   w,
 			Effects: mockEffects{},
 			Options: SimulationOptions{
-				PositionCorrectionThreshold:    0.3,
-				IgnoreClientStepTiebreaker: true,
+				PositionCorrectionThreshold: 0.3,
+				IgnoreClientStepTiebreaker:  true,
 			},
 		}
 		state := newBaseState()

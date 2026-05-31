@@ -44,13 +44,14 @@ If you use only vanilla blocks, `world.DefaultBlockRegistry` is still valid afte
 
 ## Usage
 
-Implement the three provider interfaces to bridge your world and player systems:
+Implement provider adapters to bridge your world and player systems:
 
 ```go
 sim := bedsim.Simulator{
-    World:     myWorldProvider,     // block lookups, collisions, chunk-loaded checks
-    Effects:   myEffectsProvider,   // jump boost, levitation, slow falling
-    Inventory: myInventoryProvider, // elytra equipped check
+    World:          myWorldProvider,      // block lookups, collisions, chunk-loaded checks
+    BlockSemantics: myBlockSemantics,     // optional: per-world names, friction, climbability
+    Effects:        myEffectsProvider,    // jump boost, levitation, slow falling
+    Inventory:      myInventoryProvider,  // elytra equipped check
     Options: bedsim.SimulationOptions{
         Mode:                        bedsim.SimulationModeAuthoritative,
         PositionCorrectionThreshold: 0.5,
@@ -63,6 +64,11 @@ if result.NeedsCorrection {
     // server and client have diverged
 }
 ```
+
+Set `BlockSemantics` when movement behavior must come from a per-world block
+registry or custom block data instead of bedsim's Dragonfly-backed defaults.
+Custom friction values must be finite and positive; invalid values fall back to
+Dragonfly defaults.
 
 ### Simulation modes
 
