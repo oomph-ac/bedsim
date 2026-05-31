@@ -260,10 +260,10 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	moveRelativeSpeed := state.AirSpeed
 	if state.OnGround {
 		mSpeed := state.MovementSpeed
-		if BlockName(blockUnder) == "minecraft:soul_sand" {
+		if s.blockName(blockUnder) == "minecraft:soul_sand" {
 			mSpeed *= 0.543
 		}
-		blockFriction *= BlockFriction(blockUnder)
+		blockFriction *= s.blockFriction(blockUnder)
 		moveRelativeSpeed = mSpeed * (0.16277136 / (blockFriction * blockFriction * blockFriction))
 	}
 
@@ -271,9 +271,11 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		hasElytra := s.Inventory != nil && s.Inventory.HasElytra()
 		if hasElytra && !state.OnGround {
 			state.OnGround = false
-			simulateGlide(state, s)
+			s.simulateGlide(state)
 			oldVel := state.Vel
-			tryCollisions(state, s.World, s.Options.UseSlideOffset, s.Options.PositionCorrectionThreshold, false, s)
+			oldY := state.Pos.Y()
+			s.tryCollisions(state, false)
+			updateFallDistance(state, oldY)
 			s.debugf("(glide) oldVel=%v, collisions=%v diff=%v", oldVel, state.Vel, state.Vel.Sub(state.Client.Vel))
 			state.SetMov(state.Vel)
 			return
@@ -285,12 +287,12 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 
 	var clientJumpPrevented bool
 	s.debugfIf(attemptKnockback(state), "knockback applied: %v", state.Vel)
-	s.debugf("blockUnder=%s, blockFriction=%v, speed=%v", BlockName(blockUnder), blockFriction, moveRelativeSpeed)
+	s.debugf("blockUnder=%s, blockFriction=%v, speed=%v", s.blockName(blockUnder), blockFriction, moveRelativeSpeed)
 	moveRelative(state, moveRelativeSpeed)
 	s.debugf("moveRelative force applied (vel=%v)", state.Vel)
-	s.debugfIf(attemptJump(state, &clientJumpPrevented, s), "jump force applied (sprint=%v): %v", state.Sprinting, state.Vel)
+	s.debugfIf(s.attemptJump(state, &clientJumpPrevented), "jump force applied (sprint=%v): %v", state.Sprinting, state.Vel)
 
-	nearClimbable := BlockClimbable(s.blockAtPos(cube.PosFromVec3(state.Pos)))
+	nearClimbable := s.blockClimbable(s.blockAtPos(cube.PosFromVec3(state.Pos)))
 	if nearClimbable {
 		newVel := state.Vel
 		negClimbSpeed := -ClimbSpeed
@@ -318,24 +320,13 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		s.debugf("cobweb force applied (vel=%v)", newVel)
 	}
 
-	avoidEdge(state, s.World, s.Options.UseSlideOffset, s)
+	s.avoidEdge(state)
 
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
 	oldY := state.Pos.Y()
-
-	tryCollisions(state, s.World, s.Options.UseSlideOffset, s.Options.PositionCorrectionThreshold, clientJumpPrevented, s)
-
-	// Track fall distance based on Y movement after collision resolution.
-	yDelta := state.Pos.Y() - oldY
-	if yDelta < 0 && !state.OnGround {
-		state.FallDistance -= yDelta
-	} else if yDelta > 0 {
-		state.FallDistance = 0
-	}
-	if state.OnGround && state.FallDistance > 0 {
-		state.FallDistance = 0
-	}
+	s.tryCollisions(state, clientJumpPrevented)
+	updateFallDistance(state, oldY)
 
 	if state.SupportingBlockPos != nil {
 		blockUnder = s.blockAtPos(*state.SupportingBlockPos)
@@ -350,13 +341,13 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	}
 
 	if oldY == state.Pos.Y() {
-		walkOnBlock(state, blockUnder, s)
+		s.walkOnBlock(state, blockUnder)
 	} else {
 		s.debugf("walkOnBlock: y changed, skipping block walk effects")
 	}
 
 	state.SetMov(state.Vel)
-	setPostCollisionMotion(state, oldVel, oldOnGround, blockUnder)
+	s.setPostCollisionMotion(state, oldVel, oldOnGround, blockUnder)
 
 	if inCobweb {
 		s.debugf("post-move cobweb force applied (0 vel)")
@@ -399,7 +390,7 @@ func (s *Simulator) simulationIsReliable(state *MovementState) bool {
 				break
 			}
 		}
-		if BlockName(b) == "minecraft:bamboo" {
+		if s.blockName(b) == "minecraft:bamboo" {
 			isReliable = false
 			break
 		}
@@ -424,7 +415,7 @@ func (s *Simulator) resetToClient(state *MovementState) {
 	state.Vel = state.Client.Vel
 	state.LastMov = state.Client.LastMov
 	state.Mov = state.Client.Mov
-	if state.Flying {
+	if state.Flying || state.NoClip {
 		state.OnGround = false
 	}
 
@@ -448,7 +439,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 		state.SetPos(state.TeleportPos)
 		state.SetVel(mgl64.Vec3{})
 		state.JumpDelay = 0
-		attemptJump(state, nil, s)
+		s.attemptJump(state, nil)
 		return true
 	}
 
@@ -462,7 +453,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 	return false
 }
 
-func simulateGlide(state *MovementState, sim *Simulator) {
+func (s *Simulator) simulateGlide(state *MovementState) {
 	radians := math.Pi / 180.0
 	yaw, pitch := state.Rotation.Z()*radians, state.Rotation.X()*radians
 	yawCos := MCCos(-yaw - math.Pi)
@@ -502,8 +493,8 @@ func simulateGlide(state *MovementState, sim *Simulator) {
 		vel[0] += (lookX * 0.1) + (((lookX * 1.5) - vel[0]) * 0.5)
 		vel[1] += (lookY * 0.1) + (((lookY * 1.5) - vel[1]) * 0.5)
 		vel[2] += (lookZ * 0.1) + (((lookZ * 1.5) - vel[2]) * 0.5)
-		sim.debugf("applied glide boost (old=%v new=%v)", oldVel, vel)
-		sim.debugf("glide boost dirVec=[%f %f %f]", lookX, lookY, lookZ)
+		s.debugf("applied glide boost (old=%v new=%v)", oldVel, vel)
+		s.debugf("glide boost dirVec=[%f %f %f]", lookX, lookY, lookZ)
 	}
 
 	vel[0] *= 0.99
@@ -513,15 +504,15 @@ func simulateGlide(state *MovementState, sim *Simulator) {
 	state.SetVel(vel)
 }
 
-func walkOnBlock(state *MovementState, blockUnder world.Block, sim *Simulator) {
+func (s *Simulator) walkOnBlock(state *MovementState, blockUnder world.Block) {
 	if !state.OnGround || state.Sneaking {
-		sim.debugf("walkOnBlock: conditions not met (onGround=%v sneaking=%v)", state.OnGround, state.Sneaking)
+		s.debugf("walkOnBlock: conditions not met (onGround=%v sneaking=%v)", state.OnGround, state.Sneaking)
 		return
 	}
 
 	oldVel := state.Vel
 	newVel := state.Vel
-	switch BlockName(blockUnder) {
+	switch s.blockName(blockUnder) {
 	case "minecraft:slime":
 		yMov := math.Abs(newVel.Y())
 		if yMov < 0.1 && !state.PressingSneak {
@@ -531,10 +522,10 @@ func walkOnBlock(state *MovementState, blockUnder world.Block, sim *Simulator) {
 		}
 	}
 	state.SetVel(newVel)
-	sim.debugf("walkOnBlock: oldVel=%v newVel=%v", oldVel, newVel)
+	s.debugf("walkOnBlock: oldVel=%v newVel=%v", oldVel, newVel)
 }
 
-func landOnBlock(state *MovementState, old mgl64.Vec3, blockUnder world.Block) {
+func (s *Simulator) landOnBlock(state *MovementState, old mgl64.Vec3, blockUnder world.Block) {
 	newVel := state.Vel
 	if old.Y() >= 0 || state.PressingSneak {
 		newVel[1] = 0
@@ -542,7 +533,7 @@ func landOnBlock(state *MovementState, old mgl64.Vec3, blockUnder world.Block) {
 		return
 	}
 
-	switch BlockName(blockUnder) {
+	switch s.blockName(blockUnder) {
 	case "minecraft:slime":
 		newVel[1] = SlimeBounceMultiplier * old.Y()
 		if math.Abs(newVel[1]) < 1e-4 {
@@ -556,9 +547,9 @@ func landOnBlock(state *MovementState, old mgl64.Vec3, blockUnder world.Block) {
 	state.SetVel(newVel)
 }
 
-func setPostCollisionMotion(state *MovementState, oldVel mgl64.Vec3, oldOnGround bool, blockUnder world.Block) {
+func (s *Simulator) setPostCollisionMotion(state *MovementState, oldVel mgl64.Vec3, oldOnGround bool, blockUnder world.Block) {
 	if !oldOnGround && state.CollideY {
-		landOnBlock(state, oldVel, blockUnder)
+		s.landOnBlock(state, oldVel, blockUnder)
 	} else if state.CollideY {
 		newVel := state.Vel
 		newVel[1] = 0
@@ -573,6 +564,18 @@ func setPostCollisionMotion(state *MovementState, oldVel mgl64.Vec3, oldOnGround
 		newVel[2] = 0
 	}
 	state.SetVel(newVel)
+}
+
+func updateFallDistance(state *MovementState, oldY float64) {
+	yDelta := state.Pos.Y() - oldY
+	if yDelta < 0 && !state.OnGround {
+		state.FallDistance -= yDelta
+	} else if yDelta > 0 {
+		state.FallDistance = 0
+	}
+	if state.OnGround && state.FallDistance > 0 {
+		state.FallDistance = 0
+	}
 }
 
 func moveRelative(state *MovementState, moveRelativeSpeed float64) {
@@ -601,11 +604,9 @@ func attemptKnockback(state *MovementState) bool {
 	return false
 }
 
-func attemptJump(state *MovementState, clientJumpPrevented *bool, sim *Simulator) bool {
+func (s *Simulator) attemptJump(state *MovementState, clientJumpPrevented *bool) bool {
 	if !state.Jumping || !state.OnGround || state.JumpDelay > 0 {
-		if sim != nil {
-			sim.debugfIf(state.Jumping, "rejected jump from client (onGround=%v jumpDelay=%d)", state.OnGround, state.JumpDelay)
-		}
+		s.debugfIf(state.Jumping, "rejected jump from client (onGround=%v jumpDelay=%d)", state.OnGround, state.JumpDelay)
 		return false
 	}
 
@@ -620,9 +621,9 @@ func attemptJump(state *MovementState, clientJumpPrevented *bool, sim *Simulator
 	}
 
 	if clientJumpPrevented != nil && !state.HasKnockback() && !state.HasTeleport() {
-		if sim != nil && isJumpBlocked(state, sim.World, sim.Options.UseSlideOffset, newVel) {
+		if s.isJumpBlocked(state, newVel) {
 			*clientJumpPrevented = true
-			sim.debugf("jump determined to be blocked")
+			s.debugf("jump determined to be blocked")
 		}
 	}
 
@@ -630,10 +631,12 @@ func attemptJump(state *MovementState, clientJumpPrevented *bool, sim *Simulator
 	return true
 }
 
-func isJumpBlocked(state *MovementState, w WorldProvider, useSlideOffset bool, jumpVel mgl64.Vec3) bool {
+func (s *Simulator) isJumpBlocked(state *MovementState, jumpVel mgl64.Vec3) bool {
+	w := s.World
 	if w == nil {
 		return false
 	}
+	useSlideOffset := s.Options.UseSlideOffset
 	collisionBB := state.BoundingBox(useSlideOffset)
 	bbList := w.GetNearbyBBoxes(collisionBB.Extend(jumpVel))
 
@@ -680,10 +683,13 @@ func isJumpBlocked(state *MovementState, w WorldProvider, useSlideOffset bool, j
 	return yVel[1] != jumpVel[1] && xVel[0] == jumpVel[0] && zVel[2] == jumpVel[2]
 }
 
-func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, correctionThreshold float64, clientJumpPrevented bool, sim *Simulator) {
+func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool) {
+	w := s.World
 	if w == nil {
 		return
 	}
+	useSlideOffset := s.Options.UseSlideOffset
+	correctionThreshold := s.Options.PositionCorrectionThreshold
 
 	var completedStep bool
 	collisionBB := state.BoundingBox(useSlideOffset)
@@ -704,19 +710,19 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 		yVel = BBClipCollide(bbList[i], collisionBB, yVel, useOneWayCollisions, &penetration)
 	}
 	collisionBB = collisionBB.Translate(yVel)
-	sim.debugf("Y-collision non-step=%v /w penetration=%v (oneWay=%v)", yVel, penetration, useOneWayCollisions)
+	s.debugf("Y-collision non-step=%v /w penetration=%v (oneWay=%v)", yVel, penetration, useOneWayCollisions)
 
 	for i := len(bbList) - 1; i >= 0; i-- {
 		xVel = BBClipCollide(bbList[i], collisionBB, xVel, useOneWayCollisions, &penetration)
 	}
 	collisionBB = collisionBB.Translate(xVel)
-	sim.debugf("(X) hz-collision non-step=%v /w penetration=%v (oneWay=%v)", xVel, penetration, useOneWayCollisions)
+	s.debugf("(X) hz-collision non-step=%v /w penetration=%v (oneWay=%v)", xVel, penetration, useOneWayCollisions)
 
 	for i := len(bbList) - 1; i >= 0; i-- {
 		zVel = BBClipCollide(bbList[i], collisionBB, zVel, useOneWayCollisions, &penetration)
 	}
 	collisionBB = collisionBB.Translate(zVel)
-	sim.debugf("(Z) hz-collision non-step=%v /w penetration=%v (oneWay=%v)", zVel, penetration, useOneWayCollisions)
+	s.debugf("(Z) hz-collision non-step=%v /w penetration=%v (oneWay=%v)", zVel, penetration, useOneWayCollisions)
 
 	collisionVel := yVel.Add(xVel).Add(zVel)
 	collisionPos := mgl64.Vec3{
@@ -724,7 +730,7 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 		collisionBB.Min().Y(),
 		(collisionBB.Min().Z() + collisionBB.Max().Z()) * 0.5,
 	}
-	sim.debugf("endCollisionVel=%v endCollisionPos=%v", collisionVel, collisionPos)
+	s.debugf("endCollisionVel=%v endCollisionPos=%v", collisionVel, collisionPos)
 
 	hasPenetration := penetration.LenSqr() >= 9.999999999999999e-12
 	state.StuckInCollider = state.PenetratedLastFrame && hasPenetration
@@ -745,19 +751,19 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 			stepYVel = BBClipCollide(blockBox, stepBB, stepYVel, useOneWayCollisions, nil)
 		}
 		stepBB = stepBB.Translate(stepYVel)
-		sim.debugf("stepYVel=%v", stepYVel)
+		s.debugf("stepYVel=%v", stepYVel)
 
 		for _, blockBox := range bbList {
 			stepXVel = BBClipCollide(blockBox, stepBB, stepXVel, useOneWayCollisions, nil)
 		}
 		stepBB = stepBB.Translate(stepXVel)
-		sim.debugf("stepXVel=%v", stepXVel)
+		s.debugf("stepXVel=%v", stepXVel)
 
 		for _, blockBox := range bbList {
 			stepZVel = BBClipCollide(blockBox, stepBB, stepZVel, useOneWayCollisions, nil)
 		}
 		stepBB = stepBB.Translate(stepZVel)
-		sim.debugf("stepZVel=%v", stepZVel)
+		s.debugf("stepZVel=%v", stepZVel)
 
 		inverseYStepVel := stepYVel.Mul(-1)
 		for _, blockBox := range bbList {
@@ -765,12 +771,12 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 		}
 		stepBB = stepBB.Translate(inverseYStepVel)
 		stepYVel = stepYVel.Add(inverseYStepVel)
-		sim.debugf("inverseYStepVel=%v", inverseYStepVel)
+		s.debugf("inverseYStepVel=%v", inverseYStepVel)
 
 		stepVel := stepYVel.Add(stepXVel).Add(stepZVel)
 		newBBListCount := 0
 		hasStepCollisions := false
-		if sim != nil && sim.Options.Debugf != nil {
+		if s.Options.Debugf != nil {
 			newBBListCount = len(w.GetNearbyBBoxes(stepBB))
 			hasStepCollisions = newBBListCount > 0
 		} else {
@@ -781,8 +787,8 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 			stepBB.Min().Y(),
 			(stepBB.Min().Z() + stepBB.Max().Z()) * 0.5,
 		}
-		sim.debugf("endStepVel=%v endStepPos=%v", stepVel, stepPos)
-		sim.debugf("newBBList count: %d", newBBListCount)
+		s.debugf("endStepVel=%v endStepPos=%v", stepVel, stepPos)
+		s.debugf("newBBList count: %d", newBBListCount)
 
 		if !hasStepCollisions && Vec3HzDistSqr(collisionVel) < Vec3HzDistSqr(stepVel) {
 			// Match vanilla's step-vs-collision tie-breaker using client alignment to avoid false
@@ -792,7 +798,7 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 			// wants step-ups accepted.
 			stepPosDist := stepPos.Sub(state.Client.Pos).Len()
 			collisionPosDist := collisionPos.Sub(state.Client.Pos).Len()
-			if sim.Options.IgnoreClientStepTiebreaker || collisionPosDist > correctionThreshold || stepPosDist <= collisionPosDist {
+			if s.Options.IgnoreClientStepTiebreaker || collisionPosDist > correctionThreshold || stepPosDist <= collisionPosDist {
 				collisionVel = stepVel
 				collisionBB = stepBB
 				if useSlideOffset {
@@ -801,12 +807,12 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 					slideOffset[1] += stepVel.Y()
 					state.SlideOffset = slideOffset
 				}
-				sim.debugf("step successful")
+				s.debugf("step successful")
 			} else {
-				sim.debugf("step failed (client rejection) [clientPos=%v collisionPos=%v stepPos=%v]", state.Client.Pos, collisionPos, stepPos)
+				s.debugf("step failed (client rejection) [clientPos=%v collisionPos=%v stepPos=%v]", state.Client.Pos, collisionPos, stepPos)
 			}
 		} else {
-			sim.debugf("step failed")
+			s.debugf("step failed")
 		}
 	}
 
@@ -820,9 +826,9 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 		if completedStep {
 			// Older clients keep a slide offset accumulator that gets applied to the final Y.
 			endPos[1] -= state.SlideOffset.Y()
-			sim.debugf("applying slideOffset, able to subtract endPos.y this frame by %f", state.SlideOffset.Y())
+			s.debugf("applying slideOffset, able to subtract endPos.y this frame by %f", state.SlideOffset.Y())
 		} else {
-			sim.debugf("using slide offset, RESETTING slide offset vector")
+			s.debugf("using slide offset, RESETTING slide offset vector")
 			state.SlideOffset = mgl64.Vec2{}
 		}
 	}
@@ -836,18 +842,19 @@ func tryCollisions(state *MovementState, w WorldProvider, useSlideOffset bool, c
 	state.OnGround = (yCollision && currVel.Y() < 0) || (state.OnGround && !yCollision && math.Abs(currVel.Y()) <= 1e-5)
 	checkSupportingBlockPos(state, w, useSlideOffset, currVel)
 	state.SetVel(collisionVel)
-	sim.debugf("clientVel=%v clientPos=%v", state.Client.Mov, state.Client.Pos)
-	sim.debugf("finalVel=%v finalPos=%v", collisionVel, state.Pos)
-	sim.debugf("(client) hzCollision=%v yCollision=%v", state.Client.HorizontalCollision, state.Client.VerticalCollision)
-	sim.debugf("(server) xCollision=%v yCollision=%v zCollision=%v", state.CollideX, state.CollideY, state.CollideZ)
+	s.debugf("clientVel=%v clientPos=%v", state.Client.Mov, state.Client.Pos)
+	s.debugf("finalVel=%v finalPos=%v", collisionVel, state.Pos)
+	s.debugf("(client) hzCollision=%v yCollision=%v", state.Client.HorizontalCollision, state.Client.VerticalCollision)
+	s.debugf("(server) xCollision=%v yCollision=%v zCollision=%v", state.CollideX, state.CollideY, state.CollideZ)
 }
 
-func avoidEdge(state *MovementState, w WorldProvider, useSlideOffset bool, sim *Simulator) {
+func (s *Simulator) avoidEdge(state *MovementState) {
+	w := s.World
 	if w == nil {
 		return
 	}
 	if !state.Sneaking || !state.OnGround || state.Vel.Y() > 0 {
-		sim.debugf(
+		s.debugf(
 			"avoidEdge: conditions not met (sneaking=%v onGround=%v yVel=%v)",
 			state.Sneaking,
 			state.OnGround,
@@ -864,6 +871,7 @@ func avoidEdge(state *MovementState, w WorldProvider, useSlideOffset bool, sim *
 
 	oldVel := state.Vel
 	newVel := state.Vel
+	useSlideOffset := s.Options.UseSlideOffset
 	bb := state.BoundingBox(useSlideOffset).GrowVec3(mgl64.Vec3{-edgeBoundry, 0, -edgeBoundry})
 	xMov, zMov := newVel.X(), newVel.Z()
 
@@ -919,7 +927,7 @@ func avoidEdge(state *MovementState, w WorldProvider, useSlideOffset bool, sim *
 	newVel[0] = xMov
 	newVel[2] = zMov
 	state.SetVel(newVel)
-	sim.debugf("(avoidEdge): oldVel=%v newVel=%v", oldVel, newVel)
+	s.debugf("(avoidEdge): oldVel=%v newVel=%v", oldVel, newVel)
 }
 
 func (s *Simulator) isInsideCobweb(state *MovementState) bool {
@@ -933,7 +941,7 @@ func (s *Simulator) isInsideCobweb(state *MovementState) bool {
 		if _, isAir := b.(block.Air); isAir {
 			continue
 		}
-		if BlockName(b) != "minecraft:web" {
+		if s.blockName(b) != "minecraft:web" {
 			continue
 		}
 

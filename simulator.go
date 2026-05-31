@@ -1,5 +1,11 @@
 package bedsim
 
+import (
+	"math"
+
+	"github.com/df-mc/dragonfly/server/world"
+)
+
 // SimulationMode defines how strict the simulator should be with client corrections.
 type SimulationMode uint8
 
@@ -45,8 +51,46 @@ type SimulationOptions struct {
 
 // Simulator orchestrates movement simulation using the provided adapters.
 type Simulator struct {
-	World     WorldProvider
-	Effects   EffectsProvider
-	Inventory InventoryProvider
-	Options   SimulationOptions
+	World WorldProvider
+	// BlockSemantics optionally resolves movement-specific block behavior from
+	// the same world snapshot as World. Nil uses DefaultBlockSemantics.
+	BlockSemantics BlockSemanticsProvider
+	Effects        EffectsProvider
+	Inventory      InventoryProvider
+	Options        SimulationOptions
+}
+
+func (DefaultBlockSemantics) BlockName(b world.Block) string {
+	return BlockName(b)
+}
+
+func (DefaultBlockSemantics) BlockFriction(b world.Block) float64 {
+	return BlockFriction(b)
+}
+
+func (DefaultBlockSemantics) BlockClimbable(b world.Block) bool {
+	return BlockClimbable(b)
+}
+
+func (s *Simulator) blockName(b world.Block) string {
+	if s.BlockSemantics != nil {
+		return s.BlockSemantics.BlockName(b)
+	}
+	return BlockName(b)
+}
+
+func (s *Simulator) blockFriction(b world.Block) float64 {
+	if s.BlockSemantics != nil {
+		if friction := s.BlockSemantics.BlockFriction(b); friction > 0 && !math.IsInf(friction, 1) {
+			return friction
+		}
+	}
+	return BlockFriction(b)
+}
+
+func (s *Simulator) blockClimbable(b world.Block) bool {
+	if s.BlockSemantics != nil {
+		return s.BlockSemantics.BlockClimbable(b)
+	}
+	return BlockClimbable(b)
 }
