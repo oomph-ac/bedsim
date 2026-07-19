@@ -20,7 +20,7 @@ var liquidFaces = [...]struct {
 	{cube.Pos{0, 0, 1}, mgl64.Vec3{0, 0, 1}},
 }
 
-func (s *Simulator) simulateLiquidTravel(state *MovementState, water bool) {
+func (s *Simulator) simulateLiquidTravel(state *MovementState, water, touchingLiquid bool) {
 	initialY := state.Pos.Y()
 	if water {
 		if state.WantDown || state.WantDownSlow {
@@ -33,7 +33,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, water bool) {
 
 	if state.EffectiveJumping {
 		vel := state.Vel
-		if state.SwimAmount > 0 && state.SwimAmount < 1 {
+		if state.SwimAmount > 0 && state.SwimAmount < 1 || water && state.Swimming && !touchingLiquid {
 			vel[1] = 0
 		} else {
 			vel[1] += 0.04

@@ -273,16 +273,17 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 
 	waterBlocks := s.touchingLiquidBlocks(state, "water")
 	lavaBlocks := s.touchingLiquidBlocks(state, "lava")
-	if !state.Flying && (len(waterBlocks) != 0 || len(lavaBlocks) != 0) {
+	waterTravel := len(waterBlocks) != 0 || state.Swimming
+	if !state.Flying && (waterTravel || len(lavaBlocks) != 0) {
 		s.debugfIf(attemptKnockback(state), "knockback applied in liquid: %v", state.Vel)
-		if len(waterBlocks) != 0 {
+		if waterTravel {
 			state.Gliding = false
 			state.GlideBoostTicks = 0
 			s.applyLiquidFlow(state, waterBlocks, "water")
-			s.simulateLiquidTravel(state, true)
+			s.simulateLiquidTravel(state, true, len(waterBlocks) != 0)
 		} else {
 			s.applyLiquidFlow(state, lavaBlocks, "lava")
-			s.simulateLiquidTravel(state, false)
+			s.simulateLiquidTravel(state, false, true)
 		}
 		return
 	}
