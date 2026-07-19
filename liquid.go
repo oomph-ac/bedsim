@@ -254,7 +254,7 @@ func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, 
 	if length := flow.Len(); length >= 1e-4 {
 		strength := 0.014
 		if liquidType == "lava" {
-			strength = 0.007
+			strength = 0.0035
 		}
 		state.SetVel(state.Vel.Add(flow.Mul(strength / length)))
 		s.debugf("%s flow applied strength=%.6f flow=%v vel=%v", liquidType, strength, flow, state.Vel)
