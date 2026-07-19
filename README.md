@@ -2,7 +2,7 @@
 
 Server-side Minecraft Bedrock movement simulation library for Go.
 
-`bedsim` replicates the Bedrock client's movement physics (collisions, stepping, edge-avoidance, gliding, teleportation) on the server, producing authoritative position and velocity values that can be compared against client-reported state.
+`bedsim` replicates the Bedrock client's movement physics (collisions, stepping, edge-avoidance, liquids, gliding, teleportation) on the server, producing authoritative position and velocity values that can be compared against client-reported state.
 
 Original code was written by [ethaniccc](https://github.com/ethaniccc) in [oomph](https://github.com/oomph-ac/oomph) and has been ported over into this library.
 
@@ -69,6 +69,11 @@ Set `BlockSemantics` when movement behavior must come from a per-world block
 registry or custom block data instead of bedsim's Dragonfly-backed defaults.
 Custom friction values must be finite and positive; invalid values fall back to
 Dragonfly defaults.
+
+Implement `LiquidProvider` on the world adapter to expose liquids from both
+block layers, including waterlogged blocks. Without it, bedsim falls back to
+liquids returned by `WorldProvider.Block`. Implement `DepthStriderProvider` on
+the inventory adapter when Depth Strider should affect water movement.
 
 ### Simulation modes
 

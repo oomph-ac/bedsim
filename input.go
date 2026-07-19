@@ -28,8 +28,15 @@ type InputState struct {
 	SneakDown     bool
 	Sneaking      bool
 
-	StartJumping bool
-	Jumping      bool
+	StartJumping       bool
+	Jumping            bool
+	AutoJumpingInWater bool
+	AscendBlock        bool
+
+	StartSwimming bool
+	StopSwimming  bool
+	WantDown      bool
+	WantDownSlow  bool
 
 	StopGliding  bool
 	StartGliding bool

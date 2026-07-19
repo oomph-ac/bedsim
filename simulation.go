@@ -173,21 +173,37 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 		state.Sneaking = input.SneakDown
 	}
 
+	wasSwimming := state.Swimming
+	if input.StopSwimming {
+		state.Swimming = false
+	} else if input.StartSwimming {
+		state.Swimming = true
+		state.Sneaking = false
+	}
+	if wasSwimming {
+		state.SwimAmount = ClampFloat(state.SwimAmount+0.1, 0, 1)
+	} else {
+		state.SwimAmount = ClampFloat(state.SwimAmount-0.1, 0, 1)
+	}
+	state.AutoJumpingInWater = input.AutoJumpingInWater
+	state.WantDown = input.WantDown
+	state.WantDownSlow = input.WantDownSlow
+
 	maxImpulse := 1.0
 	if input.UsingConsumable {
 		maxImpulse *= MaxConsumingImpulse
 	}
-	if state.Sneaking {
+	if state.Sneaking && !state.WantDown && !state.WantDownSlow {
 		maxImpulse *= MaxSneakImpulse
 	}
-
 	moveVector := mgl64.Vec2{
 		ClampFloat(input.MoveVector[0], -maxImpulse, maxImpulse),
 		ClampFloat(input.MoveVector[1], -maxImpulse, maxImpulse),
 	}
 
-	state.Jumping = input.StartJumping
+	state.Jumping = input.StartJumping || input.Jumping
 	state.PressingJump = input.Jumping
+	state.EffectiveJumping = input.Jumping || input.AutoJumpingInWater || input.AscendBlock
 	state.JumpHeight = DefaultJumpHeight
 	if s.Effects != nil {
 		if amp, ok := s.Effects.GetEffect(packet.EffectJumpBoost); ok {
@@ -255,6 +271,22 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		state.SetVel(mgl64.Vec3{})
 	}
 
+	waterBlocks := s.touchingLiquidBlocks(state, "water")
+	lavaBlocks := s.touchingLiquidBlocks(state, "lava")
+	if !state.Flying && (len(waterBlocks) != 0 || len(lavaBlocks) != 0) {
+		s.debugfIf(attemptKnockback(state), "knockback applied in liquid: %v", state.Vel)
+		if len(waterBlocks) != 0 {
+			state.Gliding = false
+			state.GlideBoostTicks = 0
+			s.applyLiquidFlow(state, waterBlocks, "water")
+			s.simulateLiquidTravel(state, true)
+		} else {
+			s.applyLiquidFlow(state, lavaBlocks, "lava")
+			s.simulateLiquidTravel(state, false)
+		}
+		return
+	}
+
 	blockUnder := s.blockAtPos(cube.PosFromVec3(state.Pos.Sub(mgl64.Vec3{0, 0.5})))
 	blockFriction := DefaultAirFriction
 	moveRelativeSpeed := state.AirSpeed
@@ -299,7 +331,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		if newVel[1] < negClimbSpeed {
 			newVel[1] = negClimbSpeed
 		}
-		if state.PressingJump || state.CollideX || state.CollideZ {
+		if state.EffectiveJumping || state.CollideX || state.CollideZ {
 			newVel[1] = ClimbSpeed
 		}
 		if state.Sneaking && newVel[1] < 0 {
@@ -379,16 +411,9 @@ func (s *Simulator) simulationIsReliable(state *MovementState) bool {
 
 	stateBB := state.BoundingBox(s.Options.UseSlideOffset)
 	isReliable := true
-	for pos, b := range nearbyBlocks(stateBB.Grow(1), s.World) {
+	for _, b := range nearbyBlocks(stateBB.Grow(1), s.World) {
 		if _, isAir := b.(block.Air); isAir {
 			continue
-		}
-		if _, isLiquid := b.(world.Liquid); isLiquid {
-			blockBB := cube.Box(0, 0, 0, 1, 1, 1).Translate(pos.Vec3())
-			if stateBB.IntersectsWith(blockBB) {
-				isReliable = false
-				break
-			}
 		}
 		if s.blockName(b) == "minecraft:bamboo" {
 			isReliable = false
