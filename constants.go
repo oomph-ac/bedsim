@@ -13,9 +13,12 @@ const (
 	SlimeBounceMultiplier       = -1.0
 	BedBounceMultiplier         = -0.66
 	// This can be validated in Mob::ascendLadder().
-	ClimbSpeed                     = 0.2
-	MaxConsumingImpulse            = 0.1225
-	MaxSneakImpulse                = 0.3
+	ClimbSpeed          = 0.2
+	MaxConsumingImpulse = 0.1225
+	MaxSneakImpulse     = 0.3
+	// Deprecated: MaxNormalizedImpulse is unused by the simulator. The
+	// diagonal-impulse normalization it was intended for is disabled upstream
+	// as well. It is retained only for API compatibility.
 	MaxNormalizedImpulse           = 0.70710678118 // 1/sqrt(2)
 	DefaultUnderwaterMovementSpeed = 0.02
 	DefaultLavaMovementSpeed       = 0.02
@@ -31,4 +34,11 @@ const (
 
 	JumpDelayTicks  = 10
 	GlideBoostTicks = 20
+
+	// DefaultSwimWaterGraceTicks bounds how long water travel survives on the
+	// client's swimming flag alone once the hitbox stops touching water. It
+	// covers the brief surface transition where a swimmer's collapsed hitbox
+	// no longer overlaps a water block, without letting a latched flag grant
+	// indefinite zero-gravity travel.
+	DefaultSwimWaterGraceTicks = 10
 )

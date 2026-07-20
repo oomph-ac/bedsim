@@ -51,6 +51,9 @@ func (s *Simulator) debugfIf(cond bool, format string, args ...any) {
 func (s *Simulator) simulateCore(state *MovementState) SimulationOutcome {
 	teleported := s.attemptTeleport(state)
 	if teleported {
+		// A teleport relocates the player without observing the destination,
+		// so any retained water contact from the origin is void.
+		state.SwimWaterGraceTicks = 0
 		return SimulationOutcomeTeleport
 	}
 
@@ -59,12 +62,21 @@ func (s *Simulator) simulateCore(state *MovementState) SimulationOutcome {
 		s.resetToClient(state)
 		return SimulationOutcomeUnreliable
 	}
+	if s.Options.RequireLiquidLayer && !s.HasLiquidLayer() {
+		s.debugf("no liquid layer available and RequireLiquidLayer is set")
+		s.resetToClient(state)
+		return SimulationOutcomeUnreliable
+	}
 	if s.World != nil && !s.World.IsChunkLoaded(int32(math.Floor(state.Pos.X()))>>4, int32(math.Floor(state.Pos.Z()))>>4) {
 		state.SetVel(mgl64.Vec3{})
+		state.SwimWaterGraceTicks = 0
 		return SimulationOutcomeUnloadedChunk
 	}
 	if state.Immobile || !state.Ready {
 		state.SetVel(mgl64.Vec3{})
+		// Frozen ticks observe nothing, so the budget must not simply pause
+		// and resume later.
+		state.SwimWaterGraceTicks = 0
 		return SimulationOutcomeImmobileOrNotReady
 	}
 
@@ -189,12 +201,18 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	state.WantDown = input.WantDown
 	state.WantDownSlow = input.WantDownSlow
 
+	// Upstream PR #145 removed both clamps and clamps the move vector to
+	// [-1, 1]. bedsim keeps them by default because they are public API that
+	// applies to all movement; UpstreamImpulseClamping opts into upstream's
+	// behavior without a breaking change.
 	maxImpulse := 1.0
-	if input.UsingConsumable {
-		maxImpulse *= MaxConsumingImpulse
-	}
-	if state.Sneaking {
-		maxImpulse *= MaxSneakImpulse
+	if !s.Options.UpstreamImpulseClamping {
+		if input.UsingConsumable {
+			maxImpulse *= MaxConsumingImpulse
+		}
+		if state.Sneaking {
+			maxImpulse *= MaxSneakImpulse
+		}
 	}
 	moveVector := mgl64.Vec2{
 		ClampFloat(input.MoveVector[0], -maxImpulse, maxImpulse),
@@ -281,9 +299,38 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		state.SetVel(mgl64.Vec3{})
 	}
 
-	waterBlocks := s.touchingLiquidBlocks(state, "water")
-	lavaBlocks := s.touchingLiquidBlocks(state, "lava")
-	waterTravel := len(waterBlocks) != 0 || state.Swimming
+	// Upstream keys water travel on the client's swimming flag alone, which a
+	// standalone authoritative simulator cannot trust: a latched flag would
+	// grant zero-gravity travel — and a shrunken hitbox — in open air forever.
+	// Water travel and the swim pose therefore survive on the flag only while
+	// recent server-observed water contact remains.
+	//
+	// The bound is applied up front, before anything reads the budget, so a
+	// stale or caller-supplied value can never widen the window. The budget is
+	// then decremented at the end of the tick, keeping the value constant for
+	// the whole tick so every hitbox lookup agrees with the gate below.
+	grace := s.swimWaterGraceTicks()
+	if state.SwimWaterGraceTicks > grace {
+		state.SwimWaterGraceTicks = grace
+	}
+
+	waterBlocks := s.touchingLiquidBlocks(state, liquidWater)
+	lavaBlocks := s.touchingLiquidBlocks(state, liquidLava)
+
+	inWater := len(waterBlocks) != 0
+	defer func() {
+		if inWater {
+			state.SwimWaterGraceTicks = grace
+		} else if state.SwimWaterGraceTicks > 0 {
+			state.SwimWaterGraceTicks--
+		}
+	}()
+
+	// Retained proof must not override a liquid the player is demonstrably
+	// standing in: lava contact wins over a stale water grace.
+	waterTravel := inWater ||
+		(state.Swimming && state.SwimWaterGraceTicks > 0 && len(lavaBlocks) == 0)
+
 	if !state.Flying && (waterTravel || len(lavaBlocks) != 0) {
 		s.debugfIf(attemptKnockback(state), "knockback applied in liquid: %v", state.Vel)
 		if waterTravel {
@@ -291,11 +338,11 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 				state.Gliding = false
 				state.GlideBoostTicks = 0
 			}
-			s.applyLiquidFlow(state, waterBlocks, "water")
-			s.simulateLiquidTravel(state, true, len(waterBlocks) != 0)
+			s.applyLiquidFlow(state, waterBlocks, liquidWater)
+			s.simulateLiquidTravel(state, liquidWater, inWater)
 		} else {
-			s.applyLiquidFlow(state, lavaBlocks, "lava")
-			s.simulateLiquidTravel(state, false, true)
+			s.applyLiquidFlow(state, lavaBlocks, liquidLava)
+			s.simulateLiquidTravel(state, liquidLava, true)
 		}
 		return
 	}
@@ -447,6 +494,9 @@ func (s *Simulator) simulationIsReliable(state *MovementState) bool {
 }
 
 func (s *Simulator) resetToClient(state *MovementState) {
+	// A frame we did not simulate proves nothing about water contact, so the
+	// retained evidence is dropped rather than carried across the gap.
+	state.SwimWaterGraceTicks = 0
 	state.LastPos = state.Client.LastPos
 	state.Pos = state.Client.Pos
 	state.LastVel = state.Client.LastVel

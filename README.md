@@ -51,12 +51,14 @@ Implement provider adapters to bridge your world and player systems:
 sim := bedsim.Simulator{
     World:          myWorldProvider,      // block lookups, collisions, chunk-loaded checks
     BlockSemantics: myBlockSemantics,     // optional: per-world names, friction, climbability
+    Liquids:        myLiquidProvider,     // second block layer (waterlogged blocks)
     Effects:        myEffectsProvider,    // jump boost, levitation, slow falling
     Inventory:      myInventoryProvider,  // elytra equipped check
     Options: bedsim.SimulationOptions{
         Mode:                        bedsim.SimulationModeAuthoritative,
         PositionCorrectionThreshold: 0.5,
         VelocityCorrectionThreshold: 0.5,
+        RequireLiquidLayer:          true,
     },
 }
 
@@ -71,10 +73,21 @@ registry or custom block data instead of bedsim's Dragonfly-backed defaults.
 Custom friction values must be finite and positive; invalid values fall back to
 Dragonfly defaults.
 
-Implement `LiquidProvider` on the world adapter to expose liquids from both
-block layers, including waterlogged blocks. Without it, bedsim falls back to
-liquids returned by `WorldProvider.Block`. Implement `DepthStriderProvider` on
-the inventory adapter when Depth Strider should affect water movement.
+Implement `DepthStriderProvider` on the inventory adapter when Depth Strider
+should affect water movement.
+
+> **Set `Liquids` if you simulate authoritatively.** Bedrock stores waterlogged
+> blocks as a liquid in the *second* block layer. Without a `LiquidProvider`,
+> bedsim only sees liquids returned by `WorldProvider.Block`, so waterlogged
+> blocks look dry and the player is simulated with air physics inside them.
+> Check `sim.HasLiquidLayer()` at startup, or set
+> `SimulationOptions.RequireLiquidLayer` to make the simulator return
+> `SimulationOutcomeUnreliable` rather than silently mis-simulate.
+>
+> If `Liquids` is nil and `World` itself implements `LiquidProvider`, that is
+> used instead. This keeps pre-existing integrations working, but it is
+> discovered by type assertion, so a signature typo degrades silently — prefer
+> the explicit field.
 
 ### Liquid movement
 
@@ -112,9 +125,49 @@ Set `DolphinBoostTicks` when the client receives a dolphin boost. `Simulate`
 counts it down and restores `SwimSpeedMultiplier` to its default on expiry;
 callers using `SimulateState` must manage that lifecycle themselves.
 
-While `Swimming` is set, the bounding box collapses to a width-sized cube,
+While the swim pose is active the bounding box collapses to a width-sized cube,
 matching the client's swim pose. This affects collisions and liquid detection,
-not just liquid travel.
+not just liquid travel. The pose requires both `Swimming` and recent
+server-observed water contact — see `MovementState.SwimPose` and the divergence
+note below.
+
+#### Divergences from the upstream source
+
+Two behaviors intentionally differ from oomph PR #145.
+
+**Swim water-travel grace (security hardening).** Upstream keys water travel on
+`touchingWater || Swimming`, trusting the client's swimming flag because the
+surrounding anticheat validates it. A standalone simulator cannot. Left as-is,
+a client that latches the flag gets two things it should not: *zero gravity*
+forever in open air with no correction raised, and a server-side hitbox
+shrunk from 1.8 to 0.6, letting it fit through gaps a standing player cannot.
+
+bedsim gates **both** the water-travel branch and the swim pose on recent
+server-observed water contact, bounded by
+`SimulationOptions.SwimWaterGraceTicks` (default `DefaultSwimWaterGraceTicks`,
+10). The budget refills on every tick the hitbox actually touches water, is
+clamped to the configured bound before anything reads it, and is cleared on any
+frame that was not simulated — unreliable, unloaded chunk, immobile, or
+teleport. A negative value requires real water contact on every tick. Lava the
+player is actually standing in takes priority over a retained water grace.
+
+Because the budget is applied at the start of a tick and decremented at the end,
+it is constant for the whole tick, so collision, liquid detection and exit
+probing always agree on one hitbox. The cost is that entering water adopts the
+swim pose one tick later than upstream, erring toward the larger box.
+
+Players genuinely in water are unaffected. Two residual limits are worth
+knowing: a client that reaches real water once every `SwimWaterGraceTicks` ticks
+sustains water travel at up to a 10:1 duty cycle, so the guard bounds hovering
+to the neighbourhood of actual water rather than eliminating it; and the pose
+lag above is a deliberate one-tick divergence from upstream. Lower
+`SwimWaterGraceTicks` to tighten both.
+
+**Impulse clamps.** Upstream removed `MaxSneakImpulse` and `MaxConsumingImpulse`
+in this PR, clamping the move vector to `[-1, 1]` instead. bedsim keeps both by
+default, because they are public API affecting all movement and removing them
+would be a breaking change outside liquid scope. Set
+`SimulationOptions.UpstreamImpulseClamping` to opt into upstream's behavior.
 
 ### Simulation modes
 

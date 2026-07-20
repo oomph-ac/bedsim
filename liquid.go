@@ -29,13 +29,55 @@ import (
 //   - Zero-valued speed and multiplier fields on MovementState mean "unset"
 //     and fall back to the Default* constants, so callers that do not track
 //     those attributes still get correct physics.
-//   - A nil EffectsProvider is tolerated and falls back to gravity.
+//   - A nil EffectsProvider is tolerated and falls back to gravity, and a nil
+//     WorldProvider reads as empty space, so an incompletely wired simulator
+//     degrades to no-liquid rather than panicking.
+//   - The Depth Strider level is clamped to [0, 3]. Upstream clamps only the
+//     upper bound because the value comes from an enchantment; bedsim takes it
+//     from a caller-supplied provider that could report a negative level.
 //
 // Upstream also removed the sneak and consumable impulse clamps outright in
 // this PR, clamping the move vector to [-1, 1] instead. bedsim deliberately
-// does not follow that: MaxSneakImpulse and MaxConsumingImpulse are public API
-// and apply to all movement, so removing them is a breaking change well
-// outside liquid scope. Impulse handling is therefore unchanged from v0.1.3.
+// does not follow that by default: MaxSneakImpulse and MaxConsumingImpulse are
+// public API and apply to all movement, so removing them is a breaking change
+// well outside liquid scope. Set SimulationOptions.UpstreamImpulseClamping to
+// opt into upstream's behavior.
+//
+// Security hardening divergence: upstream gates water travel on the client's
+// swimming flag alone (`len(waterBlocks) != 0 || Swimming`), and sizes the
+// hitbox off the same flag. Oomph can afford that because the surrounding
+// anticheat validates the flag, but a standalone authoritative simulator cannot
+// — a latched flag would yield indefinite zero-gravity hovering in open air and
+// a hitbox shrunk from 1.8 to 0.6, both with no correction raised. bedsim gates
+// water travel and the swim pose (MovementState.SwimPose) on recent
+// server-observed water contact, bounded by
+// SimulationOptions.SwimWaterGraceTicks, clamped before use, reset on any frame
+// that was not simulated, and overridden by lava the player is actually in.
+// Real water contact is unaffected; see the README for the residual duty-cycle
+// limit and the deliberate one-tick pose lag.
+
+// liquidKind identifies the liquid family a travel step simulates. Liquids are
+// matched by LiquidType() so that custom world.Liquid implementations behave
+// like the vanilla blocks they stand in for.
+type liquidKind uint8
+
+const (
+	liquidWater liquidKind = iota
+	liquidLava
+)
+
+// typeName is the world.Liquid.LiquidType() value identifying this kind.
+func (k liquidKind) typeName() string {
+	if k == liquidLava {
+		return "lava"
+	}
+	return "water"
+}
+
+// matches reports whether the liquid belongs to this kind.
+func (k liquidKind) matches(liquid world.Liquid) bool {
+	return liquid.LiquidType() == k.typeName()
+}
 
 var liquidFaces = [...]struct {
 	delta cube.Pos
@@ -47,8 +89,11 @@ var liquidFaces = [...]struct {
 	{cube.Pos{0, 0, 1}, mgl64.Vec3{0, 0, 1}},
 }
 
-func (s *Simulator) simulateLiquidTravel(state *MovementState, water, touchingLiquid bool) {
+func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, touchingLiquid bool) {
 	initialY := state.Pos.Y()
+	water := kind == liquidWater
+	// Captured before updateSwimTravel, matching the upstream ordering.
+	jumping := state.EffectiveJumping
 	if water {
 		if state.WantDown || state.WantDownSlow {
 			vel := state.Vel
@@ -58,7 +103,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, water, touchingLi
 		s.updateSwimTravel(state)
 	}
 
-	if state.EffectiveJumping {
+	if jumping {
 		vel := state.Vel
 		if state.SwimAmount > 0 && state.SwimAmount < 1 || water && state.Swimming && !touchingLiquid {
 			vel[1] = 0
@@ -181,10 +226,10 @@ func (s *Simulator) updateSwimTravel(state *MovementState) {
 	state.SetVel(vel)
 }
 
-func (s *Simulator) touchingLiquidBlocks(state *MovementState, liquidType string) []cube.Pos {
+func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) []cube.Pos {
 	box := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl64.Vec3{1e-4, 0, 1e-4})
 	offset := mgl64.Vec3{0.001, 0.401, 0.001}
-	if liquidType == "lava" {
+	if kind == liquidLava {
 		offset = mgl64.Vec3{0.1, 0.4, 0.1}
 	}
 	box = shrinkLiquidBox(box, offset)
@@ -198,7 +243,7 @@ func (s *Simulator) touchingLiquidBlocks(state *MovementState, liquidType string
 			for z := minZ; z < maxZ; z++ {
 				pos := cube.Pos{x, y, z}
 				liquid, ok := s.liquidAt(pos)
-				if !ok || liquid.LiquidType() != liquidType {
+				if !ok || !kind.matches(liquid) {
 					continue
 				}
 				if s.Options.Debugf != nil {
@@ -245,8 +290,30 @@ func (s *Simulator) blockCollisions(pos cube.Pos) []cube.BBox {
 	return s.World.BlockCollisions(pos)
 }
 
-func (s *Simulator) liquidAt(pos cube.Pos) (world.Liquid, bool) {
+// liquidLayer resolves the configured second-layer liquid source. The explicit
+// Simulator.Liquids field wins; a World that itself implements LiquidProvider is
+// accepted for compatibility with integrations written before the field existed.
+func (s *Simulator) liquidLayer() (LiquidProvider, bool) {
+	if s.Liquids != nil {
+		return s.Liquids, true
+	}
 	if provider, ok := s.World.(LiquidProvider); ok {
+		return provider, true
+	}
+	return nil, false
+}
+
+// HasLiquidLayer reports whether this simulator can see liquids in the second
+// block layer, which is what makes waterlogged blocks visible to movement.
+// Callers running authoritatively should assert this at startup, or set
+// SimulationOptions.RequireLiquidLayer to fail closed instead.
+func (s *Simulator) HasLiquidLayer() bool {
+	_, ok := s.liquidLayer()
+	return ok
+}
+
+func (s *Simulator) liquidAt(pos cube.Pos) (world.Liquid, bool) {
+	if provider, ok := s.liquidLayer(); ok {
 		if liquid, found := provider.Liquid(pos); found {
 			return liquid, true
 		}
@@ -278,22 +345,22 @@ func (s *Simulator) containsAnyLiquid(box cube.BBox) bool {
 	return false
 }
 
-func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, liquidType string) {
+func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, kind liquidKind) {
 	flow := mgl64.Vec3{}
 	for _, pos := range positions {
 		liquid, ok := s.liquidAt(pos)
-		if !ok || liquid.LiquidType() != liquidType {
+		if !ok || !kind.matches(liquid) {
 			continue
 		}
 		flow = flow.Add(s.liquidFlow(pos, liquid))
 	}
 	if length := flow.Len(); length >= 1e-4 {
 		strength := 0.014
-		if liquidType == "lava" {
+		if kind == liquidLava {
 			strength = 0.0035
 		}
 		state.SetVel(state.Vel.Add(flow.Mul(strength / length)))
-		s.debugf("%s flow applied strength=%.6f flow=%v vel=%v", liquidType, strength, flow, state.Vel)
+		s.debugf("%s flow applied strength=%.6f flow=%v vel=%v", kind.typeName(), strength, flow, state.Vel)
 	}
 }
 

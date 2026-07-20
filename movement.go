@@ -69,8 +69,13 @@ type MovementState struct {
 	EffectiveJumping      bool
 	JumpDelay             uint64
 
-	Swimming               bool
-	SwimAmount             float64
+	Swimming   bool
+	SwimAmount float64
+	// SwimWaterGraceTicks is the remaining budget of ticks during which the
+	// swimming flag alone may keep water travel alive, refilled whenever the
+	// hitbox actually touches water. It is server-derived evidence, not client
+	// input, and callers should not set it directly.
+	SwimWaterGraceTicks    int64
 	AutoJumpingInWater     bool
 	WantDown, WantDownSlow bool
 
