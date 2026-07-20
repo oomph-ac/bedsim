@@ -107,7 +107,7 @@ func (w *layeredLiquidWorld) Liquid(pos cube.Pos) (world.Liquid, bool) {
 	if liquid, ok := w.layer[pos]; ok {
 		return liquid, true
 	}
-	liquid, ok := w.liquidWorld.Block(pos).(world.Liquid)
+	liquid, ok := w.Block(pos).(world.Liquid)
 	return liquid, ok
 }
 
