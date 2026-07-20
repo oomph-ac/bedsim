@@ -164,8 +164,6 @@ func assertVec(t *testing.T, got, want mgl64.Vec3) {
 	}
 }
 
-// --- swimming hitbox -------------------------------------------------------
-
 // A swimming player's hitbox collapses to a width-sized cube, matching the
 // client's swim pose. This drives collision, liquid detection and exit probing.
 func TestSwimmingBoundingBoxUsesWidthAsHeight(t *testing.T) {
@@ -251,8 +249,6 @@ func TestSwimmingBoundingBoxRespectsScale(t *testing.T) {
 	}
 }
 
-// --- jump / ascend inputs --------------------------------------------------
-
 // Jumping is edge-triggered by StartJumping alone. A held jump key sets
 // PressingJump and EffectiveJumping, but must not re-arm the ground jump.
 func TestJumpingIsEdgeTriggeredByStartJumping(t *testing.T) {
@@ -296,8 +292,6 @@ func TestEffectiveJumpingSources(t *testing.T) {
 		t.Fatal("StartJumping alone must not set EffectiveJumping")
 	}
 }
-
-// --- swim state ------------------------------------------------------------
 
 // SwimAmount interpolates by 0.1 per tick, using the swimming state as it was
 // at the start of the tick.
@@ -374,8 +368,6 @@ func TestStopSwimmingTakesPriority(t *testing.T) {
 		t.Fatal("StopSwimming must take priority over StartSwimming")
 	}
 }
-
-// --- water physics ---------------------------------------------------------
 
 // A player resting in still water sinks at the water gravity rate, with water
 // drag applied before gravity.
@@ -498,8 +490,6 @@ func TestLiquidResetsFallDistance(t *testing.T) {
 	}
 }
 
-// --- jump / descend inputs in liquid ---------------------------------------
-
 // Holding jump underwater adds a fixed 0.04 ascent impulse.
 func TestEffectiveJumpingAscendsInWater(t *testing.T) {
 	sim := newLiquidSim(filledColumn(waterSource))
@@ -581,8 +571,6 @@ func TestDescendInputsDoNotChangeSneakImpulseClamp(t *testing.T) {
 		t.Fatalf("sneaking impulse = %v, want %v", sneaking.Impulse.Y(), MaxSneakImpulse*0.98)
 	}
 }
-
-// --- swim travel (pitch steering) ------------------------------------------
 
 // While swimming, pitch steers vertical velocity toward -sin(pitch).
 func TestSwimTravelFollowsPitch(t *testing.T) {
@@ -677,8 +665,6 @@ func TestSwimTravelSurfaceClampSkippedWhenWantDownSlow(t *testing.T) {
 		t.Fatal("WantDownSlow must skip the surface clamp")
 	}
 }
-
-// --- depth strider ---------------------------------------------------------
 
 // Depth Strider lowers the horizontal drag coefficient toward 0.546, so
 // existing momentum decays faster rather than slower.
@@ -798,8 +784,6 @@ func TestInventoryWithoutDepthStriderProvider(t *testing.T) {
 	}
 }
 
-// --- dolphin boost / swim speed multiplier ---------------------------------
-
 // A dolphin boost raises the swim speed multiplier, which only takes effect
 // while actually swimming.
 func TestSwimSpeedMultiplierRequiresSwimming(t *testing.T) {
@@ -894,8 +878,6 @@ func TestZeroMovementSpeedsUseDefaults(t *testing.T) {
 	assertVec(t, state.Vel, explicitState.Vel)
 }
 
-// --- liquid detection ------------------------------------------------------
-
 // Water is detected through a shallow vertical offset, so a player standing on
 // top of a water block is still considered to be in water.
 func TestWaterDetectedAtFeet(t *testing.T) {
@@ -951,8 +933,6 @@ func TestWaterTakesPriorityOverLava(t *testing.T) {
 	// Water gravity (0.005), not lava gravity (0.02).
 	assertVec(t, state.Vel, mgl64.Vec3{0, -0.005, 0})
 }
-
-// --- provider fallbacks ----------------------------------------------------
 
 // Without a LiquidProvider, liquids are read from WorldProvider.Block.
 func TestLiquidFallsBackToBlockProvider(t *testing.T) {
@@ -1022,8 +1002,6 @@ func TestLiquidIsReliableScenario(t *testing.T) {
 		t.Fatal("liquid contact must not mark the simulation unreliable")
 	}
 }
-
-// --- flying and gliding ----------------------------------------------------
 
 // Flying players ignore liquid physics entirely.
 // Flying is covered by TestFlyingIsUnreliableBeforePhysics and
@@ -1124,8 +1102,6 @@ func TestSwimmingOutsideWaterSuppressesJump(t *testing.T) {
 		t.Fatalf("in-water vertical velocity = %v, want an ascent", wetState.Vel.Y())
 	}
 }
-
-// --- flow ------------------------------------------------------------------
 
 // Flowing water pushes the player toward the lower-depth neighbour.
 func TestLiquidFlowPushesTowardLowerDepth(t *testing.T) {
@@ -1271,8 +1247,6 @@ func TestFallingLiquidDecayAndHeight(t *testing.T) {
 	}
 }
 
-// --- exit probing ----------------------------------------------------------
-
 // Colliding horizontally with a ledge that has clear air above lets the player
 // hop out of the liquid.
 func TestLiquidExitProbeBoostsOverLedge(t *testing.T) {
@@ -1368,8 +1342,6 @@ func TestNoExitProbeWithoutHorizontalCollision(t *testing.T) {
 	}
 }
 
-// --- ladder climbing -------------------------------------------------------
-
 // Climbing is driven by EffectiveJumping, so the automatic ascent inputs climb
 // a ladder just like a held jump key does.
 func TestClimbUsesEffectiveJumping(t *testing.T) {
@@ -1405,8 +1377,6 @@ func TestClimbUsesEffectiveJumping(t *testing.T) {
 // Determinism is covered by TestLiquidGoldenScenario in
 // liquid_hardening_test.go, which pins the same mixed-liquid scenario to exact
 // expected values rather than comparing the implementation against itself.
-
-// --- box shrinking ---------------------------------------------------------
 
 // Shrinking a box past its own size collapses it to its midpoint instead of
 // inverting it.

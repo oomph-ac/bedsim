@@ -45,24 +45,14 @@ type SimulationOptions struct {
 	// rejected due to the client position matching the pre-step position.
 	IgnoreClientStepTiebreaker bool
 
-	// RequireLiquidLayer makes the simulator refuse to run when it cannot see
-	// the second block layer, returning SimulationOutcomeUnreliable instead of
-	// silently simulating waterlogged blocks as if they were dry. Authoritative
-	// and anticheat deployments should set this. It defaults to false so that
-	// integrations predating Simulator.Liquids keep working.
+	// RequireLiquidLayer refuses simulation without second-layer liquid data.
 	RequireLiquidLayer bool
 
-	// SwimWaterGraceTicks bounds how many consecutive ticks water travel is
-	// retained on the client's swimming flag alone, after the last tick where
-	// the hitbox actually touched water. Zero uses DefaultSwimWaterGraceTicks;
-	// a negative value disables the grace entirely, requiring real water
-	// contact on every tick.
+	// SwimWaterGraceTicks bounds retained water contact. Zero uses the default;
+	// a negative value disables retention.
 	SwimWaterGraceTicks int64
 
-	// UpstreamImpulseClamping selects oomph PR #145's impulse handling, which
-	// clamps the move vector to [-1, 1] and applies no sneak or consumable
-	// reduction. It defaults to false, keeping bedsim's MaxSneakImpulse and
-	// MaxConsumingImpulse behavior from v0.1.3.
+	// UpstreamImpulseClamping opts into oomph PR #145's unclamped impulses.
 	UpstreamImpulseClamping bool
 
 	// Debugf receives internal simulation trace logs for callers that need deep diagnostics.
@@ -75,12 +65,8 @@ type Simulator struct {
 	// BlockSemantics optionally resolves movement-specific block behavior from
 	// the same world snapshot as World. Nil uses DefaultBlockSemantics.
 	BlockSemantics BlockSemanticsProvider
-	// Liquids exposes liquids from the second block layer, which is what makes
-	// waterlogged blocks visible to movement. Set this explicitly. If it is nil
-	// and World itself implements LiquidProvider, that is used instead; if
-	// neither is present, only liquids returned by World.Block are seen and
-	// waterlogged blocks are invisible. Use HasLiquidLayer to check, or
-	// SimulationOptions.RequireLiquidLayer to fail closed.
+	// Liquids exposes second-layer liquids. World is used when it implements
+	// LiquidProvider; otherwise waterlogged blocks are invisible.
 	Liquids   LiquidProvider
 	Effects   EffectsProvider
 	Inventory InventoryProvider

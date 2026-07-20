@@ -41,11 +41,9 @@ type MovementState struct {
 	AirSpeed                float64
 	UnderwaterMovementSpeed float64
 	LavaMovementSpeed       float64
-	// SwimSpeedMultiplier scales water acceleration while swimming. A dolphin
-	// boost sets this to 2. Zero is treated as the default of 1.
+	// SwimSpeedMultiplier scales swimming acceleration; zero means the default.
 	SwimSpeedMultiplier float64
-	// DolphinBoostTicks counts down the remaining duration of a dolphin boost.
-	// When it reaches zero, SwimSpeedMultiplier is reset to its default.
+	// DolphinBoostTicks is the remaining dolphin-boost duration.
 	DolphinBoostTicks  int64
 	ServerUpdatedSpeed bool
 
@@ -71,10 +69,7 @@ type MovementState struct {
 
 	Swimming   bool
 	SwimAmount float64
-	// SwimWaterGraceTicks is the remaining budget of ticks during which the
-	// swimming flag alone may keep water travel alive, refilled whenever the
-	// hitbox actually touches water. It is server-derived evidence, not client
-	// input, and callers should not set it directly.
+	// SwimWaterGraceTicks retains recent server-observed water contact.
 	SwimWaterGraceTicks    int64
 	AutoJumpingInWater     bool
 	WantDown, WantDownSlow bool

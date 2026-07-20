@@ -35,10 +35,6 @@ const (
 	JumpDelayTicks  = 10
 	GlideBoostTicks = 20
 
-	// DefaultSwimWaterGraceTicks bounds how long water travel survives on the
-	// client's swimming flag alone once the hitbox stops touching water. It
-	// covers the brief surface transition where a swimmer's collapsed hitbox
-	// no longer overlaps a water block, without letting a latched flag grant
-	// indefinite zero-gravity travel.
+	// DefaultSwimWaterGraceTicks bounds retained server-observed water contact.
 	DefaultSwimWaterGraceTicks = 10
 )

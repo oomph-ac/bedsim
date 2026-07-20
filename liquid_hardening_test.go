@@ -10,10 +10,6 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 )
 
-// --- swim water-travel grace (spoof hardening) ------------------------------
-
-// dryState returns a state that is airborne with no liquid anywhere and normal
-// gravity seeded, so the non-liquid path visibly accelerates downward.
 func dryState() *MovementState {
 	state := submergedState()
 	state.Gravity = NormalGravity
@@ -281,10 +277,6 @@ func TestSwimSpeedMultiplierDepthStriderScaling(t *testing.T) {
 	}
 }
 
-// --- liquid layer capability ------------------------------------------------
-
-// explicitLiquids is a standalone LiquidProvider wired through Simulator.Liquids
-// rather than discovered on the world adapter.
 type explicitLiquids struct {
 	layer map[cube.Pos]world.Liquid
 }
@@ -384,8 +376,6 @@ func TestLiquidLayerFallbackStillSimulatesByDefault(t *testing.T) {
 	}
 }
 
-// --- impulse clamping opt-in ------------------------------------------------
-
 // By default bedsim keeps its sneak and consumable impulse clamps; the opt-in
 // selects upstream's behavior, which applies neither.
 func TestUpstreamImpulseClampingOptIn(t *testing.T) {
@@ -427,8 +417,6 @@ func TestUpstreamImpulseClampingStillBoundsMoveVector(t *testing.T) {
 	}
 }
 
-// --- flying gate ------------------------------------------------------------
-
 // A flying player is treated as an unsupported scenario before physics run at
 // all, so no liquid physics are applied and the state is reset to the client.
 func TestFlyingIsUnreliableBeforePhysics(t *testing.T) {
@@ -461,8 +449,6 @@ func TestLiquidGateExcludesFlying(t *testing.T) {
 		t.Fatalf("vertical velocity = %v, want normal gravity", state.Vel.Y())
 	}
 }
-
-// --- flow weights -----------------------------------------------------------
 
 // The drop contribution weights an open neighbour with liquid below by
 // (decay(below) - decay(current) + 8). Competing horizontal terms make the
@@ -499,8 +485,6 @@ func TestFallingFlowDownwardWeightIsSix(t *testing.T) {
 	assertVec(t, flow, want)
 }
 
-// --- stairs face blocking ---------------------------------------------------
-
 // A waterlogged stairs block whose solid face points at the neighbour blocks
 // flow through that face.
 func TestStairsSolidFaceBlocksFlow(t *testing.T) {
@@ -522,8 +506,6 @@ func TestStairsSolidFaceBlocksFlow(t *testing.T) {
 		t.Fatalf("west-facing stairs: flow X = %v, want positive", flow.X())
 	}
 }
-
-// --- nil world --------------------------------------------------------------
 
 // A simulator with no world must not panic on any liquid path.
 func TestNilWorldIsSafe(t *testing.T) {
@@ -547,8 +529,6 @@ func TestNilWorldIsSafe(t *testing.T) {
 		t.Fatal("no world must not report liquid layer support")
 	}
 }
-
-// --- swim hitbox collision interaction --------------------------------------
 
 // The collapsed swim hitbox fits under a ceiling that a standing hitbox would
 // hit, so the swim pose genuinely changes collision results.
@@ -583,8 +563,6 @@ func TestSwimHitboxChangesCeilingCollision(t *testing.T) {
 		t.Fatal("a swimming hitbox must fit under the ceiling")
 	}
 }
-
-// --- determinism -------------------------------------------------------------
 
 // Repeated identical runs must agree exactly. A single pinned golden detects
 // map-iteration nondeterminism only probabilistically, so this repeats the same
@@ -626,17 +604,7 @@ func TestLiquidSimulationIsRepeatable(t *testing.T) {
 	}
 }
 
-// --- pinned golden regression ----------------------------------------------
-
-// A rich mixed-liquid scenario pinned to exact expected values, exercising
-// swim travel, depth strider, the dolphin multiplier, flow from a depth
-// gradient and a falling source, and a jump input, over 20 ticks.
-//
-// These constants are a change detector, captured from the implementation
-// after it was audited line-by-line against the upstream source. They are not
-// independently derived, so a failure here means "physics changed" and should
-// be re-derived deliberately, not silently updated. The player stays submerged
-// for the whole run so the values do not sit on a surface transition.
+// Pinned change detector for the mixed-liquid path; update deliberately.
 func TestLiquidGoldenScenario(t *testing.T) {
 	// Deep enough that the player stays submerged for the whole run, so the
 	// golden measures liquid physics rather than a surface transition.

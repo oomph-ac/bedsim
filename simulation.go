@@ -201,10 +201,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	state.WantDown = input.WantDown
 	state.WantDownSlow = input.WantDownSlow
 
-	// Upstream PR #145 removed both clamps and clamps the move vector to
-	// [-1, 1]. bedsim keeps them by default because they are public API that
-	// applies to all movement; UpstreamImpulseClamping opts into upstream's
-	// behavior without a breaking change.
+	// Preserve bedsim's public impulse clamps unless upstream behavior is opted in.
 	maxImpulse := 1.0
 	if !s.Options.UpstreamImpulseClamping {
 		if input.UsingConsumable {
@@ -219,9 +216,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 		ClampFloat(input.MoveVector[1], -maxImpulse, maxImpulse),
 	}
 
-	// Jumping is edge-triggered: only the start-jump flag arms a ground jump.
-	// EffectiveJumping covers the held-key and automatic ascent cases used by
-	// liquid travel and ladders.
+	// Ground jumps are edge-triggered; liquid and ladder ascent may be held.
 	state.Jumping = input.StartJumping
 	state.PressingJump = input.Jumping
 	state.EffectiveJumping = input.Jumping || input.AutoJumpingInWater || input.AscendBlock
@@ -299,16 +294,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		state.SetVel(mgl64.Vec3{})
 	}
 
-	// Upstream keys water travel on the client's swimming flag alone, which a
-	// standalone authoritative simulator cannot trust: a latched flag would
-	// grant zero-gravity travel — and a shrunken hitbox — in open air forever.
-	// Water travel and the swim pose therefore survive on the flag only while
-	// recent server-observed water contact remains.
-	//
-	// The bound is applied up front, before anything reads the budget, so a
-	// stale or caller-supplied value can never widen the window. The budget is
-	// then decremented at the end of the tick, keeping the value constant for
-	// the whole tick so every hitbox lookup agrees with the gate below.
+	// Bound retained water evidence before collision and travel inspect it.
 	grace := s.swimWaterGraceTicks()
 	if state.SwimWaterGraceTicks > grace {
 		state.SwimWaterGraceTicks = grace
@@ -326,8 +312,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		}
 	}()
 
-	// Retained proof must not override a liquid the player is demonstrably
-	// standing in: lava contact wins over a stale water grace.
+	// Observed lava takes precedence over retained water evidence.
 	waterTravel := inWater ||
 		(state.Swimming && state.SwimWaterGraceTicks > 0 && len(lavaBlocks) == 0)
 

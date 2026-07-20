@@ -10,55 +10,12 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
-// Liquid movement physics, ported from oomph-ac/oomph PR #145 at commit
-// 0bcbb8be25593f836a66ee6a4e302d4fb81fd2bb (anticheat/player/simulation/movement.go).
-//
-// The port is behaviorally 1:1 with that source apart from the following
-// deliberate adaptations, which exist because bedsim is a standalone library
-// rather than a component of a proxy:
-//
-//   - Arithmetic is float64/mgl64 throughout, matching the rest of bedsim.
-//     Upstream is float32/mgl32, so results can differ in the low bits.
-//   - Liquids are matched by LiquidType() rather than by concrete Go type, so
-//     that custom world.Liquid implementations behave like water and lava.
-//   - The second block layer is read through the optional LiquidProvider
-//     instead of a hardcoded BlockLayer(pos, 1) call. Because that interface
-//     only exposes liquids, liquidMovementBlock treats a layer-1 entry as
-//     occupied only when it is a liquid; upstream treats any non-air layer-1
-//     block as occupied. In Bedrock that layer only ever holds liquids.
-//   - Zero-valued speed and multiplier fields on MovementState mean "unset"
-//     and fall back to the Default* constants, so callers that do not track
-//     those attributes still get correct physics.
-//   - A nil EffectsProvider is tolerated and falls back to gravity, and a nil
-//     WorldProvider reads as empty space, so an incompletely wired simulator
-//     degrades to no-liquid rather than panicking.
-//   - The Depth Strider level is clamped to [0, 3]. Upstream clamps only the
-//     upper bound because the value comes from an enchantment; bedsim takes it
-//     from a caller-supplied provider that could report a negative level.
-//
-// Upstream also removed the sneak and consumable impulse clamps outright in
-// this PR, clamping the move vector to [-1, 1] instead. bedsim deliberately
-// does not follow that by default: MaxSneakImpulse and MaxConsumingImpulse are
-// public API and apply to all movement, so removing them is a breaking change
-// well outside liquid scope. Set SimulationOptions.UpstreamImpulseClamping to
-// opt into upstream's behavior.
-//
-// Security hardening divergence: upstream gates water travel on the client's
-// swimming flag alone (`len(waterBlocks) != 0 || Swimming`), and sizes the
-// hitbox off the same flag. Oomph can afford that because the surrounding
-// anticheat validates the flag, but a standalone authoritative simulator cannot
-// — a latched flag would yield indefinite zero-gravity hovering in open air and
-// a hitbox shrunk from 1.8 to 0.6, both with no correction raised. bedsim gates
-// water travel and the swim pose (MovementState.SwimPose) on recent
-// server-observed water contact, bounded by
-// SimulationOptions.SwimWaterGraceTicks, clamped before use, reset on any frame
-// that was not simulated, and overridden by lava the player is actually in.
-// Real water contact is unaffected; see the README for the residual duty-cycle
-// limit and the deliberate one-tick pose lag.
+// Liquid movement follows oomph PR #145 at 0bcbb8b. bedsim retains float64,
+// provider-based liquid lookup and its legacy impulse clamps. It also requires
+// recent server-observed water contact before trusting the client swim flag.
+// See README.md for complete compatibility and security notes.
 
-// liquidKind identifies the liquid family a travel step simulates. Liquids are
-// matched by LiquidType() so that custom world.Liquid implementations behave
-// like the vanilla blocks they stand in for.
+// liquidKind identifies the liquid family being simulated.
 type liquidKind uint8
 
 const (
@@ -66,7 +23,6 @@ const (
 	liquidLava
 )
 
-// typeName is the world.Liquid.LiquidType() value identifying this kind.
 func (k liquidKind) typeName() string {
 	if k == liquidLava {
 		return "lava"
@@ -74,7 +30,6 @@ func (k liquidKind) typeName() string {
 	return "water"
 }
 
-// matches reports whether the liquid belongs to this kind.
 func (k liquidKind) matches(liquid world.Liquid) bool {
 	return liquid.LiquidType() == k.typeName()
 }
