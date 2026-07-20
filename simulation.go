@@ -193,7 +193,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	if input.UsingConsumable {
 		maxImpulse *= MaxConsumingImpulse
 	}
-	if state.Sneaking && !state.WantDown && !state.WantDownSlow {
+	if state.Sneaking {
 		maxImpulse *= MaxSneakImpulse
 	}
 	moveVector := mgl64.Vec2{
@@ -201,7 +201,10 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 		ClampFloat(input.MoveVector[1], -maxImpulse, maxImpulse),
 	}
 
-	state.Jumping = input.StartJumping || input.Jumping
+	// Jumping is edge-triggered: only the start-jump flag arms a ground jump.
+	// EffectiveJumping covers the held-key and automatic ascent cases used by
+	// liquid travel and ladders.
+	state.Jumping = input.StartJumping
 	state.PressingJump = input.Jumping
 	state.EffectiveJumping = input.Jumping || input.AutoJumpingInWater || input.AscendBlock
 	state.JumpHeight = DefaultJumpHeight
@@ -256,6 +259,13 @@ func (s *Simulator) tickState(state *MovementState) {
 	if state.GlideBoostTicks > 0 {
 		state.GlideBoostTicks--
 	}
+	if state.DolphinBoostTicks > 0 {
+		state.DolphinBoostTicks--
+		if state.DolphinBoostTicks <= 0 {
+			state.DolphinBoostTicks = 0
+			state.SwimSpeedMultiplier = DefaultSwimSpeedMultiplier
+		}
+	}
 	state.TicksSinceKnockback++
 	if state.TicksSinceTeleport < math.MaxUint64 {
 		state.TicksSinceTeleport++
@@ -277,8 +287,10 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	if !state.Flying && (waterTravel || len(lavaBlocks) != 0) {
 		s.debugfIf(attemptKnockback(state), "knockback applied in liquid: %v", state.Vel)
 		if waterTravel {
-			state.Gliding = false
-			state.GlideBoostTicks = 0
+			if state.Gliding {
+				state.Gliding = false
+				state.GlideBoostTicks = 0
+			}
 			s.applyLiquidFlow(state, waterBlocks, "water")
 			s.simulateLiquidTravel(state, true, len(waterBlocks) != 0)
 		} else {
@@ -339,7 +351,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 			newVel[1] = 0
 		}
 		state.SetVel(newVel)
-		s.debugf("added climb velocity: %v (collided=%v pressingJump=%v)", newVel, state.CollideX || state.CollideZ, state.PressingJump)
+		s.debugf("added climb velocity: %v (collided=%v effectiveJumping=%v)", newVel, state.CollideX || state.CollideZ, state.EffectiveJumping)
 	}
 
 	inCobweb := s.isInsideCobweb(state)

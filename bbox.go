@@ -10,6 +10,10 @@ func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox {
 	scale := s.Size[2]
 	width := (s.Size[0] * 0.5) * scale
 	height := s.Size[1] * scale
+	if s.Swimming {
+		// The swim pose collapses the hitbox to a width-sized cube.
+		height = s.Size[0] * scale
+	}
 	yOffset := 0.0
 	if useSlideOffset {
 		yOffset = s.SlideOffset.Y()
@@ -30,6 +34,10 @@ func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox {
 	scale := s.Size[2]
 	width := (s.Size[0] * 0.5) * scale
 	height := s.Size[1] * scale
+	if s.Swimming {
+		// The swim pose collapses the hitbox to a width-sized cube.
+		height = s.Size[0] * scale
+	}
 	yOffset := 0.0
 	if useSlideOffset {
 		yOffset = s.SlideOffset.Y()

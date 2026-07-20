@@ -10,6 +10,33 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
+// Liquid movement physics, ported from oomph-ac/oomph PR #145 at commit
+// 0bcbb8be25593f836a66ee6a4e302d4fb81fd2bb (anticheat/player/simulation/movement.go).
+//
+// The port is behaviorally 1:1 with that source apart from the following
+// deliberate adaptations, which exist because bedsim is a standalone library
+// rather than a component of a proxy:
+//
+//   - Arithmetic is float64/mgl64 throughout, matching the rest of bedsim.
+//     Upstream is float32/mgl32, so results can differ in the low bits.
+//   - Liquids are matched by LiquidType() rather than by concrete Go type, so
+//     that custom world.Liquid implementations behave like water and lava.
+//   - The second block layer is read through the optional LiquidProvider
+//     instead of a hardcoded BlockLayer(pos, 1) call. Because that interface
+//     only exposes liquids, liquidMovementBlock treats a layer-1 entry as
+//     occupied only when it is a liquid; upstream treats any non-air layer-1
+//     block as occupied. In Bedrock that layer only ever holds liquids.
+//   - Zero-valued speed and multiplier fields on MovementState mean "unset"
+//     and fall back to the Default* constants, so callers that do not track
+//     those attributes still get correct physics.
+//   - A nil EffectsProvider is tolerated and falls back to gravity.
+//
+// Upstream also removed the sneak and consumable impulse clamps outright in
+// this PR, clamping the move vector to [-1, 1] instead. bedsim deliberately
+// does not follow that: MaxSneakImpulse and MaxConsumingImpulse are public API
+// and apply to all movement, so removing them is a breaking change well
+// outside liquid scope. Impulse handling is therefore unchanged from v0.1.3.
+
 var liquidFaces = [...]struct {
 	delta cube.Pos
 	vec   mgl64.Vec3
@@ -209,6 +236,15 @@ func (s *Simulator) liquidMovementBlock(pos cube.Pos) world.Block {
 	return s.blockAtPos(pos)
 }
 
+// blockCollisions returns the collision boxes at pos, treating an absent world
+// as empty space so liquid flow never dereferences a nil provider.
+func (s *Simulator) blockCollisions(pos cube.Pos) []cube.BBox {
+	if s.World == nil {
+		return nil
+	}
+	return s.World.BlockCollisions(pos)
+}
+
 func (s *Simulator) liquidAt(pos cube.Pos) (world.Liquid, bool) {
 	if provider, ok := s.World.(LiquidProvider); ok {
 		if liquid, found := provider.Liquid(pos); found {
@@ -274,7 +310,7 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl64.Vec3 {
 				continue
 			}
 		}
-		if len(s.World.BlockCollisions(neighbourPos)) != 0 {
+		if len(s.blockCollisions(neighbourPos)) != 0 {
 			continue
 		}
 		below := neighbourPos.Side(cube.FaceDown)
@@ -286,7 +322,7 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl64.Vec3 {
 		for _, face := range liquidFaces {
 			neighbourPos := pos.Add(face.delta)
 			aboveNeighbour := neighbourPos.Side(cube.FaceUp)
-			if len(s.World.BlockCollisions(neighbourPos)) != 0 || len(s.World.BlockCollisions(aboveNeighbour)) != 0 {
+			if len(s.blockCollisions(neighbourPos)) != 0 || len(s.blockCollisions(aboveNeighbour)) != 0 {
 				if length := flow.Len(); length > 1e-4 {
 					flow = flow.Mul(1 / length)
 				}

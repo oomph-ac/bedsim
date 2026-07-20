@@ -5,6 +5,7 @@ Server-side Minecraft Bedrock movement simulation library for Go.
 `bedsim` replicates the Bedrock client's movement physics (collisions, stepping, edge-avoidance, liquids, gliding, teleportation) on the server, producing authoritative position and velocity values that can be compared against client-reported state.
 
 Original code was written by [ethaniccc](https://github.com/ethaniccc) in [oomph](https://github.com/oomph-ac/oomph) and has been ported over into this library.
+The liquid movement physics were ported from [oomph#145](https://github.com/oomph-ac/oomph/pull/145) by [NopeNotDark](https://github.com/NopeNotDark).
 
 ## Installation
 
@@ -74,6 +75,46 @@ Implement `LiquidProvider` on the world adapter to expose liquids from both
 block layers, including waterlogged blocks. Without it, bedsim falls back to
 liquids returned by `WorldProvider.Block`. Implement `DepthStriderProvider` on
 the inventory adapter when Depth Strider should affect water movement.
+
+### Liquid movement
+
+When the player's hitbox touches water or lava (and the player is not flying),
+bedsim runs liquid travel instead of the normal ground/air step. Water takes
+priority when both are touched, and a player whose client reports the swimming
+pose keeps water travel even after leaving the water blocks.
+
+Liquid travel covers: per-liquid acceleration and drag, liquid gravity,
+levitation, Depth Strider, the dolphin-boost swim multiplier, pitch-steered
+swim travel with a surface clamp, flow from depth gradients including falling
+liquid and solid faces, and an exit probe that boosts the player over a ledge.
+
+Callers feed these `InputState` fields from the client's input flags:
+
+| Field | Client input flag |
+| --- | --- |
+| `StartSwimming` / `StopSwimming` | `StartSwimming` / `StopSwimming` |
+| `WantDown` / `WantDownSlow` | `WantDown` / `WantDownSlow` |
+| `AutoJumpingInWater` | `AutoJumpingInWater` |
+| `AscendBlock` | `AscendBlock` |
+
+`Jumping` remains edge-triggered from `StartJumping` and arms a ground jump.
+`EffectiveJumping` is derived from the held jump key, `AutoJumpingInWater`, and
+`AscendBlock`, and drives liquid ascent and ladder climbing.
+
+These `MovementState` fields tune liquid physics; each is optional and falls
+back to a documented default when left at its zero value:
+
+- `UnderwaterMovementSpeed` (default `0.02`)
+- `LavaMovementSpeed` (default `0.02`)
+- `SwimSpeedMultiplier` (default `1`; a dolphin boost sets it to `2`)
+
+Set `DolphinBoostTicks` when the client receives a dolphin boost. `Simulate`
+counts it down and restores `SwimSpeedMultiplier` to its default on expiry;
+callers using `SimulateState` must manage that lifecycle themselves.
+
+While `Swimming` is set, the bounding box collapses to a width-sized cube,
+matching the client's swim pose. This affects collisions and liquid detection,
+not just liquid travel.
 
 ### Simulation modes
 

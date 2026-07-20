@@ -41,8 +41,13 @@ type MovementState struct {
 	AirSpeed                float64
 	UnderwaterMovementSpeed float64
 	LavaMovementSpeed       float64
-	SwimSpeedMultiplier     float64
-	ServerUpdatedSpeed      bool
+	// SwimSpeedMultiplier scales water acceleration while swimming. A dolphin
+	// boost sets this to 2. Zero is treated as the default of 1.
+	SwimSpeedMultiplier float64
+	// DolphinBoostTicks counts down the remaining duration of a dolphin boost.
+	// When it reaches zero, SwimSpeedMultiplier is reset to its default.
+	DolphinBoostTicks  int64
+	ServerUpdatedSpeed bool
 
 	Knockback           mgl64.Vec3
 	TicksSinceKnockback uint64
