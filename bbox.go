@@ -5,11 +5,20 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 )
 
+// SwimPose reports whether recent server-observed water contact permits the
+// client-requested collapsed hitbox.
+func (s *MovementState) SwimPose() bool {
+	return s.Swimming && s.SwimWaterGraceTicks > 0
+}
+
 // BoundingBox returns the entity bounding box translated to the current position.
 func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox {
 	scale := s.Size[2]
 	width := (s.Size[0] * 0.5) * scale
 	height := s.Size[1] * scale
+	if s.SwimPose() {
+		height = s.Size[0] * scale
+	}
 	yOffset := 0.0
 	if useSlideOffset {
 		yOffset = s.SlideOffset.Y()
@@ -30,6 +39,9 @@ func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox {
 	scale := s.Size[2]
 	width := (s.Size[0] * 0.5) * scale
 	height := s.Size[1] * scale
+	if s.SwimPose() {
+		height = s.Size[0] * scale
+	}
 	yOffset := 0.0
 	if useSlideOffset {
 		yOffset = s.SlideOffset.Y()

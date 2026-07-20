@@ -13,6 +13,11 @@ type WorldProvider interface {
 	IsChunkLoaded(chunkX, chunkZ int32) bool
 }
 
+// LiquidProvider returns liquids from either block layer at a position.
+type LiquidProvider interface {
+	Liquid(pos cube.Pos) (world.Liquid, bool)
+}
+
 // BlockSemanticsProvider resolves movement-relevant block behavior. Implement
 // this when names, friction, or climbability come from a per-world registry or
 // custom block data instead of Dragonfly's default block types.
@@ -33,4 +38,9 @@ type EffectsProvider interface {
 // InventoryProvider exposes equipment checks needed by movement (elytra, etc.).
 type InventoryProvider interface {
 	HasElytra() bool
+}
+
+// DepthStriderProvider exposes the equipped Depth Strider level.
+type DepthStriderProvider interface {
+	DepthStriderLevel() int
 }

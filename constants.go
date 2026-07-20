@@ -13,10 +13,16 @@ const (
 	SlimeBounceMultiplier       = -1.0
 	BedBounceMultiplier         = -0.66
 	// This can be validated in Mob::ascendLadder().
-	ClimbSpeed           = 0.2
-	MaxConsumingImpulse  = 0.1225
-	MaxSneakImpulse      = 0.3
-	MaxNormalizedImpulse = 0.70710678118 // 1/sqrt(2)
+	ClimbSpeed          = 0.2
+	MaxConsumingImpulse = 0.1225
+	MaxSneakImpulse     = 0.3
+	// Deprecated: MaxNormalizedImpulse is unused by the simulator. The
+	// diagonal-impulse normalization it was intended for is disabled upstream
+	// as well. It is retained only for API compatibility.
+	MaxNormalizedImpulse           = 0.70710678118 // 1/sqrt(2)
+	DefaultUnderwaterMovementSpeed = 0.02
+	DefaultLavaMovementSpeed       = 0.02
+	DefaultSwimSpeedMultiplier     = 1.0
 
 	DefaultPlayerHeightOffset  = 1.62
 	SneakingPlayerHeightOffset = 1.27
@@ -28,4 +34,7 @@ const (
 
 	JumpDelayTicks  = 10
 	GlideBoostTicks = 20
+
+	// DefaultSwimWaterGraceTicks bounds retained server-observed water contact.
+	DefaultSwimWaterGraceTicks = 10
 )

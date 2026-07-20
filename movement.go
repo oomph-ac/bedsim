@@ -36,10 +36,16 @@ type MovementState struct {
 	JumpHeight   float64
 	FallDistance float64
 
-	MovementSpeed        float64
-	DefaultMovementSpeed float64
-	AirSpeed             float64
-	ServerUpdatedSpeed   bool
+	MovementSpeed           float64
+	DefaultMovementSpeed    float64
+	AirSpeed                float64
+	UnderwaterMovementSpeed float64
+	LavaMovementSpeed       float64
+	// SwimSpeedMultiplier scales swimming acceleration; zero means the default.
+	SwimSpeedMultiplier float64
+	// DolphinBoostTicks is the remaining dolphin-boost duration.
+	DolphinBoostTicks  int64
+	ServerUpdatedSpeed bool
 
 	Knockback           mgl64.Vec3
 	TicksSinceKnockback uint64
@@ -58,7 +64,15 @@ type MovementState struct {
 	Sneaking, PressingSneak bool
 
 	Jumping, PressingJump bool
+	EffectiveJumping      bool
 	JumpDelay             uint64
+
+	Swimming   bool
+	SwimAmount float64
+	// SwimWaterGraceTicks retains recent server-observed water contact.
+	SwimWaterGraceTicks    int64
+	AutoJumpingInWater     bool
+	WantDown, WantDownSlow bool
 
 	CollideX, CollideY, CollideZ bool
 	OnGround                     bool
