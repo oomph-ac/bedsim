@@ -70,7 +70,10 @@ func TestItemUseAndInventoryActionInputRules(t *testing.T) {
 
 func TestCrawlingUpdatesPoseAndSlowdown(t *testing.T) {
 	state := newBaseState()
-	(&Simulator{}).applyInput(state, InputState{StartCrawling: true, MoveVector: mgl64.Vec2{0, 1}})
+	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox{
+		cube.Box(-1, 0.7, -1, 1, 2, 1),
+	}}}
+	sim.applyInput(state, InputState{StartCrawling: true, MoveVector: mgl64.Vec2{0, 1}})
 
 	if !state.Crawling || state.Size.Y() != 0.6 {
 		t.Fatalf("expected crawling pose, got crawling=%v size=%v", state.Crawling, state.Size)

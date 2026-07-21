@@ -127,7 +127,7 @@ func (s *MovementState) ensurePoseHeights() {
 		}
 	}
 	if s.SneakingHeight <= 0 {
-		s.SneakingHeight = 1.5
+		s.SneakingHeight = 1.49
 	}
 	if s.CrawlingHeight <= 0 {
 		s.CrawlingHeight = 0.6

@@ -101,7 +101,7 @@ descend intent plus leather-boots state.
 `MovementEquipmentProvider` supplies Depth Strider, Soul Speed, Swift Sneak,
 Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
 extension remains a fallback when the equipment provider reports no Depth
-Strider level. `EffectsProvider` also controls Weaving-aware cobweb movement.
+Strider level. `EffectsProvider` also controls Weaving-aware web movement.
 
 Pose changes update `MovementState.Size`. Set `StandingHeight`,
 `SneakingHeight`, or `CrawlingHeight` when using non-vanilla dimensions; zero
@@ -109,7 +109,7 @@ values preserve the current standing height and use vanilla crouch/crawl
 heights.
 
 Movement-sensitive block behavior includes honey blocks, sweet berry bushes,
-powder snow, scaffolding, cobwebs (including Weaving), soul sand with Soul
+powder snow, scaffolding, webs (including Weaving), soul sand with Soul
 Speed, slime blocks, beds, climbables, fences/walls, and per-block friction.
 Dynamic collision behavior still depends on the world adapter returning the
 correct shapes for the current block state.

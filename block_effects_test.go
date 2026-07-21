@@ -30,14 +30,11 @@ func TestInsideBlockMovementMultipliers(t *testing.T) {
 	tests := []struct {
 		name      string
 		blockName string
-		weaving   bool
 		want      mgl64.Vec3
 	}{
 		{name: "honey", blockName: "minecraft:honey_block", want: mgl64.Vec3{0.4, -0.12, 0.4}},
 		{name: "sweet berry bush", blockName: "minecraft:sweet_berry_bush", want: mgl64.Vec3{0.8, -0.75, 0.8}},
 		{name: "powder snow", blockName: "minecraft:powder_snow", want: mgl64.Vec3{0.9, -1.5, 0.9}},
-		{name: "cobweb", blockName: "minecraft:web", want: mgl64.Vec3{0.25, -0.05, 0.25}},
-		{name: "cobweb with weaving", blockName: "minecraft:web", weaving: true, want: mgl64.Vec3{0.5, -0.25, 0.5}},
 	}
 
 	for _, tt := range tests {
@@ -45,7 +42,7 @@ func TestInsideBlockMovementMultipliers(t *testing.T) {
 			state := newBaseState()
 			state.Vel = mgl64.Vec3{1, -1, 1}
 
-			applyInsideBlockMovement(state, tt.blockName, tt.weaving)
+			applyInsideBlockMovement(state, tt.blockName)
 
 			if state.Vel != tt.want {
 				t.Fatalf("expected velocity %v, got %v", tt.want, state.Vel)
@@ -148,7 +145,7 @@ func TestSimulationAppliesScaffoldingTraversal(t *testing.T) {
 	}
 }
 
-func TestSimulationDetectsNonSolidCobwebAndAppliesWeaving(t *testing.T) {
+func TestSimulationDetectsNonSolidWebAndAppliesWeaving(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{0, 0, 0}: namedBlock{name: "minecraft:web"},
 	}}
@@ -165,6 +162,6 @@ func TestSimulationDetectsNonSolidCobwebAndAppliesWeaving(t *testing.T) {
 	result := sim.SimulateState(state)
 
 	if want := 0.05; math.Abs(result.Movement.X()-want) > 1e-12 {
-		t.Fatalf("expected Weaving cobweb movement %v, got %v", want, result.Movement.X())
+		t.Fatalf("expected Weaving web movement %v, got %v", want, result.Movement.X())
 	}
 }

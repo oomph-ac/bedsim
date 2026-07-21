@@ -202,8 +202,11 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 		}
 	}
 	if input.StartCrawling {
-		state.Crawling = true
-		state.Size[1] = state.CrawlingHeight
+		if !s.canFitHeight(state, state.StandingHeight) {
+			state.Crawling = true
+			state.Sneaking = false
+			state.Size[1] = state.CrawlingHeight
+		}
 	} else if input.StopCrawling {
 		targetHeight := state.StandingHeight
 		if state.Sneaking {
@@ -453,9 +456,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		s.debugf("added climb velocity: %v (collided=%v effectiveJumping=%v)", newVel, state.CollideX || state.CollideZ, state.EffectiveJumping)
 	}
 
-	inCobweb := s.isInsideCobweb(state)
+	inWeb := s.isInsideWeb(state)
 
-	if inCobweb {
+	if inWeb {
 		newVel := state.Vel
 		xz, y := 0.25, 0.05
 		if s.Effects != nil {
@@ -467,7 +470,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		newVel[1] *= y
 		newVel[2] *= xz
 		state.SetVel(newVel)
-		s.debugf("cobweb force applied (vel=%v)", newVel)
+		s.debugf("web force applied (vel=%v)", newVel)
 	}
 
 	s.avoidEdge(state)
@@ -499,8 +502,8 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	state.SetMov(state.Vel)
 	s.setPostCollisionMotion(state, oldVel, oldOnGround, blockUnder)
 
-	if inCobweb {
-		s.debugf("post-move cobweb force applied (0 vel)")
+	if inWeb {
+		s.debugf("post-move web force applied (0 vel)")
 		state.SetVel(mgl64.Vec3{})
 	}
 
@@ -1103,30 +1106,29 @@ func (s *Simulator) isAboveGround(state *MovementState) bool {
 	return len(s.nearbyBBoxes(state, bb.Translate(mgl64.Vec3{0, -distance}))) > 0
 }
 
-func (s *Simulator) isInsideCobweb(state *MovementState) bool {
+func (s *Simulator) isInsideWeb(state *MovementState) bool {
 	if s.World == nil {
 		return false
 	}
 
 	bb := state.BoundingBox(s.Options.UseSlideOffset)
-	insideCobweb := false
+	insideWeb := false
 	for pos, b := range nearbyBlocks(bb.Grow(1), s.World) {
 		if s.blockAir(b) {
 			continue
 		}
-		name := s.blockName(b)
-		if name != "minecraft:web" && name != "minecraft:cobweb" {
+		if s.blockName(b) != "minecraft:web" {
 			continue
 		}
 
 		if bb.IntersectsWith(cube.Box(0, 0, 0, 1, 1, 1).Translate(pos.Vec3())) {
-			insideCobweb = true
+			insideWeb = true
 		}
-		if insideCobweb {
+		if insideWeb {
 			break
 		}
 	}
-	return insideCobweb
+	return insideWeb
 }
 
 func nearbyBlocks(aabb cube.BBox, w WorldProvider) iter.Seq2[cube.Pos, world.Block] {
@@ -1217,11 +1219,6 @@ func (s *Simulator) nearbyBBoxes(state *MovementState, aabb cube.BBox) []cube.BB
 		})
 	}
 	return s.World.GetNearbyBBoxes(aabb)
-}
-
-func (s *Simulator) canStand(state *MovementState) bool {
-	state.ensurePoseHeights()
-	return s.canFitHeight(state, state.StandingHeight)
 }
 
 func (s *Simulator) canFitHeight(state *MovementState, height float64) bool {

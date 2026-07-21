@@ -51,11 +51,11 @@ func TestCannotUnsneakUnderLowCeiling(t *testing.T) {
 	}}}
 	state := newBaseState()
 	state.Sneaking = true
-	state.Size[1] = 1.5
+	state.Size[1] = 1.49
 
 	sim.applyInput(state, InputState{StopSneaking: true})
 
-	if !state.Sneaking || state.Size.Y() != 1.5 {
+	if !state.Sneaking || state.Size.Y() != 1.49 {
 		t.Fatalf("expected forced sneak pose under ceiling, got sneaking=%v size=%v", state.Sneaking, state.Size)
 	}
 }

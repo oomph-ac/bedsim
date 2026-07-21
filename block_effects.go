@@ -6,7 +6,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 )
 
-func applyInsideBlockMovement(state *MovementState, blockName string, weaving bool) {
+func applyInsideBlockMovement(state *MovementState, blockName string) {
 	velocity := state.Vel
 	switch blockName {
 	case "minecraft:honey_block":
@@ -21,14 +21,6 @@ func applyInsideBlockMovement(state *MovementState, blockName string, weaving bo
 		velocity[0] *= 0.9
 		velocity[1] *= 1.5
 		velocity[2] *= 0.9
-	case "minecraft:web", "minecraft:cobweb":
-		xz, y := 0.25, 0.05
-		if weaving {
-			xz, y = 0.5, 0.25
-		}
-		velocity[0] *= xz
-		velocity[1] *= y
-		velocity[2] *= xz
 	}
 	state.SetVel(velocity)
 }
@@ -70,10 +62,10 @@ func (s *Simulator) applyInsideBlockEffects(state *MovementState) {
 					continue
 				}
 				name := s.blockName(b)
-				if name == "minecraft:web" || name == "minecraft:cobweb" {
+				if name == "minecraft:web" {
 					continue
 				}
-				applyInsideBlockMovement(state, name, false)
+				applyInsideBlockMovement(state, name)
 			}
 		}
 	}
