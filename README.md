@@ -15,33 +15,7 @@ go get github.com/oomph-ac/bedsim
 
 ## Setup
 
-Before calling any bedsim function (`BlockName`, `BlockClimbable`, `BlockFriction`, or running a simulation tick), you **must** finalize the Dragonfly block registry used by your world. Without this, block runtime/hash lookups may be incomplete and `BlockName` can cache incorrect mappings permanently.
-
-```go
-import "github.com/df-mc/dragonfly/server/world"
-
-var blocks = world.NewBlockRegistry()
-
-func init() {
-    // Register custom blocks/states before finalizing.
-    // blocks.RegisterBlock(...)
-    // blocks.RegisterBlockState(...)
-
-    blocks.Finalize()
-}
-```
-
-```go
-conf := server.DefaultConfig()
-conf.Blocks = blocks
-
-sessionConf := session.Config{BlockRegistry: blocks}
-
-ch := chunk.New(blocks, world.Overworld.Range())
-decoded, err := chunk.NetworkDecode(blocks, payload, subChunkCount, world.Overworld.Range())
-```
-
-If you use only vanilla blocks, `world.DefaultBlockRegistry` is still valid after it has been finalized by Dragonfly configuration setup or by an explicit `world.DefaultBlockRegistry.Finalize()` call. If you register custom blocks, do so **before** calling `Finalize`.
+BedSim does not manage Dragonfly's block registry lifecycle. `BlockName` obtains the canonical name from the supplied `world.Block` and caches it by the block's raw base and state hashes.
 
 ## Usage
 
