@@ -1,21 +1,22 @@
 package bedsim
 
 import (
-	"github.com/df-mc/dragonfly/server/block/cube"
+	dfcube "github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/ethaniccc/float32-cube/cube"
 )
 
 // WorldProvider bridges the world/chunk system for collision and block lookups.
 type WorldProvider interface {
-	Block(pos cube.Pos) world.Block
-	BlockCollisions(pos cube.Pos) []cube.BBox
+	Block(pos dfcube.Pos) world.Block
+	BlockCollisions(pos dfcube.Pos) []cube.BBox
 	GetNearbyBBoxes(aabb cube.BBox) []cube.BBox
 	IsChunkLoaded(chunkX, chunkZ int32) bool
 }
 
 // LiquidProvider returns liquids from either block layer at a position.
 type LiquidProvider interface {
-	Liquid(pos cube.Pos) (world.Liquid, bool)
+	Liquid(pos dfcube.Pos) (world.Liquid, bool)
 }
 
 // BlockSemanticsProvider resolves movement-relevant block behavior. Implement
@@ -23,7 +24,7 @@ type LiquidProvider interface {
 // custom block data instead of Dragonfly's default block types.
 type BlockSemanticsProvider interface {
 	BlockName(world.Block) string
-	BlockFriction(world.Block) float64
+	BlockFriction(world.Block) float32
 	BlockClimbable(world.Block) bool
 }
 

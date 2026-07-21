@@ -1,7 +1,7 @@
 package bedsim
 
 import (
-	"math"
+	"github.com/chewxy/math32"
 
 	"github.com/df-mc/dragonfly/server/world"
 )
@@ -30,14 +30,14 @@ const (
 type SimulationOptions struct {
 	Mode SimulationMode
 
-	PositionCorrectionThreshold float64
-	VelocityCorrectionThreshold float64
+	PositionCorrectionThreshold float32
+	VelocityCorrectionThreshold float32
 
 	UseSlideOffset bool
 	SprintTiming   SprintTiming
 
 	LimitAllVelocity          bool
-	LimitAllVelocityThreshold float64
+	LimitAllVelocityThreshold float32
 
 	// IgnoreClientStepTiebreaker, when true, skips the client-alignment
 	// tie-breaker in the step-up collision logic. Pathfinders that drive their
@@ -77,7 +77,7 @@ func (DefaultBlockSemantics) BlockName(b world.Block) string {
 	return BlockName(b)
 }
 
-func (DefaultBlockSemantics) BlockFriction(b world.Block) float64 {
+func (DefaultBlockSemantics) BlockFriction(b world.Block) float32 {
 	return BlockFriction(b)
 }
 
@@ -105,9 +105,9 @@ func (s *Simulator) blockName(b world.Block) string {
 	return BlockName(b)
 }
 
-func (s *Simulator) blockFriction(b world.Block) float64 {
+func (s *Simulator) blockFriction(b world.Block) float32 {
 	if s.BlockSemantics != nil {
-		if friction := s.BlockSemantics.BlockFriction(b); friction > 0 && !math.IsInf(friction, 1) {
+		if friction := s.BlockSemantics.BlockFriction(b); friction > 0 && !math32.IsInf(friction, 1) {
 			return friction
 		}
 	}

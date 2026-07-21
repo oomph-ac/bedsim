@@ -3,7 +3,9 @@ module github.com/oomph-ac/bedsim
 go 1.25.0
 
 require (
+	github.com/chewxy/math32 v1.11.1
 	github.com/df-mc/dragonfly v0.10.11-0.20260205145355-8d1311b36535
+	github.com/ethaniccc/float32-cube v0.0.0-20250511224129-7af1f8c4ee12
 	github.com/go-gl/mathgl v1.2.0
 	github.com/sandertv/gophertunnel v1.53.1-0.20260205132042-c839e607304f
 )
