@@ -3,14 +3,13 @@ package bedsim
 import (
 	dfcube "github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/ethaniccc/float32-cube/cube"
 )
 
 // WorldProvider bridges the world/chunk system for collision and block lookups.
 type WorldProvider interface {
 	Block(pos dfcube.Pos) world.Block
-	BlockCollisions(pos dfcube.Pos) []cube.BBox
-	GetNearbyBBoxes(aabb cube.BBox) []cube.BBox
+	BlockCollisions(pos dfcube.Pos) []dfcube.BBox32
+	GetNearbyBBoxes(aabb dfcube.BBox32) []dfcube.BBox32
 	IsChunkLoaded(chunkX, chunkZ int32) bool
 }
 

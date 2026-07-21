@@ -2,14 +2,13 @@ package bedsim
 
 import (
 	dfcube "github.com/df-mc/dragonfly/server/block/cube"
-	"github.com/ethaniccc/float32-cube/cube"
 	"github.com/go-gl/mathgl/mgl32"
 )
 
 // BBoxFromDragonfly returns a simulation bounding box rounded to float32 coordinates.
-func BBoxFromDragonfly(box dfcube.BBox) cube.BBox {
+func BBoxFromDragonfly(box dfcube.BBox) dfcube.BBox32 {
 	min, max := box.Min(), box.Max()
-	return cube.Box(
+	return dfcube.Box32(
 		float32(min.X()), float32(min.Y()), float32(min.Z()),
 		float32(max.X()), float32(max.Y()), float32(max.Z()),
 	)
@@ -22,7 +21,7 @@ func (s *MovementState) SwimPose() bool {
 }
 
 // BoundingBox returns the entity bounding box translated to the current position.
-func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox {
+func (s *MovementState) BoundingBox(useSlideOffset bool) dfcube.BBox32 {
 	scale := s.Size[2]
 	width := (s.Size[0] * 0.5) * scale
 	height := s.Size[1] * scale
@@ -34,7 +33,7 @@ func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox {
 		yOffset = s.SlideOffset.Y()
 	}
 
-	return cube.Box(
+	return dfcube.Box32(
 		s.Pos[0]-width,
 		s.Pos[1]+yOffset,
 		s.Pos[2]-width,
@@ -45,7 +44,7 @@ func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox {
 }
 
 // ClientBoundingBox returns the bounding box translated to the client's position.
-func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox {
+func (s *MovementState) ClientBoundingBox(useSlideOffset bool) dfcube.BBox32 {
 	scale := s.Size[2]
 	width := (s.Size[0] * 0.5) * scale
 	height := s.Size[1] * scale
@@ -57,7 +56,7 @@ func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox {
 		yOffset = s.SlideOffset.Y()
 	}
 
-	return cube.Box(
+	return dfcube.Box32(
 		s.Client.Pos[0]-width,
 		s.Client.Pos[1]+yOffset,
 		s.Client.Pos[2]-width,

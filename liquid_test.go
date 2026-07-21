@@ -7,7 +7,6 @@ import (
 	"github.com/df-mc/dragonfly/server/block"
 	dfcube "github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/ethaniccc/float32-cube/cube"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -55,7 +54,7 @@ func (w *liquidWorld) Block(pos dfcube.Pos) world.Block {
 	return block.Air{}
 }
 
-func (w *liquidWorld) BlockCollisions(pos dfcube.Pos) []cube.BBox {
+func (w *liquidWorld) BlockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
 	b := w.Block(pos)
 	if _, air := b.(block.Air); air {
 		return nil
@@ -63,12 +62,12 @@ func (w *liquidWorld) BlockCollisions(pos dfcube.Pos) []cube.BBox {
 	if _, liquid := b.(world.Liquid); liquid {
 		return nil
 	}
-	return []cube.BBox{cube.Box(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))}
+	return []dfcube.BBox32{dfcube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))}
 }
 
-func (w *liquidWorld) GetNearbyBBoxes(aabb cube.BBox) []cube.BBox {
+func (w *liquidWorld) GetNearbyBBoxes(aabb dfcube.BBox32) []dfcube.BBox32 {
 	min, max := aabb.Min(), aabb.Max()
-	var out []cube.BBox
+	var out []dfcube.BBox32
 	for x := int(math32.Floor(min.X())); x <= int(math32.Floor(max.X())); x++ {
 		for y := int(math32.Floor(min.Y())); y <= int(math32.Floor(max.Y())); y++ {
 			for z := int(math32.Floor(min.Z())); z <= int(math32.Floor(max.Z())); z++ {
@@ -1382,7 +1381,7 @@ func TestClimbUsesEffectiveJumping(t *testing.T) {
 // Shrinking a box past its own size collapses it to its midpoint instead of
 // inverting it.
 func TestShrinkLiquidBoxCollapsesToMidpoint(t *testing.T) {
-	box := cube.Box(0, 0, 0, 1, 0.2, 1)
+	box := dfcube.Box32(0, 0, 0, 1, 0.2, 1)
 	shrunk := shrinkLiquidBox(box, mgl32.Vec3{0.001, 0.401, 0.001})
 
 	if !approxEqual(shrunk.Min().Y(), 0.1) || !approxEqual(shrunk.Max().Y(), 0.1) {

@@ -15,6 +15,7 @@ var (
 )
 
 func initBlockNameMapping() {
+	world.DefaultBlockRegistry.Finalize()
 	blockNameMapping = make(map[uint64]string, len(world.Blocks()))
 	for _, b := range world.Blocks() {
 		x, y := b.Hash()

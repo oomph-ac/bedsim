@@ -7,7 +7,6 @@ import (
 	"github.com/df-mc/dragonfly/server/block"
 	dfcube "github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/ethaniccc/float32-cube/cube"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -1033,7 +1032,7 @@ func (s *Simulator) isInsideCobweb(state *MovementState) bool {
 	return insideCobweb
 }
 
-func nearbyBlocks(aabb cube.BBox, w WorldProvider) iter.Seq2[dfcube.Pos, world.Block] {
+func nearbyBlocks(aabb dfcube.BBox32, w WorldProvider) iter.Seq2[dfcube.Pos, world.Block] {
 	return func(yield func(dfcube.Pos, world.Block) bool) {
 		if w == nil {
 			return
@@ -1060,7 +1059,7 @@ func checkSupportingBlockPos(state *MovementState, w WorldProvider, useSlideOffs
 		state.SupportingBlockPos = nil
 		return
 	}
-	decBB := state.BoundingBox(useSlideOffset).ExtendTowards(cube.FaceDown, 1e-3)
+	decBB := state.BoundingBox(useSlideOffset).ExtendTowards(dfcube.FaceDown, 1e-3)
 	findSupportingBlock(state, w, decBB)
 	if state.SupportingBlockPos == nil {
 		decBB = decBB.Translate(mgl32.Vec3{-vel[0], 0, -vel[2]})
@@ -1068,7 +1067,7 @@ func checkSupportingBlockPos(state *MovementState, w WorldProvider, useSlideOffs
 	}
 }
 
-func findSupportingBlock(state *MovementState, w WorldProvider, bb cube.BBox) {
+func findSupportingBlock(state *MovementState, w WorldProvider, bb dfcube.BBox32) {
 	if w == nil {
 		return
 	}
@@ -1107,10 +1106,10 @@ func (s *Simulator) blockAtPos(pos dfcube.Pos) world.Block {
 }
 
 type nearbyBBoxProbe interface {
-	HasNearbyBBoxes(aabb cube.BBox) bool
+	HasNearbyBBoxes(aabb dfcube.BBox32) bool
 }
 
-func hasNearbyBBoxes(w WorldProvider, aabb cube.BBox) bool {
+func hasNearbyBBoxes(w WorldProvider, aabb dfcube.BBox32) bool {
 	if w == nil {
 		return false
 	}

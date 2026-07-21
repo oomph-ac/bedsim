@@ -6,7 +6,6 @@ import (
 	"github.com/df-mc/dragonfly/server/block"
 	dfcube "github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/ethaniccc/float32-cube/cube"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -218,7 +217,7 @@ func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) 
 	return positions
 }
 
-func shrinkLiquidBox(box cube.BBox, offset mgl32.Vec3) cube.BBox {
+func shrinkLiquidBox(box dfcube.BBox32, offset mgl32.Vec3) dfcube.BBox32 {
 	min, max := box.Min().Add(offset), box.Max().Sub(offset)
 	originalMin, originalMax := box.Min(), box.Max()
 	for axis := range 3 {
@@ -227,7 +226,7 @@ func shrinkLiquidBox(box cube.BBox, offset mgl32.Vec3) cube.BBox {
 			min[axis], max[axis] = mid, mid
 		}
 	}
-	return cube.Box(min.X(), min.Y(), min.Z(), max.X(), max.Y(), max.Z())
+	return dfcube.Box32(min.X(), min.Y(), min.Z(), max.X(), max.Y(), max.Z())
 }
 
 func (s *Simulator) liquidMovementBlock(pos dfcube.Pos) world.Block {
@@ -239,7 +238,7 @@ func (s *Simulator) liquidMovementBlock(pos dfcube.Pos) world.Block {
 
 // blockCollisions returns the collision boxes at pos, treating an absent world
 // as empty space so liquid flow never dereferences a nil provider.
-func (s *Simulator) blockCollisions(pos dfcube.Pos) []cube.BBox {
+func (s *Simulator) blockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
 	if s.World == nil {
 		return nil
 	}
@@ -285,7 +284,7 @@ func liquidHeight(liquid world.Liquid) float32 {
 	return float32(liquid.LiquidDepth()+1) / 9
 }
 
-func (s *Simulator) containsAnyLiquid(box cube.BBox) bool {
+func (s *Simulator) containsAnyLiquid(box dfcube.BBox32) bool {
 	min, max := box.Min(), box.Max()
 	minX, minY, minZ := int(math32.Floor(min.X())), int(math32.Floor(min.Y())), int(math32.Floor(min.Z()))
 	maxX, maxY, maxZ := int(math32.Ceil(max.X())), int(math32.Ceil(max.Y())), int(math32.Ceil(max.Z()))
