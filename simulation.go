@@ -1,8 +1,9 @@
 package bedsim
 
 import (
-	"github.com/chewxy/math32"
 	"iter"
+
+	"github.com/chewxy/math32"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -452,21 +453,6 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 func (s *Simulator) simulationIsReliable(state *MovementState) bool {
 	if state.RemainingTeleportTicks() > 0 {
 		return true
-	}
-
-	stateBB := state.BoundingBox(s.Options.UseSlideOffset)
-	isReliable := true
-	for _, b := range nearbyBlocks(stateBB.Grow(1), s.World) {
-		if _, isAir := b.(block.Air); isAir {
-			continue
-		}
-		if s.blockName(b) == "minecraft:bamboo" {
-			isReliable = false
-			break
-		}
-	}
-	if !isReliable {
-		return false
 	}
 
 	if state.GameMode != packet.GameTypeSurvival && state.GameMode != packet.GameTypeAdventure {

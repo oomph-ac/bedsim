@@ -6,9 +6,8 @@ require (
 	github.com/chewxy/math32 v1.11.1
 	github.com/df-mc/dragonfly v0.10.11-0.20260721135200-3e3556bddb5f
 	github.com/go-gl/mathgl v1.2.0
-	github.com/sandertv/gophertunnel v1.57.0
+	github.com/sandertv/gophertunnel v1.57.2-0.20260720171832-1706d533aa80
 )
-
 
 require (
 	github.com/brentp/intintmap v0.0.0-20251106190759-56907b1f8479 // indirect
