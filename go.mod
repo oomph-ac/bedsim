@@ -4,12 +4,11 @@ go 1.26.1
 
 require (
 	github.com/chewxy/math32 v1.11.1
-	github.com/df-mc/dragonfly v0.10.11-0.20260205145355-8d1311b36535
+	github.com/df-mc/dragonfly v0.10.11-0.20260721135200-3e3556bddb5f
 	github.com/go-gl/mathgl v1.2.0
 	github.com/sandertv/gophertunnel v1.57.0
 )
 
-replace github.com/df-mc/dragonfly => github.com/hashimthearab/dragonfly v0.0.0-20260721043247-e11e4f6ede86
 
 require (
 	github.com/brentp/intintmap v0.0.0-20251106190759-56907b1f8479 // indirect
