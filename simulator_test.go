@@ -40,6 +40,10 @@ type cobwebWorld struct {
 	pos cube.Pos
 }
 
+type nonCollidingCobwebWorld struct {
+	cobwebWorld
+}
+
 func (w cobwebWorld) Block(pos cube.Pos) world.Block {
 	if pos == w.pos {
 		return block.Cobweb{}
@@ -52,6 +56,10 @@ func (w cobwebWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 		return nil
 	}
 	return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1)}
+}
+
+func (nonCollidingCobwebWorld) BlockCollisions(cube.Pos) []cube.BBox32 {
+	return nil
 }
 
 func (cobwebWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 {
@@ -147,14 +155,25 @@ func newBaseState() *MovementState {
 	}
 }
 
-func TestInsideCobwebTranslatesBlockLocalCollisionBoxes(t *testing.T) {
+func TestInsideCobwebTranslatesBlockVolume(t *testing.T) {
 	pos := cube.Pos{32, 64, -24}
 	sim := &Simulator{World: cobwebWorld{pos: pos}}
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
 
 	if !sim.isInsideCobweb(state) {
-		t.Fatal("expected collision with block-local cobweb box away from the origin")
+		t.Fatal("expected intersection with translated cobweb block volume away from the origin")
+	}
+}
+
+func TestInsideCobwebUsesFullBlockVolumeWithoutCollisionBoxes(t *testing.T) {
+	pos := cube.Pos{32, 64, -24}
+	sim := &Simulator{World: nonCollidingCobwebWorld{cobwebWorld{pos: pos}}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
+
+	if !sim.isInsideCobweb(state) {
+		t.Fatal("expected a non-collidable cobweb to occupy its full block volume")
 	}
 }
 

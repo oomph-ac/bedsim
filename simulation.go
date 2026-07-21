@@ -1018,12 +1018,8 @@ func (s *Simulator) isInsideCobweb(state *MovementState) bool {
 			continue
 		}
 
-		boxes := s.World.BlockCollisions(pos)
-		for _, box := range boxes {
-			if bb.IntersectsWith(box.Translate(posVec3(pos))) {
-				insideCobweb = true
-				break
-			}
+		if bb.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
+			insideCobweb = true
 		}
 		if insideCobweb {
 			break
