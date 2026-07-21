@@ -8,6 +8,7 @@ import (
 // WorldProvider bridges the world/chunk system for collision and block lookups.
 type WorldProvider interface {
 	Block(pos dfcube.Pos) world.Block
+	// BlockCollisions returns block-local collision boxes at pos.
 	BlockCollisions(pos dfcube.Pos) []dfcube.BBox32
 	GetNearbyBBoxes(aabb dfcube.BBox32) []dfcube.BBox32
 	IsChunkLoaded(chunkX, chunkZ int32) bool

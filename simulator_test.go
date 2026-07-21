@@ -36,6 +36,32 @@ type staticWorld struct {
 	boxes       []dfcube.BBox32
 }
 
+type cobwebWorld struct {
+	pos dfcube.Pos
+}
+
+func (w cobwebWorld) Block(pos dfcube.Pos) world.Block {
+	if pos == w.pos {
+		return block.Cobweb{}
+	}
+	return block.Air{}
+}
+
+func (w cobwebWorld) BlockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
+	if pos != w.pos {
+		return nil
+	}
+	return []dfcube.BBox32{dfcube.Box32(0, 0, 0, 1, 1, 1)}
+}
+
+func (cobwebWorld) GetNearbyBBoxes(dfcube.BBox32) []dfcube.BBox32 {
+	return nil
+}
+
+func (cobwebWorld) IsChunkLoaded(int32, int32) bool {
+	return true
+}
+
 func (w staticWorld) Block(pos dfcube.Pos) world.Block {
 	return block.Air{}
 }
@@ -118,6 +144,17 @@ func newBaseState() *MovementState {
 		GameMode:             packet.GameTypeSurvival,
 		TicksSinceKnockback:  1,
 		TicksSinceTeleport:   1,
+	}
+}
+
+func TestInsideCobwebTranslatesBlockLocalCollisionBoxes(t *testing.T) {
+	pos := dfcube.Pos{32, 64, -24}
+	sim := &Simulator{World: cobwebWorld{pos: pos}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
+
+	if !sim.isInsideCobweb(state) {
+		t.Fatal("expected collision with block-local cobweb box away from the origin")
 	}
 }
 
