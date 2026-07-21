@@ -62,7 +62,7 @@ func (w *liquidWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	if _, liquid := b.(world.Liquid); liquid {
 		return nil
 	}
-	return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))}
+	return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1)}
 }
 
 func (w *liquidWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
@@ -71,7 +71,9 @@ func (w *liquidWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
 	for x := int(math32.Floor(min.X())); x <= int(math32.Floor(max.X())); x++ {
 		for y := int(math32.Floor(min.Y())); y <= int(math32.Floor(max.Y())); y++ {
 			for z := int(math32.Floor(min.Z())); z <= int(math32.Floor(max.Z())); z++ {
-				for _, bb := range w.BlockCollisions(cube.Pos{x, y, z}) {
+				pos := cube.Pos{x, y, z}
+				for _, bb := range w.BlockCollisions(pos) {
+					bb = bb.Translate(posVec3(pos))
 					if bb.IntersectsWith(aabb) {
 						out = append(out, bb)
 					}
