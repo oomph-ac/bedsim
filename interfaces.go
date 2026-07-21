@@ -8,8 +8,9 @@ import (
 // WorldProvider bridges the world/chunk system for collision and block lookups.
 type WorldProvider interface {
 	Block(pos cube.Pos) world.Block
-	BlockCollisions(pos cube.Pos) []cube.BBox
-	GetNearbyBBoxes(aabb cube.BBox) []cube.BBox
+	// BlockCollisions returns block-local collision boxes at pos.
+	BlockCollisions(pos cube.Pos) []cube.BBox32
+	GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32
 	IsChunkLoaded(chunkX, chunkZ int32) bool
 }
 
@@ -23,7 +24,7 @@ type LiquidProvider interface {
 // custom block data instead of Dragonfly's default block types.
 type BlockSemanticsProvider interface {
 	BlockName(world.Block) string
-	BlockFriction(world.Block) float64
+	BlockFriction(world.Block) float32
 	BlockClimbable(world.Block) bool
 }
 

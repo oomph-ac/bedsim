@@ -9,37 +9,34 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-var (
-	blockNameMapping     map[uint64]string
-	blockNameMappingOnce sync.Once
-)
-
-func initBlockNameMapping() {
-	blockNameMapping = make(map[uint64]string, len(world.Blocks()))
-	for _, b := range world.Blocks() {
-		x, y := b.Hash()
-		if x == 0 && y == math.MaxUint64 {
-			continue
-		}
-		name, _ := b.EncodeBlock()
-		blockNameMapping[world.BlockHash(b)] = name
-	}
+type blockNameKey struct {
+	base, state uint64
 }
+
+var blockNameCache sync.Map
 
 // BlockName returns the canonical name of a block.
 func BlockName(b world.Block) string {
-	blockNameMappingOnce.Do(initBlockNameMapping)
-	if n, ok := blockNameMapping[world.BlockHash(b)]; ok {
-		return n
+	base, state := b.Hash()
+	if base == 0 && state == math.MaxUint64 {
+		name, _ := b.EncodeBlock()
+		return name
 	}
-	n, _ := b.EncodeBlock()
-	return n
+
+	key := blockNameKey{base: base, state: state}
+	if name, ok := blockNameCache.Load(key); ok {
+		return name.(string)
+	}
+
+	name, _ := b.EncodeBlock()
+	stored, _ := blockNameCache.LoadOrStore(key, name)
+	return stored.(string)
 }
 
 // BlockFriction returns the friction of the block.
-func BlockFriction(b world.Block) float64 {
+func BlockFriction(b world.Block) float32 {
 	if f, ok := b.(block.Frictional); ok {
-		return f.Friction()
+		return float32(f.Friction())
 	}
 
 	switch BlockName(b) {

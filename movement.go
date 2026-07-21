@@ -2,14 +2,14 @@ package bedsim
 
 import (
 	"github.com/df-mc/dragonfly/server/block/cube"
-	"github.com/go-gl/mathgl/mgl64"
+	"github.com/go-gl/mathgl/mgl32"
 )
 
 // ClientState holds non-authoritative movement data sent by the client.
 type ClientState struct {
-	Pos, LastPos mgl64.Vec3
-	Vel, LastVel mgl64.Vec3
-	Mov, LastMov mgl64.Vec3
+	Pos, LastPos mgl32.Vec3
+	Vel, LastVel mgl32.Vec3
+	Mov, LastMov mgl32.Vec3
 
 	HorizontalCollision bool
 	VerticalCollision   bool
@@ -20,40 +20,40 @@ type ClientState struct {
 type MovementState struct {
 	Client ClientState
 
-	Pos, LastPos mgl64.Vec3
-	Vel, LastVel mgl64.Vec3
-	Mov, LastMov mgl64.Vec3
+	Pos, LastPos mgl32.Vec3
+	Vel, LastVel mgl32.Vec3
+	Mov, LastMov mgl32.Vec3
 
-	Rotation, LastRotation mgl64.Vec3
+	Rotation, LastRotation mgl32.Vec3
 
-	SlideOffset mgl64.Vec2
-	Impulse     mgl64.Vec2
-	Size        mgl64.Vec3
+	SlideOffset mgl32.Vec2
+	Impulse     mgl32.Vec2
+	Size        mgl32.Vec3
 
 	SupportingBlockPos *cube.Pos
 
-	Gravity      float64
-	JumpHeight   float64
-	FallDistance float64
+	Gravity      float32
+	JumpHeight   float32
+	FallDistance float32
 
-	MovementSpeed           float64
-	DefaultMovementSpeed    float64
-	AirSpeed                float64
-	UnderwaterMovementSpeed float64
-	LavaMovementSpeed       float64
+	MovementSpeed           float32
+	DefaultMovementSpeed    float32
+	AirSpeed                float32
+	UnderwaterMovementSpeed float32
+	LavaMovementSpeed       float32
 	// SwimSpeedMultiplier scales swimming acceleration; zero means the default.
-	SwimSpeedMultiplier float64
+	SwimSpeedMultiplier float32
 	// DolphinBoostTicks is the remaining dolphin-boost duration.
 	DolphinBoostTicks  int64
 	ServerUpdatedSpeed bool
 
-	Knockback           mgl64.Vec3
+	Knockback           mgl32.Vec3
 	TicksSinceKnockback uint64
 
-	PendingTeleportPos mgl64.Vec3
+	PendingTeleportPos mgl32.Vec3
 	PendingTeleports   int
 
-	TeleportPos             mgl64.Vec3
+	TeleportPos             mgl32.Vec3
 	TicksSinceTeleport      uint64
 	TeleportCompletionTicks uint64
 	TeleportIsSmoothed      bool
@@ -68,7 +68,7 @@ type MovementState struct {
 	JumpDelay             uint64
 
 	Swimming   bool
-	SwimAmount float64
+	SwimAmount float32
 	// SwimWaterGraceTicks retains recent server-observed water contact.
 	SwimWaterGraceTicks    int64
 	AutoJumpingInWater     bool
@@ -102,22 +102,22 @@ type MovementState struct {
 	GameMode int32
 }
 
-func (s *MovementState) SetPos(newPos mgl64.Vec3) {
+func (s *MovementState) SetPos(newPos mgl32.Vec3) {
 	s.LastPos = s.Pos
 	s.Pos = newPos
 }
 
-func (s *MovementState) SetVel(newVel mgl64.Vec3) {
+func (s *MovementState) SetVel(newVel mgl32.Vec3) {
 	s.LastVel = s.Vel
 	s.Vel = newVel
 }
 
-func (s *MovementState) SetMov(newMov mgl64.Vec3) {
+func (s *MovementState) SetMov(newMov mgl32.Vec3) {
 	s.LastMov = s.Mov
 	s.Mov = newMov
 }
 
-func (s *MovementState) SetRotation(newRot mgl64.Vec3) {
+func (s *MovementState) SetRotation(newRot mgl32.Vec3) {
 	s.LastRotation = s.Rotation
 	s.Rotation = newRot
 }
