@@ -162,7 +162,7 @@ func TestInsideCobwebTranslatesBlockVolume(t *testing.T) {
 	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
 
 	if !sim.isInsideCobweb(state) {
-		t.Fatal("expected collision with block-local cobweb box away from the origin")
+		t.Fatal("expected intersection with translated cobweb block volume away from the origin")
 	}
 }
 
