@@ -1,13 +1,14 @@
 package bedsim
 
 import (
-	"math"
+	"github.com/chewxy/math32"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
-	"github.com/df-mc/dragonfly/server/block/cube"
+	dfcube "github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/go-gl/mathgl/mgl64"
+	"github.com/ethaniccc/float32-cube/cube"
+	"github.com/go-gl/mathgl/mgl32"
 )
 
 type dynamicCollisionWorld struct {
@@ -89,15 +90,15 @@ func TestPoseRestoresCustomStandingHeight(t *testing.T) {
 }
 
 func TestSneakingInWaterDescends(t *testing.T) {
-	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
+	w := environmentWorld{blocks: map[dfcube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
 	sim := &Simulator{World: w}
 	state := newBaseState()
-	state.Pos = mgl64.Vec3{0.5, 0, 0.5}
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
 	state.Gravity = NormalGravity
 
 	sim.Simulate(state, InputState{SneakDown: true, Sneaking: true})
 
-	if want := -0.037; math.Abs(state.Vel.Y()-want) > 1e-12 {
+	if want := float32(-0.037); math32.Abs(state.Vel.Y()-want) > 1e-6 {
 		t.Fatalf("expected water descent velocity %v, got %v", want, state.Vel.Y())
 	}
 }

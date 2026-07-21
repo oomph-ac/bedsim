@@ -1,9 +1,19 @@
 package bedsim
 
 import (
-	"github.com/df-mc/dragonfly/server/block/cube"
-	"github.com/go-gl/mathgl/mgl64"
+	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/ethaniccc/float32-cube/cube"
+	"github.com/go-gl/mathgl/mgl32"
 )
+
+// BBoxFromDragonfly returns a simulation bounding box rounded to float32 coordinates.
+func BBoxFromDragonfly(box dfcube.BBox) cube.BBox {
+	min, max := box.Min(), box.Max()
+	return cube.Box(
+		float32(min.X()), float32(min.Y()), float32(min.Z()),
+		float32(max.X()), float32(max.Y()), float32(max.Z()),
+	)
+}
 
 // SwimPose reports whether recent server-observed water contact permits the
 // client-requested collapsed hitbox.
@@ -19,7 +29,7 @@ func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox {
 	if s.SwimPose() {
 		height = s.Size[0] * scale
 	}
-	yOffset := 0.0
+	yOffset := float32(0)
 	if useSlideOffset {
 		yOffset = s.SlideOffset.Y()
 	}
@@ -31,7 +41,7 @@ func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox {
 		s.Pos[0]+width,
 		s.Pos[1]+height+yOffset,
 		s.Pos[2]+width,
-	).GrowVec3(mgl64.Vec3{-1e-4, 0, -1e-4})
+	).GrowVec3(mgl32.Vec3{-1e-4, 0, -1e-4})
 }
 
 // ClientBoundingBox returns the bounding box translated to the client's position.
@@ -42,7 +52,7 @@ func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox {
 	if s.SwimPose() {
 		height = s.Size[0] * scale
 	}
-	yOffset := 0.0
+	yOffset := float32(0)
 	if useSlideOffset {
 		yOffset = s.SlideOffset.Y()
 	}
@@ -54,5 +64,5 @@ func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox {
 		s.Client.Pos[0]+width,
 		s.Client.Pos[1]+height+yOffset,
 		s.Client.Pos[2]+width,
-	).GrowVec3(mgl64.Vec3{-1e-4, 0, -1e-4})
+	).GrowVec3(mgl32.Vec3{-1e-4, 0, -1e-4})
 }

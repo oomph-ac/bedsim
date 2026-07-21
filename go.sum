@@ -1,11 +1,15 @@
 github.com/brentp/intintmap v0.0.0-20190211203843-30dc0ade9af9 h1:/G0ghZwrhou0Wq21qc1vXXMm/t/aKWkALWwITptKbE0=
 github.com/brentp/intintmap v0.0.0-20190211203843-30dc0ade9af9/go.mod h1:TOk10ahXejq9wkEaym3KPRNeuR/h5Jx+s8QRWIa2oTM=
+github.com/chewxy/math32 v1.11.1 h1:b7PGHlp8KjylDoU8RrcEsRuGZhJuz8haxnKfuMMRqy8=
+github.com/chewxy/math32 v1.11.1/go.mod h1:dOB2rcuFrCn6UHrze36WSLVPKtzPMRAQvBvUwkSsLqs=
 github.com/df-mc/dragonfly v0.10.11-0.20260205145355-8d1311b36535 h1:mbKNV+DY50ecEswbzv8qW17kwAxVifPCjBwBd84kyGw=
 github.com/df-mc/dragonfly v0.10.11-0.20260205145355-8d1311b36535/go.mod h1:uhz6mAbgiUbkWfIWo88dqNNMJBuuaU5SD7sCjirhmb4=
 github.com/df-mc/goleveldb v1.1.9 h1:ihdosZyy5jkQKrxucTQmN90jq/2lUwQnJZjIYIC/9YU=
 github.com/df-mc/goleveldb v1.1.9/go.mod h1:+NHCup03Sci5q84APIA21z3iPZCuk6m6ABtg4nANCSk=
 github.com/df-mc/worldupgrader v1.0.20 h1:wfJyG3bFeaM/HXy7TCiO4HKVw3Mf3N4gPFmgxMHsKnc=
 github.com/df-mc/worldupgrader v1.0.20/go.mod h1:tsSOLTRm9mpG7VHvYpAjjZrkRHWmSbKZAm9bOLNnlDk=
+github.com/ethaniccc/float32-cube v0.0.0-20250511224129-7af1f8c4ee12 h1:o8NDdPPBeF7y//XYIRvzrXPB08/Lblt/ceu1+3vS1hM=
+github.com/ethaniccc/float32-cube v0.0.0-20250511224129-7af1f8c4ee12/go.mod h1:xBh0GYHZ5yHg3YvvUGriGLSAlm7YW2S9SRULstdLZLk=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/go-gl/mathgl v1.2.0 h1:v2eOj/y1B2afDxF6URV1qCYmo1KW08lAMtTbOn3KXCY=
 github.com/go-gl/mathgl v1.2.0/go.mod h1:pf9+b5J3LFP7iZ4XXaVzZrCle0Q/vNpB/vDe5+3ulRE=
