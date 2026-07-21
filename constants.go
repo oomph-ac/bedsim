@@ -8,10 +8,10 @@ const (
 	LevitationGravityMultiplier = 0.05
 	NormalGravity               = 0.08
 	SlowFallingGravity          = 0.01
-	StepHeight                  = 0.6
+	StepHeight                  = 0.5625
 	SlideOffsetMultiplier       = 0.4
 	SlimeBounceMultiplier       = -1.0
-	BedBounceMultiplier         = -0.66
+	BedBounceMultiplier         = -0.75
 	// This can be validated in Mob::ascendLadder().
 	ClimbSpeed          = 0.2
 	MaxConsumingImpulse = 0.1225
@@ -37,4 +37,8 @@ const (
 
 	// DefaultSwimWaterGraceTicks bounds retained server-observed water contact.
 	DefaultSwimWaterGraceTicks = 10
+
+	// EffectWeaving is the Bedrock effect ID for Weaving. Gophertunnel's
+	// current named effect constants predate the trial effects.
+	EffectWeaving int32 = 33
 )

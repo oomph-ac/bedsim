@@ -50,7 +50,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	// Captured before updateSwimTravel, matching the upstream ordering.
 	jumping := state.EffectiveJumping
 	if water {
-		if state.WantDown || state.WantDownSlow {
+		if state.WantDown || state.WantDownSlow || state.PressingDescend {
 			vel := state.Vel
 			vel[1] -= 0.04
 			state.SetVel(vel)
@@ -82,11 +82,13 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		if state.Swimming && state.SwimSpeedMultiplier != 0 {
 			swimSpeedMultiplier = state.SwimSpeedMultiplier
 		}
-		if inventory, ok := s.Inventory.(DepthStriderProvider); ok {
+		if s.Equipment != nil {
+			depthStriderLevel = math.Min(math.Max(float64(s.Equipment.EnchantmentLevel(EnchantmentDepthStrider)), 0), 3)
+		} else if inventory, ok := s.Inventory.(DepthStriderProvider); ok {
 			depthStriderLevel = math.Min(math.Max(float64(inventory.DepthStriderLevel()), 0), 3)
-			if !state.OnGround {
-				depthStriderLevel *= 0.5
-			}
+		}
+		if !state.OnGround {
+			depthStriderLevel *= 0.5
 		}
 		depthStriderFraction := depthStriderLevel / 3
 		if swimSpeedMultiplier > 1 {
@@ -133,14 +135,17 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	if state.CollideX || state.CollideZ {
 		raised := mgl64.Vec3{vel.X(), vel.Y() + 0.6 + initialY - state.Pos.Y(), vel.Z()}
 		raisedBox := state.BoundingBox(s.Options.UseSlideOffset).Translate(raised)
-		hasCollision := hasNearbyBBoxes(s.World, raisedBox)
+		hasCollision := len(s.nearbyBBoxes(state, raisedBox)) > 0
 		hasLiquid := s.containsAnyLiquid(raisedBox)
 		s.debugf("liquid exit probe collision=%t liquid=%t box=%v", hasCollision, hasLiquid, raisedBox)
 		if !hasCollision && !hasLiquid {
 			vel[1] = 0.3
 		}
+		state.RiptideTicks = 0
 	}
 	state.SetVel(vel)
+	s.applyBubbleColumns(state)
+	s.applyInsideBlockEffects(state)
 	state.FallDistance = 0
 }
 

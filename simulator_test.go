@@ -508,7 +508,7 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 func TestStepUpTiebreaker(t *testing.T) {
 	// Geometry: ground at Y=0, a 0.5-high slab at X=1 (X=1..2, Y=0..0.5).
 	// The player stands on the ground at X≈0.5, walks in +X toward the slab.
-	// The step-up (0.5 blocks) is within StepHeight (0.6).
+	// The step-up (0.5 blocks) is within StepHeight (0.5625).
 	slabBox := cube.Box(1, 0, -1, 2, 0.5, 2)
 	groundBox := cube.Box(-1, -1, -1, 1, 0, 2)
 

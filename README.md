@@ -2,7 +2,7 @@
 
 Server-side Minecraft Bedrock movement simulation library for Go.
 
-`bedsim` replicates the Bedrock client's movement physics (collisions, stepping, edge-avoidance, liquids, gliding, teleportation) on the server, producing authoritative position and velocity values that can be compared against client-reported state.
+`bedsim` replicates the Bedrock client's movement physics on the server, producing authoritative position and velocity values that can be compared against client-reported state. It covers collisions, stepping, edge avoidance, liquids and currents, swimming, bubble columns, Riptide, crawling, gliding, movement enchantments, movement-sensitive blocks, and teleportation.
 
 Original code was written by [ethaniccc](https://github.com/ethaniccc) in [oomph](https://github.com/oomph-ac/oomph) and has been ported over into this library.
 The liquid movement physics were ported from [oomph#145](https://github.com/oomph-ac/oomph/pull/145) by [NopeNotDark](https://github.com/NopeNotDark).
@@ -54,6 +54,7 @@ sim := bedsim.Simulator{
     Liquids:        myLiquidProvider,     // second block layer (waterlogged blocks)
     Effects:        myEffectsProvider,    // jump boost, levitation, slow falling
     Inventory:      myInventoryProvider,  // elytra equipped check
+    Equipment:      myEquipmentProvider,  // movement enchantments and leather boots
     Options: bedsim.SimulationOptions{
         Mode:                        bedsim.SimulationModeAuthoritative,
         PositionCorrectionThreshold: 0.5,
@@ -88,6 +89,30 @@ should affect water movement.
 > used instead. This keeps pre-existing integrations working, but it is
 > discovered by type assertion, so a signature typo degrades silently — prefer
 > the explicit field.
+
+### Optional movement capabilities
+
+`WorldProvider` is the only required world interface. A world may additionally
+implement `BubbleColumnProvider` for upward/downward columns and
+`MovementCollisionProvider` for player-dependent collision shapes such as
+scaffolding and powder snow. Dynamic collision resolution receives sneak and
+descend intent plus leather-boots state.
+
+`MovementEquipmentProvider` supplies Depth Strider, Soul Speed, Swift Sneak,
+Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
+extension remains supported when `Equipment` is nil. `EffectsProvider` also
+controls Weaving-aware cobweb movement.
+
+Pose changes update `MovementState.Size`. Set `StandingHeight`,
+`SneakingHeight`, or `CrawlingHeight` when using non-vanilla dimensions; zero
+values preserve the current standing height and use vanilla crouch/crawl
+heights.
+
+Movement-sensitive block behavior includes honey blocks, sweet berry bushes,
+powder snow, scaffolding, cobwebs (including Weaving), soul sand with Soul
+Speed, slime blocks, beds, climbables, fences/walls, and per-block friction.
+Dynamic collision behavior still depends on the world adapter returning the
+correct shapes for the current block state.
 
 ### Liquid movement
 

@@ -3,6 +3,7 @@ package bedsim
 import (
 	"math"
 
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/world"
 )
 
@@ -70,6 +71,7 @@ type Simulator struct {
 	Liquids   LiquidProvider
 	Effects   EffectsProvider
 	Inventory InventoryProvider
+	Equipment MovementEquipmentProvider
 	Options   SimulationOptions
 }
 
@@ -119,4 +121,16 @@ func (s *Simulator) blockClimbable(b world.Block) bool {
 		return s.BlockSemantics.BlockClimbable(b)
 	}
 	return BlockClimbable(b)
+}
+
+func (s *Simulator) blockAir(b world.Block) bool {
+	if _, ok := b.(block.Air); ok {
+		return true
+	}
+	switch s.blockName(b) {
+	case "minecraft:air", "minecraft:cave_air", "minecraft:void_air":
+		return true
+	default:
+		return false
+	}
 }

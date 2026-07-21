@@ -29,6 +29,12 @@ type MovementState struct {
 	SlideOffset mgl64.Vec2
 	Impulse     mgl64.Vec2
 	Size        mgl64.Vec3
+	// StandingHeight, SneakingHeight, and CrawlingHeight preserve custom entity
+	// dimensions across pose transitions. Zero values use the current standing
+	// height and vanilla player pose heights respectively.
+	StandingHeight float64
+	SneakingHeight float64
+	CrawlingHeight float64
 
 	SupportingBlockPos *cube.Pos
 
@@ -62,6 +68,8 @@ type MovementState struct {
 	ServerSprint, ServerSprintApplied bool
 
 	Sneaking, PressingSneak bool
+	PressingAscend          bool
+	PressingDescend         bool
 
 	Jumping, PressingJump bool
 	EffectiveJumping      bool
@@ -86,6 +94,14 @@ type MovementState struct {
 	GlideBoostTicks int64
 
 	HasGravity bool
+	// SlowFalling reports whether the slow-falling effect is active. Its lower
+	// gravity only applies while descending.
+	SlowFalling bool
+
+	Crawling              bool
+	TicksSinceCanSlowdown int
+	RiptideTicks          int
+	StartingSpinAttack    bool
 
 	Flying, MayFly, TrustFlyStatus bool
 	JustDisabledFlight             bool
@@ -100,6 +116,22 @@ type MovementState struct {
 	Alive bool
 
 	GameMode int32
+}
+
+func (s *MovementState) ensurePoseHeights() {
+	if s.StandingHeight <= 0 {
+		if !s.Sneaking && !s.Crawling && s.Size.Y() > 0 {
+			s.StandingHeight = s.Size.Y()
+		} else {
+			s.StandingHeight = 1.8
+		}
+	}
+	if s.SneakingHeight <= 0 {
+		s.SneakingHeight = 1.5
+	}
+	if s.CrawlingHeight <= 0 {
+		s.CrawlingHeight = 0.6
+	}
 }
 
 func (s *MovementState) SetPos(newPos mgl64.Vec3) {

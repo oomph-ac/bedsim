@@ -37,9 +37,18 @@ type InputState struct {
 	StopSwimming  bool
 	WantDown      bool
 	WantDownSlow  bool
+	StartCrawling bool
+	StopCrawling  bool
+	DescendBlock  bool
 
 	StopGliding  bool
 	StartGliding bool
 
 	UsingConsumable bool
+	UsingItem       bool
+	UsingSpear      bool
+	InventoryAction bool
+
+	StartSpinAttack bool
+	StopSpinAttack  bool
 }
