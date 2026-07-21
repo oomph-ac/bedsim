@@ -100,8 +100,8 @@ descend intent plus leather-boots state.
 
 `MovementEquipmentProvider` supplies Depth Strider, Soul Speed, Swift Sneak,
 Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
-extension remains supported when `Equipment` is nil. `EffectsProvider` also
-controls Weaving-aware cobweb movement.
+extension remains a fallback when the equipment provider reports no Depth
+Strider level. `EffectsProvider` also controls Weaving-aware cobweb movement.
 
 Pose changes update `MovementState.Size`. Set `StandingHeight`,
 `SneakingHeight`, or `CrawlingHeight` when using non-vanilla dimensions; zero

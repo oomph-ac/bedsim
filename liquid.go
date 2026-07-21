@@ -84,8 +84,11 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		}
 		if s.Equipment != nil {
 			depthStriderLevel = math.Min(math.Max(float64(s.Equipment.EnchantmentLevel(EnchantmentDepthStrider)), 0), 3)
-		} else if inventory, ok := s.Inventory.(DepthStriderProvider); ok {
-			depthStriderLevel = math.Min(math.Max(float64(inventory.DepthStriderLevel()), 0), 3)
+		}
+		if depthStriderLevel == 0 {
+			if inventory, ok := s.Inventory.(DepthStriderProvider); ok {
+				depthStriderLevel = math.Min(math.Max(float64(inventory.DepthStriderLevel()), 0), 3)
+			}
 		}
 		if !state.OnGround {
 			depthStriderLevel *= 0.5

@@ -784,6 +784,21 @@ func TestInventoryWithoutDepthStriderProvider(t *testing.T) {
 	}
 }
 
+func TestZeroEquipmentDepthStriderFallsBackToLegacyInventory(t *testing.T) {
+	sim := newLiquidSim(filledColumn(waterSource))
+	sim.Inventory = depthStriderInventory{level: 3}
+	sim.Equipment = fixedEquipment{}
+	state := submergedState()
+	state.Vel = mgl64.Vec3{0.5, 0, 0}
+	state.OnGround = true
+
+	sim.SimulateState(state)
+
+	if !approxEqual(state.Vel.X(), 0.5*0.54600006) {
+		t.Fatalf("legacy depth strider X = %v, want level-3 behavior", state.Vel.X())
+	}
+}
+
 // A dolphin boost raises the swim speed multiplier, which only takes effect
 // while actually swimming.
 func TestSwimSpeedMultiplierRequiresSwimming(t *testing.T) {
