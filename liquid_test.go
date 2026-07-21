@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
@@ -22,39 +22,39 @@ var (
 // deliberately does not implement LiquidProvider, so simulations against it
 // exercise the fallback path through WorldProvider.Block.
 type liquidWorld struct {
-	blocks      map[dfcube.Pos]world.Block
+	blocks      map[cube.Pos]world.Block
 	chunkLoaded bool
 }
 
 func newLiquidWorld() *liquidWorld {
-	return &liquidWorld{blocks: map[dfcube.Pos]world.Block{}, chunkLoaded: true}
+	return &liquidWorld{blocks: map[cube.Pos]world.Block{}, chunkLoaded: true}
 }
 
-func (w *liquidWorld) set(pos dfcube.Pos, b world.Block) *liquidWorld {
+func (w *liquidWorld) set(pos cube.Pos, b world.Block) *liquidWorld {
 	w.blocks[pos] = b
 	return w
 }
 
 // fill places b in the inclusive cuboid between min and max.
-func (w *liquidWorld) fill(min, max dfcube.Pos, b world.Block) *liquidWorld {
+func (w *liquidWorld) fill(min, max cube.Pos, b world.Block) *liquidWorld {
 	for x := min[0]; x <= max[0]; x++ {
 		for y := min[1]; y <= max[1]; y++ {
 			for z := min[2]; z <= max[2]; z++ {
-				w.blocks[dfcube.Pos{x, y, z}] = b
+				w.blocks[cube.Pos{x, y, z}] = b
 			}
 		}
 	}
 	return w
 }
 
-func (w *liquidWorld) Block(pos dfcube.Pos) world.Block {
+func (w *liquidWorld) Block(pos cube.Pos) world.Block {
 	if b, ok := w.blocks[pos]; ok {
 		return b
 	}
 	return block.Air{}
 }
 
-func (w *liquidWorld) BlockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
+func (w *liquidWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	b := w.Block(pos)
 	if _, air := b.(block.Air); air {
 		return nil
@@ -62,16 +62,16 @@ func (w *liquidWorld) BlockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
 	if _, liquid := b.(world.Liquid); liquid {
 		return nil
 	}
-	return []dfcube.BBox32{dfcube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))}
+	return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))}
 }
 
-func (w *liquidWorld) GetNearbyBBoxes(aabb dfcube.BBox32) []dfcube.BBox32 {
+func (w *liquidWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
 	min, max := aabb.Min(), aabb.Max()
-	var out []dfcube.BBox32
+	var out []cube.BBox32
 	for x := int(math32.Floor(min.X())); x <= int(math32.Floor(max.X())); x++ {
 		for y := int(math32.Floor(min.Y())); y <= int(math32.Floor(max.Y())); y++ {
 			for z := int(math32.Floor(min.Z())); z <= int(math32.Floor(max.Z())); z++ {
-				for _, bb := range w.BlockCollisions(dfcube.Pos{x, y, z}) {
+				for _, bb := range w.BlockCollisions(cube.Pos{x, y, z}) {
 					if bb.IntersectsWith(aabb) {
 						out = append(out, bb)
 					}
@@ -90,20 +90,20 @@ func (w *liquidWorld) IsChunkLoaded(chunkX, chunkZ int32) bool {
 // second block layer (waterlogged blocks) as well as the main layer.
 type layeredLiquidWorld struct {
 	*liquidWorld
-	layer map[dfcube.Pos]world.Liquid
+	layer map[cube.Pos]world.Liquid
 }
 
 func newLayeredLiquidWorld() *layeredLiquidWorld {
-	return &layeredLiquidWorld{liquidWorld: newLiquidWorld(), layer: map[dfcube.Pos]world.Liquid{}}
+	return &layeredLiquidWorld{liquidWorld: newLiquidWorld(), layer: map[cube.Pos]world.Liquid{}}
 }
 
-func (w *layeredLiquidWorld) waterlog(pos dfcube.Pos, b world.Block, liquid world.Liquid) *layeredLiquidWorld {
+func (w *layeredLiquidWorld) waterlog(pos cube.Pos, b world.Block, liquid world.Liquid) *layeredLiquidWorld {
 	w.blocks[pos] = b
 	w.layer[pos] = liquid
 	return w
 }
 
-func (w *layeredLiquidWorld) Liquid(pos dfcube.Pos) (world.Liquid, bool) {
+func (w *layeredLiquidWorld) Liquid(pos cube.Pos) (world.Liquid, bool) {
 	if liquid, ok := w.layer[pos]; ok {
 		return liquid, true
 	}
@@ -150,7 +150,7 @@ func submergedState() *MovementState {
 // with the given liquid from y=0 to y=3, so the player is fully submerged and
 // the liquid gradient is uniform (no flow).
 func filledColumn(b world.Block) *liquidWorld {
-	return newLiquidWorld().fill(dfcube.Pos{-2, 0, -2}, dfcube.Pos{2, 3, 2}, b)
+	return newLiquidWorld().fill(cube.Pos{-2, 0, -2}, cube.Pos{2, 3, 2}, b)
 }
 
 func approxEqual(a, b float32) bool {
@@ -209,7 +209,7 @@ func TestSwimmingFlagAloneDoesNotShrinkHitbox(t *testing.T) {
 // A spoofed swimming flag with no water anywhere must not let the player pass
 // through a gap that only the collapsed swim hitbox fits.
 func TestSpoofedSwimmingCannotFitThroughCeilingGap(t *testing.T) {
-	sim := newLiquidSim(newLiquidWorld().set(dfcube.Pos{0, 2, 0}, block.Stone{}))
+	sim := newLiquidSim(newLiquidWorld().set(cube.Pos{0, 2, 0}, block.Stone{}))
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
 	state.Client.Pos = state.Pos
@@ -614,7 +614,7 @@ func TestSwimTravelSkippedWhileJumping(t *testing.T) {
 // liquid, preventing the player from swimming out into open air.
 func TestSwimTravelStopsAtSurface(t *testing.T) {
 	// Liquid only below the player's head-check probes.
-	w := newLiquidWorld().fill(dfcube.Pos{-2, -4, -2}, dfcube.Pos{2, 0, 2}, waterSource)
+	w := newLiquidWorld().fill(cube.Pos{-2, -4, -2}, cube.Pos{2, 0, 2}, waterSource)
 	sim := newLiquidSim(w)
 	state := submergedState()
 	// Both head probes (+0.52 and +0.42) clear the liquid surface at y=1.
@@ -635,7 +635,7 @@ func TestSwimTravelStopsAtSurface(t *testing.T) {
 
 // While the head is still submerged the climb continues normally.
 func TestSwimTravelContinuesWhileHeadSubmerged(t *testing.T) {
-	w := newLiquidWorld().fill(dfcube.Pos{-2, -4, -2}, dfcube.Pos{2, 0, 2}, waterSource)
+	w := newLiquidWorld().fill(cube.Pos{-2, -4, -2}, cube.Pos{2, 0, 2}, waterSource)
 	sim := newLiquidSim(w)
 	state := submergedState()
 	state.Swimming = true
@@ -650,7 +650,7 @@ func TestSwimTravelContinuesWhileHeadSubmerged(t *testing.T) {
 
 // WantDownSlow suppresses the surface clamp so the player can hover.
 func TestSwimTravelSurfaceClampSkippedWhenWantDownSlow(t *testing.T) {
-	w := newLiquidWorld().fill(dfcube.Pos{-2, -4, -2}, dfcube.Pos{2, 0, 2}, waterSource)
+	w := newLiquidWorld().fill(cube.Pos{-2, -4, -2}, cube.Pos{2, 0, 2}, waterSource)
 	sim := newLiquidSim(w)
 	state := submergedState()
 	state.Pos = mgl32.Vec3{0.5, 1.5, 0.5}
@@ -881,7 +881,7 @@ func TestZeroMovementSpeedsUseDefaults(t *testing.T) {
 // Water is detected through a shallow vertical offset, so a player standing on
 // top of a water block is still considered to be in water.
 func TestWaterDetectedAtFeet(t *testing.T) {
-	sim := newLiquidSim(newLiquidWorld().set(dfcube.Pos{0, 0, 0}, waterSource))
+	sim := newLiquidSim(newLiquidWorld().set(cube.Pos{0, 0, 0}, waterSource))
 	state := submergedState()
 
 	if got := len(sim.touchingLiquidBlocks(state, liquidWater)); got != 1 {
@@ -892,7 +892,7 @@ func TestWaterDetectedAtFeet(t *testing.T) {
 // Lava uses a wider horizontal shrink than water, so a player at the very edge
 // of a lava block touches water but not lava.
 func TestLavaUsesWiderHorizontalMargin(t *testing.T) {
-	w := newLiquidWorld().set(dfcube.Pos{0, 0, 0}, waterSource).set(dfcube.Pos{1, 0, 0}, lavaSource)
+	w := newLiquidWorld().set(cube.Pos{0, 0, 0}, waterSource).set(cube.Pos{1, 0, 0}, lavaSource)
 	sim := newLiquidSim(w)
 	state := submergedState()
 	// Position the player so the box only just reaches into x=1.
@@ -924,8 +924,8 @@ func TestLiquidTypeFiltering(t *testing.T) {
 // Water travel takes priority when a player touches both liquids.
 func TestWaterTakesPriorityOverLava(t *testing.T) {
 	w := newLiquidWorld().
-		fill(dfcube.Pos{-2, 0, -2}, dfcube.Pos{2, 3, 2}, waterSource).
-		set(dfcube.Pos{0, 0, 0}, lavaSource)
+		fill(cube.Pos{-2, 0, -2}, cube.Pos{2, 3, 2}, waterSource).
+		set(cube.Pos{0, 0, 0}, lavaSource)
 	sim := newLiquidSim(w)
 	state := submergedState()
 
@@ -947,7 +947,7 @@ func TestLiquidFallsBackToBlockProvider(t *testing.T) {
 func TestLiquidProviderDetectsWaterloggedBlocks(t *testing.T) {
 	w := newLayeredLiquidWorld()
 	for y := range 4 {
-		w.waterlog(dfcube.Pos{0, y, 0}, block.Air{}, waterSource)
+		w.waterlog(cube.Pos{0, y, 0}, block.Air{}, waterSource)
 	}
 	sim := newLiquidSim(w)
 	state := submergedState()
@@ -1106,11 +1106,11 @@ func TestSwimmingOutsideWaterSuppressesJump(t *testing.T) {
 // Flowing water pushes the player toward the lower-depth neighbour.
 func TestLiquidFlowPushesTowardLowerDepth(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, 0, 0}, block.Water{Depth: 7}).
-		set(dfcube.Pos{-1, 0, 0}, block.Water{Depth: 8}).
-		set(dfcube.Pos{0, 0, 1}, block.Water{Depth: 8}).
-		set(dfcube.Pos{0, 0, -1}, block.Water{Depth: 8})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{1, 0, 0}, block.Water{Depth: 7}).
+		set(cube.Pos{-1, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{0, 0, 1}, block.Water{Depth: 8}).
+		set(cube.Pos{0, 0, -1}, block.Water{Depth: 8})
 	sim := newLiquidSim(w)
 	state := submergedState()
 
@@ -1123,8 +1123,8 @@ func TestLiquidFlowPushesTowardLowerDepth(t *testing.T) {
 // Water flow strength is 0.014 per tick along the normalized flow vector.
 func TestWaterFlowStrength(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, 0, 0}, block.Water{Depth: 7})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{1, 0, 0}, block.Water{Depth: 7})
 	sim := newLiquidSim(w)
 	state := submergedState()
 
@@ -1137,8 +1137,8 @@ func TestWaterFlowStrength(t *testing.T) {
 // Lava flow is much weaker than water flow.
 func TestLavaFlowStrength(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Lava{Depth: 8}).
-		set(dfcube.Pos{1, 0, 0}, block.Lava{Depth: 7})
+		set(cube.Pos{0, 0, 0}, block.Lava{Depth: 8}).
+		set(cube.Pos{1, 0, 0}, block.Lava{Depth: 7})
 	sim := newLiquidSim(w)
 	state := submergedState()
 
@@ -1160,11 +1160,11 @@ func TestUniformLiquidHasNoFlow(t *testing.T) {
 // Falling liquid against a solid neighbour gains a strong downward component.
 func TestFallingLiquidFlowsDownwardAlongSolids(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true}).
-		set(dfcube.Pos{1, 0, 0}, block.Stone{})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true}).
+		set(cube.Pos{1, 0, 0}, block.Stone{})
 	sim := newLiquidSim(w)
 
-	flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true})
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true})
 	if !(flow.Y() < 0) {
 		t.Fatalf("falling liquid flow Y = %v, want negative", flow.Y())
 	}
@@ -1173,11 +1173,11 @@ func TestFallingLiquidFlowsDownwardAlongSolids(t *testing.T) {
 // Non-falling liquid never gains the downward push.
 func TestNonFallingLiquidHasNoDownwardFlow(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, 0, 0}, block.Stone{})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{1, 0, 0}, block.Stone{})
 	sim := newLiquidSim(w)
 
-	flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8})
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8})
 	if flow.Y() < 0 {
 		t.Fatalf("non-falling liquid flow Y = %v, want no downward push", flow.Y())
 	}
@@ -1186,12 +1186,12 @@ func TestNonFallingLiquidHasNoDownwardFlow(t *testing.T) {
 // A solid neighbour blocks flow in that direction rather than contributing.
 func TestSolidNeighbourBlocksFlow(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, 0, 0}, block.Stone{}).
-		set(dfcube.Pos{1, -1, 0}, block.Water{Depth: 8})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{1, 0, 0}, block.Stone{}).
+		set(cube.Pos{1, -1, 0}, block.Water{Depth: 8})
 	sim := newLiquidSim(w)
 
-	flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8})
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8})
 	if !approxEqual(flow.X(), 0) {
 		t.Fatalf("flow X = %v, want 0 through a solid neighbour", flow.X())
 	}
@@ -1200,11 +1200,11 @@ func TestSolidNeighbourBlocksFlow(t *testing.T) {
 // An open neighbour with liquid below pulls the flow into the drop.
 func TestFlowFallsIntoOpenDrop(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, -1, 0}, block.Water{Depth: 8})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{1, -1, 0}, block.Water{Depth: 8})
 	sim := newLiquidSim(w)
 
-	flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8})
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8})
 	if !(flow.X() > 0) {
 		t.Fatalf("flow X = %v, want a positive pull into the drop", flow.X())
 	}
@@ -1251,8 +1251,8 @@ func TestFallingLiquidDecayAndHeight(t *testing.T) {
 // hop out of the liquid.
 func TestLiquidExitProbeBoostsOverLedge(t *testing.T) {
 	w := newLiquidWorld().
-		fill(dfcube.Pos{-1, 0, -1}, dfcube.Pos{0, 0, 1}, waterSource).
-		set(dfcube.Pos{1, 0, 0}, block.Stone{})
+		fill(cube.Pos{-1, 0, -1}, cube.Pos{0, 0, 1}, waterSource).
+		set(cube.Pos{1, 0, 0}, block.Stone{})
 	sim := newLiquidSim(w)
 	state := submergedState()
 	state.Vel = mgl32.Vec3{0.5, 0, 0}
@@ -1276,10 +1276,10 @@ func TestLiquidExitProbeBoostsOverLedge(t *testing.T) {
 func TestLiquidExitProbeBlockedByCollisionAlone(t *testing.T) {
 	build := func(overhang bool) (*Simulator, *MovementState) {
 		w := newLiquidWorld().
-			fill(dfcube.Pos{-1, 0, -1}, dfcube.Pos{0, 0, 1}, waterSource).
-			set(dfcube.Pos{1, 0, 0}, block.Stone{})
+			fill(cube.Pos{-1, 0, -1}, cube.Pos{0, 0, 1}, waterSource).
+			set(cube.Pos{1, 0, 0}, block.Stone{})
 		if overhang {
-			w.set(dfcube.Pos{0, 1, 0}, block.Stone{})
+			w.set(cube.Pos{0, 1, 0}, block.Stone{})
 		}
 		state := submergedState()
 		state.Pos = mgl32.Vec3{0.5, 0.4, 0.5}
@@ -1319,8 +1319,8 @@ func TestLiquidExitProbeBlockedByCollisionAlone(t *testing.T) {
 // submerged rather than at the surface.
 func TestLiquidExitProbeBlockedByLiquidAbove(t *testing.T) {
 	w := newLiquidWorld().
-		fill(dfcube.Pos{-1, 0, -1}, dfcube.Pos{0, 4, 1}, waterSource).
-		set(dfcube.Pos{1, 0, 0}, block.Stone{})
+		fill(cube.Pos{-1, 0, -1}, cube.Pos{0, 4, 1}, waterSource).
+		set(cube.Pos{1, 0, 0}, block.Stone{})
 	sim := newLiquidSim(w)
 	state := submergedState()
 	state.Vel = mgl32.Vec3{0.5, 0, 0}
@@ -1381,7 +1381,7 @@ func TestClimbUsesEffectiveJumping(t *testing.T) {
 // Shrinking a box past its own size collapses it to its midpoint instead of
 // inverting it.
 func TestShrinkLiquidBoxCollapsesToMidpoint(t *testing.T) {
-	box := dfcube.Box32(0, 0, 0, 1, 0.2, 1)
+	box := cube.Box32(0, 0, 0, 1, 0.2, 1)
 	shrunk := shrinkLiquidBox(box, mgl32.Vec3{0.001, 0.401, 0.001})
 
 	if !approxEqual(shrunk.Min().Y(), 0.1) || !approxEqual(shrunk.Max().Y(), 0.1) {

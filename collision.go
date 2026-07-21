@@ -3,7 +3,7 @@ package bedsim
 import (
 	"github.com/chewxy/math32"
 
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/go-gl/mathgl/mgl32"
 )
 
@@ -15,7 +15,7 @@ type clipCollideResult struct {
 }
 
 // BBClipCollide clips or depenetrates a moving bounding box against a stationary one.
-func BBClipCollide(this, c dfcube.BBox32, vel mgl32.Vec3, oneWay bool, penetration *mgl32.Vec3) mgl32.Vec3 {
+func BBClipCollide(this, c cube.BBox32, vel mgl32.Vec3, oneWay bool, penetration *mgl32.Vec3) mgl32.Vec3 {
 	result := doBBClipCollide(this, c, vel)
 	if penetration != nil && penetration[result.depenetratingAxis] < result.penetration {
 		penetration[result.depenetratingAxis] = result.penetration
@@ -27,7 +27,7 @@ func BBClipCollide(this, c dfcube.BBox32, vel mgl32.Vec3, oneWay bool, penetrati
 	return result.depenetratingVelocity
 }
 
-func doBBClipCollide(stationary, moving dfcube.BBox32, velocity mgl32.Vec3) (result clipCollideResult) {
+func doBBClipCollide(stationary, moving cube.BBox32, velocity mgl32.Vec3) (result clipCollideResult) {
 	result.clippedVelocity = velocity
 	result.depenetratingVelocity = velocity
 
@@ -115,6 +115,6 @@ func doBBClipCollide(stationary, moving dfcube.BBox32, velocity mgl32.Vec3) (res
 }
 
 // BBHasZeroVolume returns true if the bounding box has zero volume.
-func BBHasZeroVolume(bb dfcube.BBox32) bool {
+func BBHasZeroVolume(bb cube.BBox32) bool {
 	return bb.Min() == bb.Max()
 }

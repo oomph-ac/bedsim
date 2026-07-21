@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
@@ -15,15 +15,15 @@ import (
 
 type mockWorld struct{}
 
-func (mockWorld) Block(pos dfcube.Pos) world.Block {
+func (mockWorld) Block(pos cube.Pos) world.Block {
 	return block.Air{}
 }
 
-func (mockWorld) BlockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
+func (mockWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	return nil
 }
 
-func (mockWorld) GetNearbyBBoxes(aabb dfcube.BBox32) []dfcube.BBox32 {
+func (mockWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
 	return nil
 }
 
@@ -33,28 +33,28 @@ func (mockWorld) IsChunkLoaded(chunkX, chunkZ int32) bool {
 
 type staticWorld struct {
 	chunkLoaded bool
-	boxes       []dfcube.BBox32
+	boxes       []cube.BBox32
 }
 
 type cobwebWorld struct {
-	pos dfcube.Pos
+	pos cube.Pos
 }
 
-func (w cobwebWorld) Block(pos dfcube.Pos) world.Block {
+func (w cobwebWorld) Block(pos cube.Pos) world.Block {
 	if pos == w.pos {
 		return block.Cobweb{}
 	}
 	return block.Air{}
 }
 
-func (w cobwebWorld) BlockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
+func (w cobwebWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	if pos != w.pos {
 		return nil
 	}
-	return []dfcube.BBox32{dfcube.Box32(0, 0, 0, 1, 1, 1)}
+	return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1)}
 }
 
-func (cobwebWorld) GetNearbyBBoxes(dfcube.BBox32) []dfcube.BBox32 {
+func (cobwebWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 {
 	return nil
 }
 
@@ -62,20 +62,20 @@ func (cobwebWorld) IsChunkLoaded(int32, int32) bool {
 	return true
 }
 
-func (w staticWorld) Block(pos dfcube.Pos) world.Block {
+func (w staticWorld) Block(pos cube.Pos) world.Block {
 	return block.Air{}
 }
 
-func (w staticWorld) BlockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
+func (w staticWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	return nil
 }
 
-func (w staticWorld) GetNearbyBBoxes(aabb dfcube.BBox32) []dfcube.BBox32 {
+func (w staticWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
 	if len(w.boxes) == 0 {
 		return nil
 	}
 
-	out := make([]dfcube.BBox32, 0, len(w.boxes))
+	out := make([]cube.BBox32, 0, len(w.boxes))
 	for _, bb := range w.boxes {
 		if aabb.IntersectsWith(bb) {
 			out = append(out, bb)
@@ -148,7 +148,7 @@ func newBaseState() *MovementState {
 }
 
 func TestInsideCobwebTranslatesBlockLocalCollisionBoxes(t *testing.T) {
-	pos := dfcube.Pos{32, 64, -24}
+	pos := cube.Pos{32, 64, -24}
 	sim := &Simulator{World: cobwebWorld{pos: pos}}
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
@@ -507,8 +507,8 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 	sim := &Simulator{
 		World: staticWorld{
 			chunkLoaded: true,
-			boxes: []dfcube.BBox32{
-				dfcube.Box32(0, 2, 1, 1, 3, 2),
+			boxes: []cube.BBox32{
+				cube.Box32(0, 2, 1, 1, 3, 2),
 			},
 		},
 		Effects: mockEffects{},
@@ -546,13 +546,13 @@ func TestStepUpTiebreaker(t *testing.T) {
 	// Geometry: ground at Y=0, a 0.5-high slab at X=1 (X=1..2, Y=0..0.5).
 	// The player stands on the ground at X≈0.5, walks in +X toward the slab.
 	// The step-up (0.5 blocks) is within StepHeight (0.6).
-	slabBox := dfcube.Box32(1, 0, -1, 2, 0.5, 2)
-	groundBox := dfcube.Box32(-1, -1, -1, 1, 0, 2)
+	slabBox := cube.Box32(1, 0, -1, 2, 0.5, 2)
+	groundBox := cube.Box32(-1, -1, -1, 1, 0, 2)
 
 	startPos := mgl32.Vec3{0.5, 0, 0.5}
 
 	runSim := func(ignoreStepTiebreaker bool) (mgl32.Vec3, bool) {
-		w := staticWorld{chunkLoaded: true, boxes: []dfcube.BBox32{slabBox, groundBox}}
+		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox32{slabBox, groundBox}}
 		sim := &Simulator{
 			World:   w,
 			Effects: mockEffects{},
@@ -601,8 +601,8 @@ func TestStepUpTiebreaker(t *testing.T) {
 
 	t.Run("blocked step still rejected with flag", func(t *testing.T) {
 		// Place a ceiling directly above the slab so stepping up would cause collision.
-		ceilingBox := dfcube.Box32(1, 1.3, -1, 2, 2.3, 2) // leaves only 0.8 gap, player is 1.8 tall
-		w := staticWorld{chunkLoaded: true, boxes: []dfcube.BBox32{slabBox, groundBox, ceilingBox}}
+		ceilingBox := cube.Box32(1, 1.3, -1, 2, 2.3, 2) // leaves only 0.8 gap, player is 1.8 tall
+		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox32{slabBox, groundBox, ceilingBox}}
 		sim := &Simulator{
 			World:   w,
 			Effects: mockEffects{},

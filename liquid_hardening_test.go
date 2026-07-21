@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
 )
@@ -278,10 +278,10 @@ func TestSwimSpeedMultiplierDepthStriderScaling(t *testing.T) {
 }
 
 type explicitLiquids struct {
-	layer map[dfcube.Pos]world.Liquid
+	layer map[cube.Pos]world.Liquid
 }
 
-func (p explicitLiquids) Liquid(pos dfcube.Pos) (world.Liquid, bool) {
+func (p explicitLiquids) Liquid(pos cube.Pos) (world.Liquid, bool) {
 	liquid, ok := p.layer[pos]
 	return liquid, ok
 }
@@ -292,7 +292,7 @@ func TestHasLiquidLayerReportsExplicitProvider(t *testing.T) {
 		t.Fatal("a plain world must not report liquid layer support")
 	}
 
-	sim.Liquids = explicitLiquids{layer: map[dfcube.Pos]world.Liquid{}}
+	sim.Liquids = explicitLiquids{layer: map[cube.Pos]world.Liquid{}}
 	if !sim.HasLiquidLayer() {
 		t.Fatal("an explicit Liquids provider must report support")
 	}
@@ -310,10 +310,10 @@ func TestHasLiquidLayerAcceptsWorldProvider(t *testing.T) {
 // The explicit field wins over the world assertion when both are present.
 func TestExplicitLiquidsFieldTakesPrecedence(t *testing.T) {
 	w := newLayeredLiquidWorld()
-	w.waterlog(dfcube.Pos{0, 0, 0}, block.Air{}, waterSource)
+	w.waterlog(cube.Pos{0, 0, 0}, block.Air{}, waterSource)
 
 	sim := newLiquidSim(w)
-	sim.Liquids = explicitLiquids{layer: map[dfcube.Pos]world.Liquid{}}
+	sim.Liquids = explicitLiquids{layer: map[cube.Pos]world.Liquid{}}
 
 	state := submergedState()
 	if got := len(sim.touchingLiquidBlocks(state, liquidWater)); got != 0 {
@@ -323,9 +323,9 @@ func TestExplicitLiquidsFieldTakesPrecedence(t *testing.T) {
 
 // Liquids supplied through the explicit field are detected normally.
 func TestExplicitLiquidsProviderDetectsWaterlogged(t *testing.T) {
-	layer := map[dfcube.Pos]world.Liquid{}
+	layer := map[cube.Pos]world.Liquid{}
 	for y := range 4 {
-		layer[dfcube.Pos{0, y, 0}] = waterSource
+		layer[cube.Pos{0, y, 0}] = waterSource
 	}
 	sim := newLiquidSim(newLiquidWorld())
 	sim.Liquids = explicitLiquids{layer: layer}
@@ -455,14 +455,14 @@ func TestLiquidGateExcludesFlying(t *testing.T) {
 // weight observable through the normalized result.
 func TestFlowDropWeightIsEight(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}).
-		set(dfcube.Pos{-1, 0, 0}, block.Water{Depth: 7}).
-		set(dfcube.Pos{0, 0, 1}, block.Water{Depth: 4}).
-		set(dfcube.Pos{0, 0, -1}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, -1, 0}, block.Water{Depth: 8})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{-1, 0, 0}, block.Water{Depth: 7}).
+		set(cube.Pos{0, 0, 1}, block.Water{Depth: 4}).
+		set(cube.Pos{0, 0, -1}, block.Water{Depth: 8}).
+		set(cube.Pos{1, -1, 0}, block.Water{Depth: 8})
 	sim := newLiquidSim(w)
 
-	flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8})
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8})
 	// +X: open with liquid below -> (0 - 0 + 8) = +8
 	// -X: same-type neighbour     -> (1 - 0)     = -1
 	// +Z: same-type neighbour     -> (4 - 0)     = +4
@@ -474,12 +474,12 @@ func TestFlowDropWeightIsEight(t *testing.T) {
 // 6 against the unit-normalized horizontal flow.
 func TestFallingFlowDownwardWeightIsSix(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true}).
-		set(dfcube.Pos{-1, 0, 0}, block.Water{Depth: 4}).
-		set(dfcube.Pos{1, 0, 0}, block.Stone{})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true}).
+		set(cube.Pos{-1, 0, 0}, block.Water{Depth: 4}).
+		set(cube.Pos{1, 0, 0}, block.Stone{})
 	sim := newLiquidSim(w)
 
-	flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true})
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true})
 	// Horizontal flow normalizes to (-1, 0, 0), then Y -= 6, then normalizes.
 	want := mgl32.Vec3{-1, -6, 0}.Normalize()
 	assertVec(t, flow, want)
@@ -488,21 +488,21 @@ func TestFallingFlowDownwardWeightIsSix(t *testing.T) {
 // A waterlogged stairs block whose solid face points at the neighbour blocks
 // flow through that face.
 func TestStairsSolidFaceBlocksFlow(t *testing.T) {
-	build := func(facing dfcube.Direction) mgl32.Vec3 {
+	build := func(facing cube.Direction) mgl32.Vec3 {
 		w := newLayeredLiquidWorld()
-		w.waterlog(dfcube.Pos{0, 0, 0}, block.Stairs{Facing: facing}, block.Water{Depth: 8})
-		w.set(dfcube.Pos{1, 0, 0}, block.Water{Depth: 4})
+		w.waterlog(cube.Pos{0, 0, 0}, block.Stairs{Facing: facing}, block.Water{Depth: 8})
+		w.set(cube.Pos{1, 0, 0}, block.Water{Depth: 4})
 		sim := newLiquidSim(w)
-		return sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8})
+		return sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8})
 	}
 
 	// Facing east: the stairs' full side faces the +X neighbour and closes it.
-	if flow := build(dfcube.East); !approxEqual(flow.X(), 0) {
+	if flow := build(cube.East); !approxEqual(flow.X(), 0) {
 		t.Fatalf("east-facing stairs: flow X = %v, want 0", flow.X())
 	}
 	// Facing west: the +X side is open, so flow proceeds toward the shallower
 	// neighbour.
-	if flow := build(dfcube.West); !(flow.X() > 0) {
+	if flow := build(cube.West); !(flow.X() > 0) {
 		t.Fatalf("west-facing stairs: flow X = %v, want positive", flow.X())
 	}
 }
@@ -522,7 +522,7 @@ func TestNilWorldIsSafe(t *testing.T) {
 	if sim.containsAnyLiquid(state.BoundingBox(false)) {
 		t.Fatal("no world must contain no liquid")
 	}
-	if flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}); flow.Len() != 0 {
+	if flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8}); flow.Len() != 0 {
 		t.Fatalf("flow = %v, want zero with no world", flow)
 	}
 	if sim.HasLiquidLayer() {
@@ -535,8 +535,8 @@ func TestNilWorldIsSafe(t *testing.T) {
 func TestSwimHitboxChangesCeilingCollision(t *testing.T) {
 	newCeilingSim := func() (*Simulator, *MovementState) {
 		w := newLiquidWorld().
-			fill(dfcube.Pos{-1, 0, -1}, dfcube.Pos{1, 1, 1}, waterSource).
-			set(dfcube.Pos{0, 2, 0}, block.Stone{})
+			fill(cube.Pos{-1, 0, -1}, cube.Pos{1, 1, 1}, waterSource).
+			set(cube.Pos{0, 2, 0}, block.Stone{})
 		state := submergedState()
 		// Starts clear of the ceiling in both poses; only the standing hitbox
 		// reaches it after the upward move.
@@ -570,11 +570,11 @@ func TestSwimHitboxChangesCeilingCollision(t *testing.T) {
 func TestLiquidSimulationIsRepeatable(t *testing.T) {
 	run := func() (mgl32.Vec3, mgl32.Vec3) {
 		w := newLiquidWorld().
-			fill(dfcube.Pos{-8, 0, -8}, dfcube.Pos{8, 8, 8}, block.Water{Depth: 8}).
-			set(dfcube.Pos{1, 0, 0}, block.Water{Depth: 6}).
-			set(dfcube.Pos{0, 0, 1}, block.Water{Depth: 4}).
-			set(dfcube.Pos{-1, 1, 0}, block.Water{Depth: 8, Falling: true}).
-			set(dfcube.Pos{2, 0, 2}, block.Stone{})
+			fill(cube.Pos{-8, 0, -8}, cube.Pos{8, 8, 8}, block.Water{Depth: 8}).
+			set(cube.Pos{1, 0, 0}, block.Water{Depth: 6}).
+			set(cube.Pos{0, 0, 1}, block.Water{Depth: 4}).
+			set(cube.Pos{-1, 1, 0}, block.Water{Depth: 8, Falling: true}).
+			set(cube.Pos{2, 0, 2}, block.Stone{})
 		sim := newLiquidSim(w)
 		sim.Inventory = depthStriderInventory{level: 2}
 		state := submergedState()
@@ -609,11 +609,11 @@ func TestLiquidGoldenScenario(t *testing.T) {
 	// Deep enough that the player stays submerged for the whole run, so the
 	// golden measures liquid physics rather than a surface transition.
 	w := newLiquidWorld().
-		fill(dfcube.Pos{-8, 0, -8}, dfcube.Pos{8, 8, 8}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, 0, 0}, block.Water{Depth: 6}).
-		set(dfcube.Pos{0, 0, 1}, block.Water{Depth: 4}).
-		set(dfcube.Pos{-1, 1, 0}, block.Water{Depth: 8, Falling: true}).
-		set(dfcube.Pos{2, 0, 2}, block.Stone{})
+		fill(cube.Pos{-8, 0, -8}, cube.Pos{8, 8, 8}, block.Water{Depth: 8}).
+		set(cube.Pos{1, 0, 0}, block.Water{Depth: 6}).
+		set(cube.Pos{0, 0, 1}, block.Water{Depth: 4}).
+		set(cube.Pos{-1, 1, 0}, block.Water{Depth: 8, Falling: true}).
+		set(cube.Pos{2, 0, 2}, block.Stone{})
 	sim := newLiquidSim(w)
 	sim.Inventory = depthStriderInventory{level: 2}
 

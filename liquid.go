@@ -4,7 +4,7 @@ import (
 	"github.com/chewxy/math32"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
@@ -35,13 +35,13 @@ func (k liquidKind) matches(liquid world.Liquid) bool {
 }
 
 var liquidFaces = [...]struct {
-	delta dfcube.Pos
+	delta cube.Pos
 	vec   mgl32.Vec3
 }{
-	{dfcube.Pos{-1, 0, 0}, mgl32.Vec3{-1, 0, 0}},
-	{dfcube.Pos{1, 0, 0}, mgl32.Vec3{1, 0, 0}},
-	{dfcube.Pos{0, 0, -1}, mgl32.Vec3{0, 0, -1}},
-	{dfcube.Pos{0, 0, 1}, mgl32.Vec3{0, 0, 1}},
+	{cube.Pos{-1, 0, 0}, mgl32.Vec3{-1, 0, 0}},
+	{cube.Pos{1, 0, 0}, mgl32.Vec3{1, 0, 0}},
+	{cube.Pos{0, 0, -1}, mgl32.Vec3{0, 0, -1}},
+	{cube.Pos{0, 0, 1}, mgl32.Vec3{0, 0, 1}},
 }
 
 func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, touchingLiquid bool) {
@@ -181,7 +181,7 @@ func (s *Simulator) updateSwimTravel(state *MovementState) {
 	state.SetVel(vel)
 }
 
-func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) []dfcube.Pos {
+func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) []cube.Pos {
 	box := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl32.Vec3{1e-4, 0, 1e-4})
 	offset := mgl32.Vec3{0.001, 0.401, 0.001}
 	if kind == liquidLava {
@@ -192,11 +192,11 @@ func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) 
 	min, max := box.Min(), box.Max()
 	minX, minY, minZ := int(math32.Floor(min.X())), int(math32.Floor(min.Y())), int(math32.Floor(min.Z()))
 	maxX, maxY, maxZ := int(math32.Floor(max.X()+1)), int(math32.Floor(max.Y()+1)), int(math32.Floor(max.Z()+1))
-	positions := make([]dfcube.Pos, 0, 4)
+	positions := make([]cube.Pos, 0, 4)
 	for x := minX; x < maxX; x++ {
 		for y := minY; y < maxY; y++ {
 			for z := minZ; z < maxZ; z++ {
-				pos := dfcube.Pos{x, y, z}
+				pos := cube.Pos{x, y, z}
 				liquid, ok := s.liquidAt(pos)
 				if !ok || !kind.matches(liquid) {
 					continue
@@ -217,7 +217,7 @@ func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) 
 	return positions
 }
 
-func shrinkLiquidBox(box dfcube.BBox32, offset mgl32.Vec3) dfcube.BBox32 {
+func shrinkLiquidBox(box cube.BBox32, offset mgl32.Vec3) cube.BBox32 {
 	min, max := box.Min().Add(offset), box.Max().Sub(offset)
 	originalMin, originalMax := box.Min(), box.Max()
 	for axis := range 3 {
@@ -226,10 +226,10 @@ func shrinkLiquidBox(box dfcube.BBox32, offset mgl32.Vec3) dfcube.BBox32 {
 			min[axis], max[axis] = mid, mid
 		}
 	}
-	return dfcube.Box32(min.X(), min.Y(), min.Z(), max.X(), max.Y(), max.Z())
+	return cube.Box32(min.X(), min.Y(), min.Z(), max.X(), max.Y(), max.Z())
 }
 
-func (s *Simulator) liquidMovementBlock(pos dfcube.Pos) world.Block {
+func (s *Simulator) liquidMovementBlock(pos cube.Pos) world.Block {
 	if liquid, ok := s.liquidAt(pos); ok {
 		return liquid
 	}
@@ -238,7 +238,7 @@ func (s *Simulator) liquidMovementBlock(pos dfcube.Pos) world.Block {
 
 // blockCollisions returns the collision boxes at pos, treating an absent world
 // as empty space so liquid flow never dereferences a nil provider.
-func (s *Simulator) blockCollisions(pos dfcube.Pos) []dfcube.BBox32 {
+func (s *Simulator) blockCollisions(pos cube.Pos) []cube.BBox32 {
 	if s.World == nil {
 		return nil
 	}
@@ -267,7 +267,7 @@ func (s *Simulator) HasLiquidLayer() bool {
 	return ok
 }
 
-func (s *Simulator) liquidAt(pos dfcube.Pos) (world.Liquid, bool) {
+func (s *Simulator) liquidAt(pos cube.Pos) (world.Liquid, bool) {
 	if provider, ok := s.liquidLayer(); ok {
 		if liquid, found := provider.Liquid(pos); found {
 			return liquid, true
@@ -284,14 +284,14 @@ func liquidHeight(liquid world.Liquid) float32 {
 	return float32(liquid.LiquidDepth()+1) / 9
 }
 
-func (s *Simulator) containsAnyLiquid(box dfcube.BBox32) bool {
+func (s *Simulator) containsAnyLiquid(box cube.BBox32) bool {
 	min, max := box.Min(), box.Max()
 	minX, minY, minZ := int(math32.Floor(min.X())), int(math32.Floor(min.Y())), int(math32.Floor(min.Z()))
 	maxX, maxY, maxZ := int(math32.Ceil(max.X())), int(math32.Ceil(max.Y())), int(math32.Ceil(max.Z()))
 	for x := minX; x < maxX; x++ {
 		for z := minZ; z < maxZ; z++ {
 			for y := minY; y < maxY; y++ {
-				if _, ok := s.liquidAt(dfcube.Pos{x, y, z}); ok {
+				if _, ok := s.liquidAt(cube.Pos{x, y, z}); ok {
 					return true
 				}
 			}
@@ -300,7 +300,7 @@ func (s *Simulator) containsAnyLiquid(box dfcube.BBox32) bool {
 	return false
 }
 
-func (s *Simulator) applyLiquidFlow(state *MovementState, positions []dfcube.Pos, kind liquidKind) {
+func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, kind liquidKind) {
 	flow := mgl32.Vec3{}
 	for _, pos := range positions {
 		liquid, ok := s.liquidAt(pos)
@@ -319,7 +319,7 @@ func (s *Simulator) applyLiquidFlow(state *MovementState, positions []dfcube.Pos
 	}
 }
 
-func (s *Simulator) liquidFlow(pos dfcube.Pos, liquid world.Liquid) mgl32.Vec3 {
+func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
 	currentDecay := liquidDecay(liquid)
 	flow := mgl32.Vec3{}
 	for _, face := range liquidFaces {
@@ -335,7 +335,7 @@ func (s *Simulator) liquidFlow(pos dfcube.Pos, liquid world.Liquid) mgl32.Vec3 {
 		if len(s.blockCollisions(neighbourPos)) != 0 {
 			continue
 		}
-		below := neighbourPos.Side(dfcube.FaceDown)
+		below := neighbourPos.Side(cube.FaceDown)
 		if lower, ok := s.liquidAt(below); ok && lower.LiquidType() == liquid.LiquidType() {
 			flow = flow.Add(face.vec.Mul(float32(liquidDecay(lower) - currentDecay + 8)))
 		}
@@ -343,7 +343,7 @@ func (s *Simulator) liquidFlow(pos dfcube.Pos, liquid world.Liquid) mgl32.Vec3 {
 	if liquid.LiquidFalling() {
 		for _, face := range liquidFaces {
 			neighbourPos := pos.Add(face.delta)
-			aboveNeighbour := neighbourPos.Side(dfcube.FaceUp)
+			aboveNeighbour := neighbourPos.Side(cube.FaceUp)
 			if len(s.blockCollisions(neighbourPos)) != 0 || len(s.blockCollisions(aboveNeighbour)) != 0 {
 				if length := flow.Len(); length > 1e-4 {
 					flow = flow.Mul(1 / length)
@@ -359,7 +359,7 @@ func (s *Simulator) liquidFlow(pos dfcube.Pos, liquid world.Liquid) mgl32.Vec3 {
 	return mgl32.Vec3{}
 }
 
-func (s *Simulator) liquidFlowSideClosed(pos, side dfcube.Pos) bool {
+func (s *Simulator) liquidFlowSideClosed(pos, side cube.Pos) bool {
 	stairs, ok := s.blockAtPos(pos).(block.Stairs)
 	return ok && stairs.Model().FaceSolid(pos, pos.Face(side), s.World)
 }

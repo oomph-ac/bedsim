@@ -3,7 +3,7 @@ package bedsim
 import (
 	"github.com/chewxy/math32"
 
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/go-gl/mathgl/mgl32"
 )
 
@@ -39,10 +39,10 @@ func Vec3HzDistSqr(vec3 mgl32.Vec3) float32 {
 	return vec3.X()*vec3.X() + vec3.Z()*vec3.Z()
 }
 
-func posFromVec3(vec mgl32.Vec3) dfcube.Pos {
-	return dfcube.Pos{int(math32.Floor(vec.X())), int(math32.Floor(vec.Y())), int(math32.Floor(vec.Z()))}
+func posFromVec3(vec mgl32.Vec3) cube.Pos {
+	return cube.Pos{int(math32.Floor(vec.X())), int(math32.Floor(vec.Y())), int(math32.Floor(vec.Z()))}
 }
 
-func posVec3(pos dfcube.Pos) mgl32.Vec3 {
+func posVec3(pos cube.Pos) mgl32.Vec3 {
 	return mgl32.Vec3{float32(pos.X()), float32(pos.Y()), float32(pos.Z())}
 }

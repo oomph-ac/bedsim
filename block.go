@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 )
 
@@ -74,7 +74,7 @@ func BlockClimbable(b world.Block) bool {
 // BlockSupportHeight returns the effective standing surface height for a ground
 // block by sampling its collision boxes at the block centre (0.5, 0.5).
 // This handles slabs, stairs, and any other sub-block geometry correctly.
-func BlockSupportHeight(b world.Block, pos dfcube.Pos, src world.BlockSource) float32 {
+func BlockSupportHeight(b world.Block, pos cube.Pos, src world.BlockSource) float32 {
 	boxes := b.Model().BBox(pos, src)
 	maxY := float32(-1)
 	for _, box := range boxes {
