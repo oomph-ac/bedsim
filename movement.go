@@ -1,15 +1,15 @@
 package bedsim
 
 import (
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
-	"github.com/go-gl/mathgl/mgl32"
+	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/go-gl/mathgl/mgl64"
 )
 
 // ClientState holds non-authoritative movement data sent by the client.
 type ClientState struct {
-	Pos, LastPos mgl32.Vec3
-	Vel, LastVel mgl32.Vec3
-	Mov, LastMov mgl32.Vec3
+	Pos, LastPos mgl64.Vec3
+	Vel, LastVel mgl64.Vec3
+	Mov, LastMov mgl64.Vec3
 
 	HorizontalCollision bool
 	VerticalCollision   bool
@@ -20,46 +20,46 @@ type ClientState struct {
 type MovementState struct {
 	Client ClientState
 
-	Pos, LastPos mgl32.Vec3
-	Vel, LastVel mgl32.Vec3
-	Mov, LastMov mgl32.Vec3
+	Pos, LastPos mgl64.Vec3
+	Vel, LastVel mgl64.Vec3
+	Mov, LastMov mgl64.Vec3
 
-	Rotation, LastRotation mgl32.Vec3
+	Rotation, LastRotation mgl64.Vec3
 
-	SlideOffset mgl32.Vec2
-	Impulse     mgl32.Vec2
-	Size        mgl32.Vec3
+	SlideOffset mgl64.Vec2
+	Impulse     mgl64.Vec2
+	Size        mgl64.Vec3
 	// StandingHeight, SneakingHeight, and CrawlingHeight preserve custom entity
 	// dimensions across pose transitions. Zero values use the current standing
 	// height and vanilla player pose heights respectively.
-	StandingHeight float32
-	SneakingHeight float32
-	CrawlingHeight float32
+	StandingHeight float64
+	SneakingHeight float64
+	CrawlingHeight float64
 
-	SupportingBlockPos *dfcube.Pos
+	SupportingBlockPos *cube.Pos
 
-	Gravity      float32
-	JumpHeight   float32
-	FallDistance float32
+	Gravity      float64
+	JumpHeight   float64
+	FallDistance float64
 
-	MovementSpeed           float32
-	DefaultMovementSpeed    float32
-	AirSpeed                float32
-	UnderwaterMovementSpeed float32
-	LavaMovementSpeed       float32
+	MovementSpeed           float64
+	DefaultMovementSpeed    float64
+	AirSpeed                float64
+	UnderwaterMovementSpeed float64
+	LavaMovementSpeed       float64
 	// SwimSpeedMultiplier scales swimming acceleration; zero means the default.
-	SwimSpeedMultiplier float32
+	SwimSpeedMultiplier float64
 	// DolphinBoostTicks is the remaining dolphin-boost duration.
 	DolphinBoostTicks  int64
 	ServerUpdatedSpeed bool
 
-	Knockback           mgl32.Vec3
+	Knockback           mgl64.Vec3
 	TicksSinceKnockback uint64
 
-	PendingTeleportPos mgl32.Vec3
+	PendingTeleportPos mgl64.Vec3
 	PendingTeleports   int
 
-	TeleportPos             mgl32.Vec3
+	TeleportPos             mgl64.Vec3
 	TicksSinceTeleport      uint64
 	TeleportCompletionTicks uint64
 	TeleportIsSmoothed      bool
@@ -76,7 +76,7 @@ type MovementState struct {
 	JumpDelay             uint64
 
 	Swimming   bool
-	SwimAmount float32
+	SwimAmount float64
 	// SwimWaterGraceTicks retains recent server-observed water contact.
 	SwimWaterGraceTicks    int64
 	AutoJumpingInWater     bool
@@ -134,22 +134,22 @@ func (s *MovementState) ensurePoseHeights() {
 	}
 }
 
-func (s *MovementState) SetPos(newPos mgl32.Vec3) {
+func (s *MovementState) SetPos(newPos mgl64.Vec3) {
 	s.LastPos = s.Pos
 	s.Pos = newPos
 }
 
-func (s *MovementState) SetVel(newVel mgl32.Vec3) {
+func (s *MovementState) SetVel(newVel mgl64.Vec3) {
 	s.LastVel = s.Vel
 	s.Vel = newVel
 }
 
-func (s *MovementState) SetMov(newMov mgl32.Vec3) {
+func (s *MovementState) SetMov(newMov mgl64.Vec3) {
 	s.LastMov = s.Mov
 	s.Mov = newMov
 }
 
-func (s *MovementState) SetRotation(newRot mgl32.Vec3) {
+func (s *MovementState) SetRotation(newRot mgl64.Vec3) {
 	s.LastRotation = s.Rotation
 	s.Rotation = newRot
 }

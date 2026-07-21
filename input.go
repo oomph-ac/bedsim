@@ -1,17 +1,17 @@
 package bedsim
 
-import "github.com/go-gl/mathgl/mgl32"
+import "github.com/go-gl/mathgl/mgl64"
 
 // InputState represents a single tick's client input and reported state.
 type InputState struct {
-	MoveVector mgl32.Vec2
+	MoveVector mgl64.Vec2
 
-	Pitch   float32
-	Yaw     float32
-	HeadYaw float32
+	Pitch   float64
+	Yaw     float64
+	HeadYaw float64
 
-	ClientPos mgl32.Vec3
-	ClientVel mgl32.Vec3
+	ClientPos mgl64.Vec3
+	ClientVel mgl64.Vec3
 
 	HorizontalCollision bool
 	VerticalCollision   bool

@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 )
 
@@ -37,9 +37,9 @@ func BlockName(b world.Block) string {
 }
 
 // BlockFriction returns the friction of the block.
-func BlockFriction(b world.Block) float32 {
+func BlockFriction(b world.Block) float64 {
 	if f, ok := b.(block.Frictional); ok {
-		return float32(f.Friction())
+		return f.Friction()
 	}
 
 	switch BlockName(b) {
@@ -73,7 +73,7 @@ func BlockClimbable(b world.Block) bool {
 // BlockSupportHeight returns the effective standing surface height for a ground
 // block by sampling its collision boxes at the block centre (0.5, 0.5).
 // This handles slabs, stairs, and any other sub-block geometry correctly.
-func BlockSupportHeight(b world.Block, pos dfcube.Pos, src world.BlockSource) float32 {
+func BlockSupportHeight(b world.Block, pos cube.Pos, src world.BlockSource) float32 {
 	boxes := b.Model().BBox(pos, src)
 	maxY := float32(-1)
 	for _, box := range boxes {

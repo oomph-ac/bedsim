@@ -1,10 +1,9 @@
 package bedsim
 
 import (
-	"github.com/chewxy/math32"
+	"math"
 
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
-	"github.com/ethaniccc/float32-cube/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 )
 
 func applyInsideBlockMovement(state *MovementState, blockName string) {
@@ -51,11 +50,11 @@ func (s *Simulator) applyInsideBlockEffects(state *MovementState) {
 	}
 	bb := state.BoundingBox(s.Options.UseSlideOffset)
 	min, maxPoint := bb.Min(), bb.Max()
-	for x := int(math32.Floor(min.X())); x < int(math32.Ceil(maxPoint.X())); x++ {
-		for y := int(math32.Floor(min.Y())); y < int(math32.Ceil(maxPoint.Y())); y++ {
-			for z := int(math32.Floor(min.Z())); z < int(math32.Ceil(maxPoint.Z())); z++ {
-				pos := dfcube.Pos{x, y, z}
-				if !bb.IntersectsWith(cube.Box(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
+	for x := int(math.Floor(min.X())); x < int(math.Ceil(maxPoint.X())); x++ {
+		for y := int(math.Floor(min.Y())); y < int(math.Ceil(maxPoint.Y())); y++ {
+			for z := int(math.Floor(min.Z())); z < int(math.Ceil(maxPoint.Z())); z++ {
+				pos := cube.Pos{x, y, z}
+				if !bb.IntersectsWith(cube.Box(0, 0, 0, 1, 1, 1).Translate(pos.Vec3())) {
 					continue
 				}
 				b := s.World.Block(pos)

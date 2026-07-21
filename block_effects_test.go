@@ -1,13 +1,13 @@
 package bedsim
 
 import (
-	"github.com/chewxy/math32"
+	"math"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/go-gl/mathgl/mgl32"
+	"github.com/go-gl/mathgl/mgl64"
 )
 
 type namedBlock struct {
@@ -23,24 +23,24 @@ func (encodedBlockSemantics) BlockName(b world.Block) string {
 	name, _ := b.EncodeBlock()
 	return name
 }
-func (encodedBlockSemantics) BlockFriction(world.Block) float32 { return DefaultBlockFriction }
+func (encodedBlockSemantics) BlockFriction(world.Block) float64 { return DefaultBlockFriction }
 func (encodedBlockSemantics) BlockClimbable(world.Block) bool   { return false }
 
 func TestInsideBlockMovementMultipliers(t *testing.T) {
 	tests := []struct {
 		name      string
 		blockName string
-		want      mgl32.Vec3
+		want      mgl64.Vec3
 	}{
-		{name: "honey", blockName: "minecraft:honey_block", want: mgl32.Vec3{0.4, -0.12, 0.4}},
-		{name: "sweet berry bush", blockName: "minecraft:sweet_berry_bush", want: mgl32.Vec3{0.8, -0.75, 0.8}},
-		{name: "powder snow", blockName: "minecraft:powder_snow", want: mgl32.Vec3{0.9, -1.5, 0.9}},
+		{name: "honey", blockName: "minecraft:honey_block", want: mgl64.Vec3{0.4, -0.12, 0.4}},
+		{name: "sweet berry bush", blockName: "minecraft:sweet_berry_bush", want: mgl64.Vec3{0.8, -0.75, 0.8}},
+		{name: "powder snow", blockName: "minecraft:powder_snow", want: mgl64.Vec3{0.9, -1.5, 0.9}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			state := newBaseState()
-			state.Vel = mgl32.Vec3{1, -1, 1}
+			state.Vel = mgl64.Vec3{1, -1, 1}
 
 			applyInsideBlockMovement(state, tt.blockName)
 
@@ -64,7 +64,7 @@ func TestHoneyBlockReducesJumpPower(t *testing.T) {
 	if !sim.attemptJump(state, nil) {
 		t.Fatal("expected jump to be applied")
 	}
-	if want := float32(DefaultJumpHeight * 0.6); math32.Abs(state.Vel.Y()-want) > 1e-6 {
+	if want := DefaultJumpHeight * 0.6; math.Abs(state.Vel.Y()-want) > 1e-12 {
 		t.Fatalf("expected honey jump velocity %v, got %v", want, state.Vel.Y())
 	}
 }
@@ -103,39 +103,39 @@ func TestHoneyWalkSlowdownMatchesSlime(t *testing.T) {
 	sim := &Simulator{BlockSemantics: overrideBlockSemantics{name: "minecraft:honey_block"}}
 	state := newBaseState()
 	state.OnGround = true
-	state.Vel = mgl32.Vec3{1, 0.05, 1}
+	state.Vel = mgl64.Vec3{1, 0.05, 1}
 
 	sim.walkOnBlock(state, block.Air{})
 
-	if want := float32(0.41); math32.Abs(state.Vel.X()-want) > 1e-6 || math32.Abs(state.Vel.Z()-want) > 1e-6 {
+	if want := 0.41; math.Abs(state.Vel.X()-want) > 1e-12 || math.Abs(state.Vel.Z()-want) > 1e-12 {
 		t.Fatalf("expected honey walk slowdown %v, got %v", want, state.Vel)
 	}
 }
 
 func TestSimulationAppliesInsideBlockMovementEffect(t *testing.T) {
-	w := environmentWorld{blocks: map[dfcube.Pos]world.Block{
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{0, 0, 0}: namedBlock{name: "minecraft:honey_block"},
 	}}
 	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
 	state := newBaseState()
-	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
-	state.Vel = mgl32.Vec3{0.1, 0, 0}
+	state.Pos = mgl64.Vec3{0.5, 0, 0.5}
+	state.Vel = mgl64.Vec3{0.1, 0, 0}
 	state.HasGravity = false
 
 	sim.SimulateState(state)
 
-	if want := float32(0.1 * DefaultAirFriction * 0.4); math32.Abs(state.Vel.X()-want) > 1e-6 {
+	if want := 0.1 * DefaultAirFriction * 0.4; math.Abs(state.Vel.X()-want) > 1e-12 {
 		t.Fatalf("expected integrated honey slowdown %v, got %v", want, state.Vel.X())
 	}
 }
 
 func TestSimulationAppliesScaffoldingTraversal(t *testing.T) {
-	w := environmentWorld{blocks: map[dfcube.Pos]world.Block{
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{0, 0, 0}: namedBlock{name: "minecraft:scaffolding"},
 	}}
 	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
 	state := newBaseState()
-	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Pos = mgl64.Vec3{0.5, 0, 0.5}
 	state.HasGravity = false
 
 	sim.Simulate(state, InputState{AscendBlock: true})
@@ -146,7 +146,7 @@ func TestSimulationAppliesScaffoldingTraversal(t *testing.T) {
 }
 
 func TestSimulationDetectsNonSolidWebAndAppliesWeaving(t *testing.T) {
-	w := environmentWorld{blocks: map[dfcube.Pos]world.Block{
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{0, 0, 0}: namedBlock{name: "minecraft:web"},
 	}}
 	sim := &Simulator{
@@ -155,13 +155,13 @@ func TestSimulationDetectsNonSolidWebAndAppliesWeaving(t *testing.T) {
 		Effects:        fixedEffects{EffectWeaving: 0},
 	}
 	state := newBaseState()
-	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
-	state.Vel = mgl32.Vec3{0.1, 0, 0}
+	state.Pos = mgl64.Vec3{0.5, 0, 0.5}
+	state.Vel = mgl64.Vec3{0.1, 0, 0}
 	state.HasGravity = false
 
 	result := sim.SimulateState(state)
 
-	if want := float32(0.05); math32.Abs(result.Movement.X()-want) > 1e-6 {
+	if want := 0.05; math.Abs(result.Movement.X()-want) > 1e-12 {
 		t.Fatalf("expected Weaving web movement %v, got %v", want, result.Movement.X())
 	}
 }

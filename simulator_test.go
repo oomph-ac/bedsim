@@ -2,25 +2,24 @@ package bedsim
 
 import (
 	"fmt"
-	"github.com/chewxy/math32"
+	"math"
 	"strings"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/ethaniccc/float32-cube/cube"
-	"github.com/go-gl/mathgl/mgl32"
+	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
 type mockWorld struct{}
 
-func (mockWorld) Block(pos dfcube.Pos) world.Block {
+func (mockWorld) Block(pos cube.Pos) world.Block {
 	return block.Air{}
 }
 
-func (mockWorld) BlockCollisions(pos dfcube.Pos) []cube.BBox {
+func (mockWorld) BlockCollisions(pos cube.Pos) []cube.BBox {
 	return nil
 }
 
@@ -37,11 +36,11 @@ type staticWorld struct {
 	boxes       []cube.BBox
 }
 
-func (w staticWorld) Block(pos dfcube.Pos) world.Block {
+func (w staticWorld) Block(pos cube.Pos) world.Block {
 	return block.Air{}
 }
 
-func (w staticWorld) BlockCollisions(pos dfcube.Pos) []cube.BBox {
+func (w staticWorld) BlockCollisions(pos cube.Pos) []cube.BBox {
 	return nil
 }
 
@@ -82,7 +81,7 @@ func (m mockInventory) HasElytra() bool {
 
 type overrideBlockSemantics struct {
 	name      string
-	friction  float32
+	friction  float64
 	climbable bool
 }
 
@@ -90,7 +89,7 @@ func (s overrideBlockSemantics) BlockName(world.Block) string {
 	return s.name
 }
 
-func (s overrideBlockSemantics) BlockFriction(world.Block) float32 {
+func (s overrideBlockSemantics) BlockFriction(world.Block) float64 {
 	return s.friction
 }
 
@@ -101,14 +100,14 @@ func (s overrideBlockSemantics) BlockClimbable(world.Block) bool {
 func newBaseState() *MovementState {
 	return &MovementState{
 		Client: ClientState{
-			Pos: mgl32.Vec3{},
-			Vel: mgl32.Vec3{},
-			Mov: mgl32.Vec3{},
+			Pos: mgl64.Vec3{},
+			Vel: mgl64.Vec3{},
+			Mov: mgl64.Vec3{},
 		},
-		Pos:                  mgl32.Vec3{},
-		Vel:                  mgl32.Vec3{},
-		Mov:                  mgl32.Vec3{},
-		Size:                 mgl32.Vec3{0.6, 1.8, 1},
+		Pos:                  mgl64.Vec3{},
+		Vel:                  mgl64.Vec3{},
+		Mov:                  mgl64.Vec3{},
+		Size:                 mgl64.Vec3{0.6, 1.8, 1},
 		MovementSpeed:        0.1,
 		DefaultMovementSpeed: 0.1,
 		AirSpeed:             0.02,
@@ -144,9 +143,9 @@ func TestSimulateMoveRelative(t *testing.T) {
 	state := newBaseState()
 
 	input := InputState{
-		MoveVector: mgl32.Vec2{0, 1},
-		ClientPos:  mgl32.Vec3{},
-		ClientVel:  mgl32.Vec3{},
+		MoveVector: mgl64.Vec2{0, 1},
+		ClientPos:  mgl64.Vec3{},
+		ClientVel:  mgl64.Vec3{},
 		Yaw:        0,
 		Pitch:      0,
 		HeadYaw:    0,
@@ -168,7 +167,7 @@ func TestSimulateStateOutcomeTeleport(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.TeleportPos = mgl32.Vec3{12, 63, -4}
+	state.TeleportPos = mgl64.Vec3{12, 63, -4}
 	state.TicksSinceTeleport = 0
 	state.TeleportCompletionTicks = 0
 	state.TeleportIsSmoothed = false
@@ -189,8 +188,8 @@ func TestSimulateStateTeleportDoesNotUpdateFallDistance(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.Pos = mgl32.Vec3{0, 70, 0}
-	state.TeleportPos = mgl32.Vec3{0, 60, 0}
+	state.Pos = mgl64.Vec3{0, 70, 0}
+	state.TeleportPos = mgl64.Vec3{0, 60, 0}
 	state.TicksSinceTeleport = 0
 	state.TeleportCompletionTicks = 0
 
@@ -211,10 +210,10 @@ func TestSimulateStateOutcomeUnreliable(t *testing.T) {
 
 	state := newBaseState()
 	state.GameMode = packet.GameTypeCreative
-	state.Pos = mgl32.Vec3{10, 70, 10}
-	state.Client.Pos = mgl32.Vec3{3, 64, -1}
-	state.Vel = mgl32.Vec3{0.3, 0.9, -0.2}
-	state.Client.Vel = mgl32.Vec3{-0.1, 0, 0.2}
+	state.Pos = mgl64.Vec3{10, 70, 10}
+	state.Client.Pos = mgl64.Vec3{3, 64, -1}
+	state.Vel = mgl64.Vec3{0.3, 0.9, -0.2}
+	state.Client.Vel = mgl64.Vec3{-0.1, 0, 0.2}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnreliable {
@@ -237,10 +236,10 @@ func TestSimulateStateNoClipPassesThroughClientState(t *testing.T) {
 	state := newBaseState()
 	state.NoClip = true
 	state.OnGround = true
-	state.Pos = mgl32.Vec3{10, 70, 10}
-	state.Client.Pos = mgl32.Vec3{3, 64, -1}
-	state.Vel = mgl32.Vec3{1, 2, 3}
-	state.Client.Vel = mgl32.Vec3{0.1, 0.2, 0.3}
+	state.Pos = mgl64.Vec3{10, 70, 10}
+	state.Client.Pos = mgl64.Vec3{3, 64, -1}
+	state.Vel = mgl64.Vec3{1, 2, 3}
+	state.Client.Vel = mgl64.Vec3{0.1, 0.2, 0.3}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnreliable {
@@ -259,15 +258,15 @@ func TestSimulateStateNoClipPassesThroughClientState(t *testing.T) {
 
 func TestUpdateFallDistanceUsesResolvedGroundState(t *testing.T) {
 	state := newBaseState()
-	state.Pos = mgl32.Vec3{0, 10, 0}
+	state.Pos = mgl64.Vec3{0, 10, 0}
 
-	state.SetPos(mgl32.Vec3{0, 7, 0})
+	state.SetPos(mgl64.Vec3{0, 7, 0})
 	updateFallDistance(state, 10)
 	if state.FallDistance != 3 {
 		t.Fatalf("expected fall distance to increase after downward move, got %v", state.FallDistance)
 	}
 
-	state.SetPos(mgl32.Vec3{0, 8, 0})
+	state.SetPos(mgl64.Vec3{0, 8, 0})
 	updateFallDistance(state, 7)
 	if state.FallDistance != 0 {
 		t.Fatalf("expected upward move to reset fall distance, got %v", state.FallDistance)
@@ -275,7 +274,7 @@ func TestUpdateFallDistanceUsesResolvedGroundState(t *testing.T) {
 
 	state.FallDistance = 4
 	state.OnGround = true
-	state.SetPos(mgl32.Vec3{0, 6, 0})
+	state.SetPos(mgl64.Vec3{0, 6, 0})
 	updateFallDistance(state, 8)
 	if state.FallDistance != 0 {
 		t.Fatalf("expected grounded move to clear fall distance, got %v", state.FallDistance)
@@ -325,13 +324,13 @@ func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) 
 
 	tests := []struct {
 		name     string
-		friction float32
+		friction float64
 	}{
 		{name: "zero", friction: 0},
 		{name: "negative", friction: -0.42},
-		{name: "nan", friction: math32.NaN()},
-		{name: "positive infinity", friction: math32.Inf(1)},
-		{name: "negative infinity", friction: math32.Inf(-1)},
+		{name: "nan", friction: math.NaN()},
+		{name: "positive infinity", friction: math.Inf(1)},
+		{name: "negative infinity", friction: math.Inf(-1)},
 	}
 
 	for _, tt := range tests {
@@ -357,13 +356,13 @@ func TestSimulateStateOutcomeUnloadedChunk(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.Vel = mgl32.Vec3{0.2, 0.1, -0.1}
+	state.Vel = mgl64.Vec3{0.2, 0.1, -0.1}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnloadedChunk {
 		t.Fatalf("expected unloaded chunk outcome, got %v", result.Outcome)
 	}
-	if state.Vel != (mgl32.Vec3{}) {
+	if state.Vel != (mgl64.Vec3{}) {
 		t.Fatalf("expected velocity to be cleared, got %v", state.Vel)
 	}
 }
@@ -376,13 +375,13 @@ func TestSimulateStateOutcomeImmobileOrNotReady(t *testing.T) {
 
 	state := newBaseState()
 	state.Immobile = true
-	state.Vel = mgl32.Vec3{0.5, -0.3, 0.5}
+	state.Vel = mgl64.Vec3{0.5, -0.3, 0.5}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeImmobileOrNotReady {
 		t.Fatalf("expected immobile/not-ready outcome, got %v", result.Outcome)
 	}
-	if state.Vel != (mgl32.Vec3{}) {
+	if state.Vel != (mgl64.Vec3{}) {
 		t.Fatalf("expected velocity to be cleared, got %v", state.Vel)
 	}
 }
@@ -395,7 +394,7 @@ func TestSimulateStateSkipsGravityWhenDisabled(t *testing.T) {
 
 	state := newBaseState()
 	state.HasGravity = false
-	state.Impulse = mgl32.Vec2{0, 0.98}
+	state.Impulse = mgl64.Vec2{0, 0.98}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeNormal {
@@ -416,7 +415,7 @@ func TestSimulateStateInvalidGlideContinuesNormalMovement(t *testing.T) {
 	state := newBaseState()
 	state.Gliding = true
 	state.OnGround = true
-	state.Impulse = mgl32.Vec2{0, 0.98}
+	state.Impulse = mgl64.Vec2{0, 0.98}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeNormal {
@@ -443,7 +442,7 @@ func TestSimulateStateDebugTraceIncludesCollisionStream(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.Impulse = mgl32.Vec2{0, 0.98}
+	state.Impulse = mgl64.Vec2{0, 0.98}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeNormal {
@@ -484,12 +483,12 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.Pos = mgl32.Vec3{0, 0, 0.69}
+	state.Pos = mgl64.Vec3{0, 0, 0.69}
 	state.Client.Pos = state.Pos
 	state.OnGround = true
 	state.Jumping = true
 	state.Sprinting = true
-	state.Rotation = mgl32.Vec3{0, 0, 0}
+	state.Rotation = mgl64.Vec3{0, 0, 0}
 	state.JumpHeight = DefaultJumpHeight
 
 	result := sim.SimulateState(state)
@@ -513,9 +512,9 @@ func TestStepUpTiebreaker(t *testing.T) {
 	slabBox := cube.Box(1, 0, -1, 2, 0.5, 2)
 	groundBox := cube.Box(-1, -1, -1, 1, 0, 2)
 
-	startPos := mgl32.Vec3{0.5, 0, 0.5}
+	startPos := mgl64.Vec3{0.5, 0, 0.5}
 
-	runSim := func(ignoreStepTiebreaker bool) (mgl32.Vec3, bool) {
+	runSim := func(ignoreStepTiebreaker bool) (mgl64.Vec3, bool) {
 		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox{slabBox, groundBox}}
 		sim := &Simulator{
 			World:   w,
@@ -532,9 +531,9 @@ func TestStepUpTiebreaker(t *testing.T) {
 		state.JumpHeight = DefaultJumpHeight
 
 		input := InputState{
-			MoveVector: mgl32.Vec2{0, 1},
+			MoveVector: mgl64.Vec2{0, 1},
 			ClientPos:  startPos,
-			ClientVel:  mgl32.Vec3{},
+			ClientVel:  mgl64.Vec3{},
 			Yaw:        -90, // face +X
 			HeadYaw:    -90,
 		}
@@ -582,9 +581,9 @@ func TestStepUpTiebreaker(t *testing.T) {
 		state.JumpHeight = DefaultJumpHeight
 
 		input := InputState{
-			MoveVector: mgl32.Vec2{0, 1},
+			MoveVector: mgl64.Vec2{0, 1},
 			ClientPos:  startPos,
-			ClientVel:  mgl32.Vec3{},
+			ClientVel:  mgl64.Vec3{},
 			Yaw:        -90,
 			HeadYaw:    -90,
 		}
@@ -611,8 +610,8 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			name: "authoritative velocity-only drift",
 			mode: SimulationModeAuthoritative,
 			mutate: func(state *MovementState) {
-				state.Vel = mgl32.Vec3{0.5, 0, 0}
-				state.Client.Vel = mgl32.Vec3{}
+				state.Vel = mgl64.Vec3{0.5, 0, 0}
+				state.Client.Vel = mgl64.Vec3{}
 			},
 			wantSet: true,
 		},
@@ -620,8 +619,8 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			name: "permissive velocity-only drift",
 			mode: SimulationModePermissive,
 			mutate: func(state *MovementState) {
-				state.Vel = mgl32.Vec3{0.5, 0, 0}
-				state.Client.Vel = mgl32.Vec3{}
+				state.Vel = mgl64.Vec3{0.5, 0, 0}
+				state.Client.Vel = mgl64.Vec3{}
 			},
 			wantSet: false,
 		},
@@ -629,8 +628,8 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			name: "permissive position drift",
 			mode: SimulationModePermissive,
 			mutate: func(state *MovementState) {
-				state.Pos = mgl32.Vec3{0.5, 0, 0}
-				state.Client.Pos = mgl32.Vec3{}
+				state.Pos = mgl64.Vec3{0.5, 0, 0}
+				state.Client.Pos = mgl64.Vec3{}
 			},
 			wantSet: true,
 		},
@@ -638,8 +637,8 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			name: "passive position drift",
 			mode: SimulationModePassive,
 			mutate: func(state *MovementState) {
-				state.Pos = mgl32.Vec3{0.5, 0, 0}
-				state.Client.Pos = mgl32.Vec3{}
+				state.Pos = mgl64.Vec3{0.5, 0, 0}
+				state.Client.Pos = mgl64.Vec3{}
 			},
 			wantSet: false,
 		},

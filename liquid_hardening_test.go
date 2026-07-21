@@ -1,13 +1,13 @@
 package bedsim
 
 import (
-	"github.com/chewxy/math32"
+	"math"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
-	dfcube "github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/go-gl/mathgl/mgl32"
+	"github.com/go-gl/mathgl/mgl64"
 )
 
 func dryState() *MovementState {
@@ -184,7 +184,7 @@ func TestRealWaterContactDoesNotNeedSwimmingFlag(t *testing.T) {
 	state.Swimming = false
 
 	sim.SimulateState(state)
-	assertVec(t, state.Vel, mgl32.Vec3{0, -0.005, 0})
+	assertVec(t, state.Vel, mgl64.Vec3{0, -0.005, 0})
 }
 
 // The security window's default is pinned so a regression cannot silently
@@ -205,7 +205,7 @@ func TestSwimWaterGraceResetOnTeleport(t *testing.T) {
 	state := dryState()
 	state.Swimming = true
 	state.SwimWaterGraceTicks = DefaultSwimWaterGraceTicks
-	state.TeleportPos = mgl32.Vec3{50, 50, 50}
+	state.TeleportPos = mgl64.Vec3{50, 50, 50}
 	state.TeleportCompletionTicks = 3
 	state.TicksSinceTeleport = 0
 
@@ -245,7 +245,7 @@ func TestLavaWinsOverStaleWaterGrace(t *testing.T) {
 
 	sim.SimulateState(state)
 	// Lava gravity, not water travel's zero gravity for a swimmer.
-	assertVec(t, state.Vel, mgl32.Vec3{0, -0.02, 0})
+	assertVec(t, state.Vel, mgl64.Vec3{0, -0.02, 0})
 }
 
 // The swim-speed multiplier branch scales acceleration by
@@ -253,7 +253,7 @@ func TestLavaWinsOverStaleWaterGrace(t *testing.T) {
 // against none pins that expression, which the golden cannot reach because it
 // runs with a multiplier of 1.
 func TestSwimSpeedMultiplierDepthStriderScaling(t *testing.T) {
-	run := func(level int) float32 {
+	run := func(level int) float64 {
 		sim := newLiquidSim(filledColumn(waterSource))
 		sim.Inventory = depthStriderInventory{level: level}
 		state := submergedState()
@@ -261,7 +261,7 @@ func TestSwimSpeedMultiplierDepthStriderScaling(t *testing.T) {
 		state.SwimWaterGraceTicks = DefaultSwimWaterGraceTicks
 		state.SwimSpeedMultiplier = 2
 		state.OnGround = true
-		state.Impulse = mgl32.Vec2{0, 0.98}
+		state.Impulse = mgl64.Vec2{0, 0.98}
 		sim.SimulateState(state)
 		return state.Vel.Z()
 	}
@@ -272,16 +272,16 @@ func TestSwimSpeedMultiplierDepthStriderScaling(t *testing.T) {
 	}
 	// fraction 0 -> 0.7; fraction 1 -> 1.0. Drag is 0.8 in both cases because
 	// the Depth Strider drag term is gated on multiplier <= 1.
-	if ratio := full / none; math32.Abs(ratio-1/0.7) > 1e-6 {
+	if ratio := full / none; math.Abs(ratio-1/0.7) > 1e-9 {
 		t.Fatalf("full/none acceleration ratio = %.17g, want %.17g", ratio, 1/0.7)
 	}
 }
 
 type explicitLiquids struct {
-	layer map[dfcube.Pos]world.Liquid
+	layer map[cube.Pos]world.Liquid
 }
 
-func (p explicitLiquids) Liquid(pos dfcube.Pos) (world.Liquid, bool) {
+func (p explicitLiquids) Liquid(pos cube.Pos) (world.Liquid, bool) {
 	liquid, ok := p.layer[pos]
 	return liquid, ok
 }
@@ -292,7 +292,7 @@ func TestHasLiquidLayerReportsExplicitProvider(t *testing.T) {
 		t.Fatal("a plain world must not report liquid layer support")
 	}
 
-	sim.Liquids = explicitLiquids{layer: map[dfcube.Pos]world.Liquid{}}
+	sim.Liquids = explicitLiquids{layer: map[cube.Pos]world.Liquid{}}
 	if !sim.HasLiquidLayer() {
 		t.Fatal("an explicit Liquids provider must report support")
 	}
@@ -310,10 +310,10 @@ func TestHasLiquidLayerAcceptsWorldProvider(t *testing.T) {
 // The explicit field wins over the world assertion when both are present.
 func TestExplicitLiquidsFieldTakesPrecedence(t *testing.T) {
 	w := newLayeredLiquidWorld()
-	w.waterlog(dfcube.Pos{0, 0, 0}, block.Air{}, waterSource)
+	w.waterlog(cube.Pos{0, 0, 0}, block.Air{}, waterSource)
 
 	sim := newLiquidSim(w)
-	sim.Liquids = explicitLiquids{layer: map[dfcube.Pos]world.Liquid{}}
+	sim.Liquids = explicitLiquids{layer: map[cube.Pos]world.Liquid{}}
 
 	state := submergedState()
 	if got := len(sim.touchingLiquidBlocks(state, liquidWater)); got != 0 {
@@ -323,9 +323,9 @@ func TestExplicitLiquidsFieldTakesPrecedence(t *testing.T) {
 
 // Liquids supplied through the explicit field are detected normally.
 func TestExplicitLiquidsProviderDetectsWaterlogged(t *testing.T) {
-	layer := map[dfcube.Pos]world.Liquid{}
+	layer := map[cube.Pos]world.Liquid{}
 	for y := range 4 {
-		layer[dfcube.Pos{0, y, 0}] = waterSource
+		layer[cube.Pos{0, y, 0}] = waterSource
 	}
 	sim := newLiquidSim(newLiquidWorld())
 	sim.Liquids = explicitLiquids{layer: layer}
@@ -335,7 +335,7 @@ func TestExplicitLiquidsProviderDetectsWaterlogged(t *testing.T) {
 		t.Fatal("expected waterlogged blocks from the explicit provider")
 	}
 	sim.SimulateState(state)
-	assertVec(t, state.Vel, mgl32.Vec3{0, -0.005, 0})
+	assertVec(t, state.Vel, mgl64.Vec3{0, -0.005, 0})
 }
 
 // With RequireLiquidLayer set, a simulator that cannot see layer 1 refuses to
@@ -344,7 +344,7 @@ func TestRequireLiquidLayerFailsClosed(t *testing.T) {
 	sim := newLiquidSim(newLiquidWorld())
 	sim.Options.RequireLiquidLayer = true
 	state := submergedState()
-	state.Vel = mgl32.Vec3{0.5, 0.5, 0.5}
+	state.Vel = mgl64.Vec3{0.5, 0.5, 0.5}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnreliable {
@@ -383,12 +383,12 @@ func TestUpstreamImpulseClampingOptIn(t *testing.T) {
 		name     string
 		upstream bool
 		input    InputState
-		want     float32
+		want     float64
 	}{
-		{"sneak default", false, InputState{SneakDown: true, MoveVector: mgl32.Vec2{0, 1}}, MaxSneakImpulse * 0.98},
-		{"sneak upstream", true, InputState{SneakDown: true, MoveVector: mgl32.Vec2{0, 1}}, 0.98},
-		{"consumable default", false, InputState{UsingConsumable: true, MoveVector: mgl32.Vec2{0, 1}}, MaxConsumingImpulse * 0.98},
-		{"consumable upstream", true, InputState{UsingConsumable: true, MoveVector: mgl32.Vec2{0, 1}}, 0.98},
+		{"sneak default", false, InputState{SneakDown: true, MoveVector: mgl64.Vec2{0, 1}}, MaxSneakImpulse * 0.98},
+		{"sneak upstream", true, InputState{SneakDown: true, MoveVector: mgl64.Vec2{0, 1}}, 0.98},
+		{"consumable default", false, InputState{UsingConsumable: true, MoveVector: mgl64.Vec2{0, 1}}, MaxConsumingImpulse * 0.98},
+		{"consumable upstream", true, InputState{UsingConsumable: true, MoveVector: mgl64.Vec2{0, 1}}, 0.98},
 	}
 
 	for _, tc := range cases {
@@ -411,7 +411,7 @@ func TestUpstreamImpulseClampingStillBoundsMoveVector(t *testing.T) {
 	sim.Options.UpstreamImpulseClamping = true
 	state := newBaseState()
 
-	sim.applyInput(state, InputState{MoveVector: mgl32.Vec2{5, -5}})
+	sim.applyInput(state, InputState{MoveVector: mgl64.Vec2{5, -5}})
 	if !approxEqual(state.Impulse.X(), 0.98) || !approxEqual(state.Impulse.Y(), -0.98) {
 		t.Fatalf("impulse = %v, want the move vector clamped to [-1, 1] then scaled", state.Impulse)
 	}
@@ -423,14 +423,14 @@ func TestFlyingIsUnreliableBeforePhysics(t *testing.T) {
 	sim := newLiquidSim(filledColumn(waterSource))
 	state := submergedState()
 	state.Flying = true
-	state.Vel = mgl32.Vec3{0.25, 0.25, 0.25}
-	state.Client.Vel = mgl32.Vec3{1, 2, 3}
+	state.Vel = mgl64.Vec3{0.25, 0.25, 0.25}
+	state.Client.Vel = mgl64.Vec3{1, 2, 3}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnreliable {
 		t.Fatalf("outcome = %v, want unreliable", result.Outcome)
 	}
-	assertVec(t, state.Vel, mgl32.Vec3{1, 2, 3})
+	assertVec(t, state.Vel, mgl64.Vec3{1, 2, 3})
 }
 
 // The liquid gate itself also excludes flying, independently of the reliability
@@ -455,18 +455,18 @@ func TestLiquidGateExcludesFlying(t *testing.T) {
 // weight observable through the normalized result.
 func TestFlowDropWeightIsEight(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}).
-		set(dfcube.Pos{-1, 0, 0}, block.Water{Depth: 7}).
-		set(dfcube.Pos{0, 0, 1}, block.Water{Depth: 4}).
-		set(dfcube.Pos{0, 0, -1}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, -1, 0}, block.Water{Depth: 8})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{-1, 0, 0}, block.Water{Depth: 7}).
+		set(cube.Pos{0, 0, 1}, block.Water{Depth: 4}).
+		set(cube.Pos{0, 0, -1}, block.Water{Depth: 8}).
+		set(cube.Pos{1, -1, 0}, block.Water{Depth: 8})
 	sim := newLiquidSim(w)
 
-	flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8})
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8})
 	// +X: open with liquid below -> (0 - 0 + 8) = +8
 	// -X: same-type neighbour     -> (1 - 0)     = -1
 	// +Z: same-type neighbour     -> (4 - 0)     = +4
-	want := mgl32.Vec3{7, 0, 4}.Normalize()
+	want := mgl64.Vec3{7, 0, 4}.Normalize()
 	assertVec(t, flow, want)
 }
 
@@ -474,35 +474,35 @@ func TestFlowDropWeightIsEight(t *testing.T) {
 // 6 against the unit-normalized horizontal flow.
 func TestFallingFlowDownwardWeightIsSix(t *testing.T) {
 	w := newLiquidWorld().
-		set(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true}).
-		set(dfcube.Pos{-1, 0, 0}, block.Water{Depth: 4}).
-		set(dfcube.Pos{1, 0, 0}, block.Stone{})
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true}).
+		set(cube.Pos{-1, 0, 0}, block.Water{Depth: 4}).
+		set(cube.Pos{1, 0, 0}, block.Stone{})
 	sim := newLiquidSim(w)
 
-	flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true})
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true})
 	// Horizontal flow normalizes to (-1, 0, 0), then Y -= 6, then normalizes.
-	want := mgl32.Vec3{-1, -6, 0}.Normalize()
+	want := mgl64.Vec3{-1, -6, 0}.Normalize()
 	assertVec(t, flow, want)
 }
 
 // A waterlogged stairs block whose solid face points at the neighbour blocks
 // flow through that face.
 func TestStairsSolidFaceBlocksFlow(t *testing.T) {
-	build := func(facing dfcube.Direction) mgl32.Vec3 {
+	build := func(facing cube.Direction) mgl64.Vec3 {
 		w := newLayeredLiquidWorld()
-		w.waterlog(dfcube.Pos{0, 0, 0}, block.Stairs{Facing: facing}, block.Water{Depth: 8})
-		w.set(dfcube.Pos{1, 0, 0}, block.Water{Depth: 4})
+		w.waterlog(cube.Pos{0, 0, 0}, block.Stairs{Facing: facing}, block.Water{Depth: 8})
+		w.set(cube.Pos{1, 0, 0}, block.Water{Depth: 4})
 		sim := newLiquidSim(w)
-		return sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8})
+		return sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8})
 	}
 
 	// Facing east: the stairs' full side faces the +X neighbour and closes it.
-	if flow := build(dfcube.East); !approxEqual(flow.X(), 0) {
+	if flow := build(cube.East); !approxEqual(flow.X(), 0) {
 		t.Fatalf("east-facing stairs: flow X = %v, want 0", flow.X())
 	}
 	// Facing west: the +X side is open, so flow proceeds toward the shallower
 	// neighbour.
-	if flow := build(dfcube.West); !(flow.X() > 0) {
+	if flow := build(cube.West); !(flow.X() > 0) {
 		t.Fatalf("west-facing stairs: flow X = %v, want positive", flow.X())
 	}
 }
@@ -522,7 +522,7 @@ func TestNilWorldIsSafe(t *testing.T) {
 	if sim.containsAnyLiquid(state.BoundingBox(false)) {
 		t.Fatal("no world must contain no liquid")
 	}
-	if flow := sim.liquidFlow(dfcube.Pos{0, 0, 0}, block.Water{Depth: 8}); flow.Len() != 0 {
+	if flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8}); flow.Len() != 0 {
 		t.Fatalf("flow = %v, want zero with no world", flow)
 	}
 	if sim.HasLiquidLayer() {
@@ -535,14 +535,14 @@ func TestNilWorldIsSafe(t *testing.T) {
 func TestSwimHitboxChangesCeilingCollision(t *testing.T) {
 	newCeilingSim := func() (*Simulator, *MovementState) {
 		w := newLiquidWorld().
-			fill(dfcube.Pos{-1, 0, -1}, dfcube.Pos{1, 1, 1}, waterSource).
-			set(dfcube.Pos{0, 2, 0}, block.Stone{})
+			fill(cube.Pos{-1, 0, -1}, cube.Pos{1, 1, 1}, waterSource).
+			set(cube.Pos{0, 2, 0}, block.Stone{})
 		state := submergedState()
 		// Starts clear of the ceiling in both poses; only the standing hitbox
 		// reaches it after the upward move.
-		state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+		state.Pos = mgl64.Vec3{0.5, 0, 0.5}
 		state.Client.Pos = state.Pos
-		state.Vel = mgl32.Vec3{0, 0.5, 0}
+		state.Vel = mgl64.Vec3{0, 0.5, 0}
 		return newLiquidSim(w), state
 	}
 
@@ -568,13 +568,13 @@ func TestSwimHitboxChangesCeilingCollision(t *testing.T) {
 // map-iteration nondeterminism only probabilistically, so this repeats the same
 // scenario and compares runs against each other.
 func TestLiquidSimulationIsRepeatable(t *testing.T) {
-	run := func() (mgl32.Vec3, mgl32.Vec3) {
+	run := func() (mgl64.Vec3, mgl64.Vec3) {
 		w := newLiquidWorld().
-			fill(dfcube.Pos{-8, 0, -8}, dfcube.Pos{8, 8, 8}, block.Water{Depth: 8}).
-			set(dfcube.Pos{1, 0, 0}, block.Water{Depth: 6}).
-			set(dfcube.Pos{0, 0, 1}, block.Water{Depth: 4}).
-			set(dfcube.Pos{-1, 1, 0}, block.Water{Depth: 8, Falling: true}).
-			set(dfcube.Pos{2, 0, 2}, block.Stone{})
+			fill(cube.Pos{-8, 0, -8}, cube.Pos{8, 8, 8}, block.Water{Depth: 8}).
+			set(cube.Pos{1, 0, 0}, block.Water{Depth: 6}).
+			set(cube.Pos{0, 0, 1}, block.Water{Depth: 4}).
+			set(cube.Pos{-1, 1, 0}, block.Water{Depth: 8, Falling: true}).
+			set(cube.Pos{2, 0, 2}, block.Stone{})
 		sim := newLiquidSim(w)
 		sim.Inventory = depthStriderInventory{level: 2}
 		state := submergedState()
@@ -583,7 +583,7 @@ func TestLiquidSimulationIsRepeatable(t *testing.T) {
 		state.SwimWaterGraceTicks = DefaultSwimWaterGraceTicks
 		input := InputState{
 			Jumping:    true,
-			MoveVector: mgl32.Vec2{0.5, 1},
+			MoveVector: mgl64.Vec2{0.5, 1},
 			Pitch:      25,
 			Yaw:        40,
 			HeadYaw:    40,
@@ -609,11 +609,11 @@ func TestLiquidGoldenScenario(t *testing.T) {
 	// Deep enough that the player stays submerged for the whole run, so the
 	// golden measures liquid physics rather than a surface transition.
 	w := newLiquidWorld().
-		fill(dfcube.Pos{-8, 0, -8}, dfcube.Pos{8, 8, 8}, block.Water{Depth: 8}).
-		set(dfcube.Pos{1, 0, 0}, block.Water{Depth: 6}).
-		set(dfcube.Pos{0, 0, 1}, block.Water{Depth: 4}).
-		set(dfcube.Pos{-1, 1, 0}, block.Water{Depth: 8, Falling: true}).
-		set(dfcube.Pos{2, 0, 2}, block.Stone{})
+		fill(cube.Pos{-8, 0, -8}, cube.Pos{8, 8, 8}, block.Water{Depth: 8}).
+		set(cube.Pos{1, 0, 0}, block.Water{Depth: 6}).
+		set(cube.Pos{0, 0, 1}, block.Water{Depth: 4}).
+		set(cube.Pos{-1, 1, 0}, block.Water{Depth: 8, Falling: true}).
+		set(cube.Pos{2, 0, 2}, block.Stone{})
 	sim := newLiquidSim(w)
 	sim.Inventory = depthStriderInventory{level: 2}
 
@@ -629,7 +629,7 @@ func TestLiquidGoldenScenario(t *testing.T) {
 	// is gated on multiplier <= 1, is actually reached.
 	input := InputState{
 		Jumping:    true,
-		MoveVector: mgl32.Vec2{0.5, 1},
+		MoveVector: mgl64.Vec2{0.5, 1},
 		Pitch:      25,
 		Yaw:        40,
 		HeadYaw:    40,
@@ -638,15 +638,15 @@ func TestLiquidGoldenScenario(t *testing.T) {
 		sim.Simulate(state, input)
 	}
 
-	wantPos := mgl32.Vec3{-0.012654960155487061, 2.922518253326416, 3.5954680442810059}
-	wantVel := mgl32.Vec3{-0.02702143903177032, 0.15549643337726593, 0.1142856627702713}
+	wantPos := mgl64.Vec3{-0.012654883672021777, 2.7281474976710665, 3.5954677602500538}
+	wantVel := mgl64.Vec3{-0.02702143903177032, 0.15437050046578696, 0.1142856536788795}
 
-	const tolerance = 1e-6
+	const tolerance = 1e-12
 	for axis, name := range []string{"X", "Y", "Z"} {
-		if math32.Abs(state.Pos[axis]-wantPos[axis]) > tolerance {
+		if math.Abs(state.Pos[axis]-wantPos[axis]) > tolerance {
 			t.Errorf("Pos.%s = %.17g, want %.17g", name, state.Pos[axis], wantPos[axis])
 		}
-		if math32.Abs(state.Vel[axis]-wantVel[axis]) > tolerance {
+		if math.Abs(state.Vel[axis]-wantVel[axis]) > tolerance {
 			t.Errorf("Vel.%s = %.17g, want %.17g", name, state.Vel[axis], wantVel[axis])
 		}
 	}
