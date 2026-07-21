@@ -18,7 +18,7 @@ var blockNameCache sync.Map
 // BlockName returns the canonical name of a block.
 func BlockName(b world.Block) string {
 	base, state := b.Hash()
-	if state == math.MaxUint64 {
+	if base == 0 && state == math.MaxUint64 {
 		name, _ := b.EncodeBlock()
 		return name
 	}

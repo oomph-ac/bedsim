@@ -51,3 +51,14 @@ func TestBlockNameDoesNotCacheUnknownHash(t *testing.T) {
 		t.Fatalf("EncodeBlock() called %d times, want 2", calls)
 	}
 }
+
+func TestBlockNameCachesMaxStateWithKnownBase(t *testing.T) {
+	var calls int
+	b := namedBlock{name: "test:max_state", base: 1, state: math.MaxUint64, encodeCalls: &calls}
+
+	BlockName(b)
+	BlockName(b)
+	if calls != 1 {
+		t.Fatalf("EncodeBlock() called %d times, want 1", calls)
+	}
+}
