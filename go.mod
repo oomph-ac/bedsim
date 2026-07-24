@@ -9,6 +9,8 @@ require (
 	github.com/sandertv/gophertunnel v1.57.2-0.20260720171832-1706d533aa80
 )
 
+replace github.com/df-mc/dragonfly => github.com/moon-committee/dragonfly v0.0.0-20260724082049-869b508f3b38
+
 require (
 	github.com/brentp/intintmap v0.0.0-20251106190759-56907b1f8479 // indirect
 	github.com/df-mc/goleveldb v1.1.9 // indirect
@@ -17,6 +19,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/segmentio/fasthash v1.0.3 // indirect
+	github.com/zaataylor/cartesian v0.0.0-20221028053253-3b3244d82727 // indirect
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/text v0.38.0 // indirect

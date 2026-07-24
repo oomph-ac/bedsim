@@ -62,6 +62,9 @@ func (w *liquidWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	if _, liquid := b.(world.Liquid); liquid {
 		return nil
 	}
+	if _, column := b.(block.BubbleColumn); column {
+		return nil
+	}
 	return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1)}
 }
 
@@ -448,6 +451,79 @@ func TestNoGravityInLiquid(t *testing.T) {
 
 	sim.SimulateState(state)
 	assertVec(t, state.Vel, mgl32.Vec3{})
+}
+
+func TestBubbleColumnSubmergedRise(t *testing.T) {
+	w := newLayeredLiquidWorld()
+	w.waterlog(cube.Pos{0, 0, 0}, block.BubbleColumn{}, waterSource)
+	w.waterlog(cube.Pos{0, 1, 0}, block.BubbleColumn{}, waterSource)
+	sim := newLiquidSim(w)
+	state := submergedState()
+	state.Pos[1] = 0.1
+	state.Client.Pos = state.Pos
+	state.Swimming = true
+	state.SwimWaterGraceTicks = DefaultSwimWaterGraceTicks
+
+	sim.SimulateState(state)
+	if !approxEqual(state.Vel.Y(), bubbleColumnRisePerTick) {
+		t.Fatalf("vertical velocity = %v, want submerged rise %v", state.Vel.Y(), bubbleColumnRisePerTick)
+	}
+}
+
+func TestBubbleColumnSurfaceRise(t *testing.T) {
+	w := newLayeredLiquidWorld()
+	w.waterlog(cube.Pos{0, 0, 0}, block.BubbleColumn{}, waterSource)
+	sim := newLiquidSim(w)
+	state := submergedState()
+	state.Pos[1] = 0.1
+	state.Client.Pos = state.Pos
+	state.Swimming = true
+	state.SwimWaterGraceTicks = DefaultSwimWaterGraceTicks
+
+	sim.SimulateState(state)
+	if !approxEqual(state.Vel.Y(), bubbleColumnSurfaceRisePerTick) {
+		t.Fatalf("vertical velocity = %v, want surface rise %v", state.Vel.Y(), bubbleColumnSurfaceRisePerTick)
+	}
+}
+
+func TestBubbleColumnSubmergedSinkAndLimit(t *testing.T) {
+	w := newLayeredLiquidWorld()
+	w.waterlog(cube.Pos{0, 0, 0}, block.BubbleColumn{DragDown: true}, waterSource)
+	w.waterlog(cube.Pos{0, 1, 0}, block.BubbleColumn{DragDown: true}, waterSource)
+	sim := newLiquidSim(w)
+	state := submergedState()
+	state.Pos[1] = 0.1
+	state.Client.Pos = state.Pos
+	state.Swimming = true
+	state.SwimWaterGraceTicks = DefaultSwimWaterGraceTicks
+
+	sim.SimulateState(state)
+	if !approxEqual(state.Vel.Y(), bubbleColumnSinkPerTick) {
+		t.Fatalf("vertical velocity = %v, want submerged sink %v", state.Vel.Y(), bubbleColumnSinkPerTick)
+	}
+
+	state.Vel[1] = -1
+	sim.applyBubbleColumns(state)
+	if !approxEqual(state.Vel.Y(), bubbleColumnSinkSpeedLimit) {
+		t.Fatalf("limited velocity = %v, want %v", state.Vel.Y(), bubbleColumnSinkSpeedLimit)
+	}
+}
+
+func TestBubbleColumnSurfaceSinkLimit(t *testing.T) {
+	w := newLayeredLiquidWorld()
+	w.waterlog(cube.Pos{0, 0, 0}, block.BubbleColumn{DragDown: true}, waterSource)
+	sim := newLiquidSim(w)
+	state := submergedState()
+	state.Pos[1] = 0.1
+	state.Client.Pos = state.Pos
+	state.Swimming = true
+	state.SwimWaterGraceTicks = DefaultSwimWaterGraceTicks
+	state.Vel[1] = -1
+
+	sim.applyBubbleColumns(state)
+	if !approxEqual(state.Vel.Y(), bubbleColumnSurfaceSinkLimit) {
+		t.Fatalf("limited velocity = %v, want %v", state.Vel.Y(), bubbleColumnSurfaceSinkLimit)
+	}
 }
 
 // Levitation replaces liquid gravity with a pull toward the levitation target.

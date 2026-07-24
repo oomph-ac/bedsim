@@ -23,6 +23,17 @@ const (
 	liquidLava
 )
 
+const (
+	bubbleColumnRisePerTick        = float32(0.06)
+	bubbleColumnSurfaceRisePerTick = float32(0.10)
+	bubbleColumnSinkPerTick        = float32(-0.03)
+	bubbleColumnSurfaceSinkPerTick = float32(-0.03)
+	bubbleColumnRiseSpeedLimit     = float32(0.70)
+	bubbleColumnSurfaceRiseLimit   = float32(1.80)
+	bubbleColumnSinkSpeedLimit     = float32(-0.30)
+	bubbleColumnSurfaceSinkLimit   = float32(-0.90)
+)
+
 func (k liquidKind) typeName() string {
 	if k == liquidLava {
 		return "lava"
@@ -142,6 +153,52 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	}
 	state.SetVel(vel)
 	state.FallDistance = 0
+	s.applyBubbleColumns(state)
+}
+
+// applyBubbleColumns applies the vertical impulse of each bubble-column block
+// intersecting the player's current hitbox. This follows Bedrock's inside-block
+// pass: submerged columns use their normal limit, while a column with air
+// directly above it uses the stronger surface limit.
+func (s *Simulator) applyBubbleColumns(state *MovementState) {
+	box := state.BoundingBox(s.Options.UseSlideOffset).Grow(-0.0001)
+	low, high := posFromVec3(box.Min()), posFromVec3(box.Max())
+
+	velocity := state.Vel
+	applied := 0
+	for y := low[1]; y <= high[1]; y++ {
+		for x := low[0]; x <= high[0]; x++ {
+			for z := low[2]; z <= high[2]; z++ {
+				pos := cube.Pos{x, y, z}
+				column, ok := s.blockAtPos(pos).(block.BubbleColumn)
+				if !ok {
+					continue
+				}
+
+				surface := s.blockName(s.blockAtPos(pos.Side(cube.FaceUp))) == "minecraft:air"
+				if column.DragDown {
+					change, limit := bubbleColumnSinkPerTick, bubbleColumnSinkSpeedLimit
+					if surface {
+						change, limit = bubbleColumnSurfaceSinkPerTick, bubbleColumnSurfaceSinkLimit
+					}
+					velocity[1] = math32.Max(velocity[1]+change, limit)
+				} else {
+					change, limit := bubbleColumnRisePerTick, bubbleColumnRiseSpeedLimit
+					if surface {
+						change, limit = bubbleColumnSurfaceRisePerTick, bubbleColumnSurfaceRiseLimit
+					}
+					velocity[1] = math32.Min(velocity[1]+change, limit)
+				}
+				applied++
+			}
+		}
+	}
+	if applied == 0 {
+		return
+	}
+	state.SetVel(velocity)
+	state.FallDistance = 0
+	s.debugf("bubble column force applied columns=%d velocity=%v", applied, velocity)
 }
 
 func liquidGravity(swimming, water bool) float32 {
