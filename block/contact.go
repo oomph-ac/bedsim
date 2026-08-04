@@ -2,7 +2,6 @@ package block
 
 import "github.com/df-mc/dragonfly/server/world"
 
-// Cobweb owns the cobweb contact slowdown.
 type Cobweb struct{}
 
 func (Cobweb) Matches(_ world.Block, name string) bool {

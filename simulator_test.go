@@ -10,6 +10,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
+	movementblock "github.com/oomph-ac/bedsim/block"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -114,10 +115,10 @@ func (m mockInventory) HasElytra() bool {
 }
 
 type overrideBlockSemantics struct {
-	semantics MovementBlockSemantics
+	semantics movementblock.MovementSemantics
 }
 
-func (s overrideBlockSemantics) BlockMovementSemantics(world.Block) MovementBlockSemantics {
+func (s overrideBlockSemantics) BlockMovementSemantics(world.Block) movementblock.MovementSemantics {
 	return s.semantics
 }
 
@@ -331,11 +332,11 @@ func TestSimulatorBlockSemanticsOverridesDefaults(t *testing.T) {
 	sim := &Simulator{
 		World: mockWorld{},
 		BlockSemantics: overrideBlockSemantics{
-			semantics: MovementBlockSemantics{
+			semantics: movementblock.MovementSemantics{
 				GroundFriction: 0.42,
 				Climbable:      true,
 				Cobweb:         true,
-				Bounce:         MovementBounceBed,
+				Bounce:         movementblock.BounceBed,
 			},
 		},
 	}
@@ -348,7 +349,7 @@ func TestSimulatorBlockSemanticsOverridesDefaults(t *testing.T) {
 	if !got.Climbable {
 		t.Fatalf("expected semantic climbable value")
 	}
-	if !got.Cobweb || got.Bounce != MovementBounceBed {
+	if !got.Cobweb || got.Bounce != movementblock.BounceBed {
 		t.Fatalf("expected complete semantic bundle, got %+v", got)
 	}
 }
@@ -358,7 +359,7 @@ func TestSimulatorDefaultBlockSemanticsFallback(t *testing.T) {
 	sim := &Simulator{World: mockWorld{}}
 
 	got := sim.blockMovementSemantics(b)
-	want := DefaultMovementBlockSemantics(b)
+	want := movementblock.Resolve(b, BlockName(b))
 	if got != want {
 		t.Fatalf("expected default movement semantics %+v, got %+v", want, got)
 	}
@@ -366,7 +367,7 @@ func TestSimulatorDefaultBlockSemanticsFallback(t *testing.T) {
 
 func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) {
 	b := block.Air{}
-	want := BlockFriction(b)
+	want := movementblock.Friction(b, BlockName(b))
 
 	tests := []struct {
 		name     string
@@ -384,7 +385,7 @@ func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) 
 			sim := &Simulator{
 				World: mockWorld{},
 				BlockSemantics: overrideBlockSemantics{
-					semantics: MovementBlockSemantics{GroundFriction: tt.friction},
+					semantics: movementblock.MovementSemantics{GroundFriction: tt.friction},
 				},
 			}
 			if got := sim.blockMovementSemantics(b).GroundFriction; got != want {

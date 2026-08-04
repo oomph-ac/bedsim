@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
+	movementblock "github.com/oomph-ac/bedsim/block"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -569,7 +570,7 @@ func (s *Simulator) walkOnBlock(state *MovementState, blockUnder world.Block) {
 	oldVel := state.Vel
 	newVel := state.Vel
 	switch s.blockMovementSemantics(blockUnder).Bounce {
-	case MovementBounceSlime:
+	case movementblock.BounceSlime:
 		yMov := math32.Abs(newVel.Y())
 		if yMov < 0.1 && !state.PressingSneak {
 			d1 := 0.4 + yMov*0.2
@@ -590,12 +591,12 @@ func (s *Simulator) landOnBlock(state *MovementState, old mgl32.Vec3, blockUnder
 	}
 
 	switch s.blockMovementSemantics(blockUnder).Bounce {
-	case MovementBounceSlime:
+	case movementblock.BounceSlime:
 		newVel[1] = SlimeBounceMultiplier * old.Y()
 		if math32.Abs(newVel[1]) < 1e-4 {
 			newVel[1] = 0.0
 		}
-	case MovementBounceBed:
+	case movementblock.BounceBed:
 		newVel[1] = math32.Min(1.0, BedBounceMultiplier*old.Y())
 	default:
 		newVel[1] = 0

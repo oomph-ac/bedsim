@@ -3,6 +3,7 @@ package bedsim
 import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/oomph-ac/bedsim/block"
 )
 
 // WorldProvider bridges the world/chunk system for collision and block lookups.
@@ -19,14 +20,10 @@ type LiquidProvider interface {
 	Liquid(pos cube.Pos) (world.Liquid, bool)
 }
 
-// BlockMovementSemanticsProvider resolves the complete movement-relevant
-// behavior for a block. Implement this when block properties come from a
-// per-world registry or custom block data instead of Dragonfly's defaults.
-//
-// GroundFriction is the post-adjustment value used by grounded travel. A
-// non-positive or non-finite value falls back to bedsim's default resolution.
+// BlockMovementSemanticsProvider resolves movement behavior from a custom
+// world registry or block data.
 type BlockMovementSemanticsProvider interface {
-	BlockMovementSemantics(world.Block) MovementBlockSemantics
+	BlockMovementSemantics(world.Block) block.MovementSemantics
 }
 
 // DefaultBlockSemantics uses bedsim's built-in Dragonfly-backed block helpers.

@@ -5,7 +5,6 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// ClimbableBlock owns the ladder and vine movement predicate.
 type ClimbableBlock struct{}
 
 func (ClimbableBlock) Matches(b world.Block, name string) bool {

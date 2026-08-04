@@ -1,8 +1,4 @@
-// Package block owns BedSim's built-in movement semantics for blocks.
-//
-// It deliberately does not register blocks in Dragonfly's world registry.
-// Registry ownership belongs to the application because registration affects
-// runtime IDs and must happen before the registry is finalized.
+// Package block provides BedSim's built-in movement semantics.
 package block
 
 import (
@@ -10,12 +6,10 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// SoulGroundFrictionMultiplier is the native ground-friction adjustment used
-// by SoulSandBlock::calcGroundFriction when Soul Speed is not active.
+// SoulGroundFrictionMultiplier is the vanilla soul-ground adjustment.
 const SoulGroundFrictionMultiplier float32 = 1.225000023841858
 
-// Bounce identifies the vanilla vertical response when an entity lands on a
-// block.
+// Bounce identifies a block's landing response.
 type Bounce uint8
 
 const (
@@ -24,9 +18,7 @@ const (
 	BounceBed
 )
 
-// MovementSemantics is the movement behavior owned by one resolved block.
-// GroundFriction is supplied by Resolve so frictional blocks and block-owned
-// adjustments are composed in one place.
+// MovementSemantics is the movement behavior resolved for a block.
 type MovementSemantics struct {
 	GroundFriction float32
 	Climbable      bool
@@ -34,7 +26,7 @@ type MovementSemantics struct {
 	Bounce         Bounce
 }
 
-// Owner contributes movement behavior for one family of blocks.
+// Owner contributes movement behavior for a block family.
 type Owner interface {
 	Matches(world.Block, string) bool
 	Apply(*MovementSemantics)
@@ -52,11 +44,9 @@ var owners = [...]Owner{
 	frictionBlock{name: "minecraft:blue_ice", friction: 0.99},
 }
 
-// Resolve returns the built-in movement semantics for b. name should be the
-// caller's cached canonical block name; it lets custom block implementations
-// participate without pretending to be Dragonfly concrete types.
-func Resolve(b world.Block, name string, groundFriction float32) MovementSemantics {
-	semantics := MovementSemantics{GroundFriction: groundFriction}
+// Resolve returns built-in movement semantics for b.
+func Resolve(b world.Block, name string) MovementSemantics {
+	semantics := MovementSemantics{GroundFriction: Friction(b, name)}
 	for _, owner := range owners {
 		if owner.Matches(b, name) {
 			owner.Apply(&semantics)
@@ -65,8 +55,7 @@ func Resolve(b world.Block, name string, groundFriction float32) MovementSemanti
 	return semantics
 }
 
-// Friction returns the ordinary block friction before block-specific ground
-// adjustments are applied.
+// Friction returns a block's ordinary friction.
 func Friction(b world.Block, name string) float32 {
 	if f, ok := b.(dfblock.Frictional); ok {
 		return float32(f.Friction())

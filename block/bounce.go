@@ -5,7 +5,6 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// Slime owns slime's bounce response.
 type Slime struct{}
 
 func (Slime) Matches(b world.Block, name string) bool {
@@ -21,7 +20,6 @@ func (Slime) Apply(s *MovementSemantics) {
 
 func (Slime) Friction() (float32, bool) { return 0.8, true }
 
-// Bed owns the bed bounce response.
 type Bed struct{}
 
 func (Bed) Matches(b world.Block, name string) bool {

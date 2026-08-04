@@ -2,8 +2,6 @@ package block
 
 import "github.com/df-mc/dragonfly/server/world"
 
-// frictionBlock supplies a named fallback for blocks whose concrete
-// implementation is not available to the caller.
 type frictionBlock struct {
 	name     string
 	friction float32

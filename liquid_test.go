@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
+	movementblock "github.com/oomph-ac/bedsim/block"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -1355,7 +1356,7 @@ func TestClimbUsesEffectiveJumping(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			sim := newLiquidSim(newLiquidWorld())
 			sim.BlockSemantics = overrideBlockSemantics{
-				semantics: MovementBlockSemantics{
+				semantics: movementblock.MovementSemantics{
 					GroundFriction: DefaultBlockFriction,
 					Climbable:      true,
 				},

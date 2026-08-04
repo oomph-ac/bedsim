@@ -8,17 +8,18 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
+	movementblock "github.com/oomph-ac/bedsim/block"
 )
 
 func TestBlockGroundFrictionSoulBlocks(t *testing.T) {
-	want := DefaultBlockFriction * SoulSandGroundFrictionMultiplier
+	want := DefaultBlockFriction * movementblock.SoulGroundFrictionMultiplier
 
 	for name, b := range map[string]world.Block{
 		"soul sand": block.SoulSand{},
 		"soul soil": block.SoulSoil{},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got := BlockGroundFriction(b); math.Abs(float64(got-want)) > 1e-6 {
+			if got := movementblock.Resolve(b, BlockName(b)).GroundFriction; math.Abs(float64(got-want)) > 1e-6 {
 				t.Fatalf("ground friction = %.8f, want %.8f", got, want)
 			}
 		})
@@ -31,7 +32,7 @@ func TestDefaultMovementBlockSemantics(t *testing.T) {
 		block      world.Block
 		climbable  bool
 		cobweb     bool
-		bounce     MovementBounce
+		bounce     movementblock.Bounce
 		groundWant float32
 	}{
 		{
@@ -54,13 +55,13 @@ func TestDefaultMovementBlockSemantics(t *testing.T) {
 		{
 			name:       "soul soil",
 			block:      block.SoulSoil{},
-			groundWant: DefaultBlockFriction * SoulSandGroundFrictionMultiplier,
+			groundWant: DefaultBlockFriction * movementblock.SoulGroundFrictionMultiplier,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := DefaultMovementBlockSemantics(tt.block)
+			got := movementblock.Resolve(tt.block, BlockName(tt.block))
 			if math.Abs(float64(got.GroundFriction-tt.groundWant)) > 1e-6 {
 				t.Fatalf("ground friction = %.8f, want %.8f", got.GroundFriction, tt.groundWant)
 			}
@@ -80,15 +81,15 @@ func TestDefaultMovementBlockSemantics(t *testing.T) {
 func TestDefaultMovementBlockSemanticsSpecialBlocks(t *testing.T) {
 	for name, want := range map[string]struct {
 		block  world.Block
-		bounce MovementBounce
+		bounce movementblock.Bounce
 	}{
-		"slime":  {block: semanticsNamedBlock{"minecraft:slime"}, bounce: MovementBounceSlime},
-		"bed":    {block: semanticsNamedBlock{"minecraft:bed"}, bounce: MovementBounceBed},
+		"slime":  {block: semanticsNamedBlock{"minecraft:slime"}, bounce: movementblock.BounceSlime},
+		"bed":    {block: semanticsNamedBlock{"minecraft:bed"}, bounce: movementblock.BounceBed},
 		"bamboo": {block: semanticsNamedBlock{"minecraft:bamboo"}},
 		"cobweb": {block: semanticsNamedBlock{"minecraft:web"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got := DefaultMovementBlockSemantics(want.block)
+			got := movementblock.Resolve(want.block, BlockName(want.block))
 			if got.Bounce != want.bounce {
 				t.Fatalf("semantics = %+v, want bounce=%v", got, want.bounce)
 			}
@@ -113,11 +114,11 @@ type extendedMovementSemantics struct {
 	groundFriction float32
 	climbable      bool
 	cobweb         bool
-	bounce         MovementBounce
+	bounce         movementblock.Bounce
 }
 
-func (s extendedMovementSemantics) BlockMovementSemantics(world.Block) MovementBlockSemantics {
-	return MovementBlockSemantics{
+func (s extendedMovementSemantics) BlockMovementSemantics(world.Block) movementblock.MovementSemantics {
+	return movementblock.MovementSemantics{
 		GroundFriction: s.groundFriction,
 		Climbable:      s.climbable,
 		Cobweb:         s.cobweb,
@@ -131,13 +132,13 @@ func TestSimulatorCompleteBlockSemanticsProvider(t *testing.T) {
 			groundFriction: 0.37,
 			climbable:      true,
 			cobweb:         true,
-			bounce:         MovementBounceBed,
+			bounce:         movementblock.BounceBed,
 		},
 	}
 
 	got := sim.blockMovementSemantics(block.Air{})
 	if got.GroundFriction != 0.37 || !got.Climbable || !got.Cobweb ||
-		got.Bounce != MovementBounceBed {
+		got.Bounce != movementblock.BounceBed {
 		t.Fatalf("got incomplete semantic bundle: %+v", got)
 	}
 }
@@ -203,7 +204,7 @@ func TestSimulateGroundUsesSoulSoilFriction(t *testing.T) {
 	state.Impulse = mgl32.Vec2{0, 0.98}
 
 	result := sim.SimulateState(state)
-	groundFriction := DefaultAirFriction * BlockGroundFriction(block.SoulSoil{})
+	groundFriction := DefaultAirFriction * movementblock.Resolve(block.SoulSoil{}, BlockName(block.SoulSoil{})).GroundFriction
 	moveRelativeSpeed := state.MovementSpeed *
 		(0.16277136 / (groundFriction * groundFriction * groundFriction))
 	wantZ := 0.98 * moveRelativeSpeed * groundFriction

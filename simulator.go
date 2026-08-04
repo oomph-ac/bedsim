@@ -4,6 +4,7 @@ import (
 	"github.com/chewxy/math32"
 
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/oomph-ac/bedsim/block"
 )
 
 // SimulationMode defines how strict the simulator should be with client corrections.
@@ -73,8 +74,8 @@ type Simulator struct {
 	Options   SimulationOptions
 }
 
-func (DefaultBlockSemantics) BlockMovementSemantics(b world.Block) MovementBlockSemantics {
-	return DefaultMovementBlockSemantics(b)
+func (DefaultBlockSemantics) BlockMovementSemantics(b world.Block) block.MovementSemantics {
+	return block.Resolve(b, BlockName(b))
 }
 
 // swimWaterGraceTicks resolves the configured grace window: zero means the
@@ -94,13 +95,13 @@ func validGroundFriction(friction float32) bool {
 	return friction > 0 && !math32.IsInf(friction, 1)
 }
 
-func (s *Simulator) blockMovementSemantics(b world.Block) MovementBlockSemantics {
+func (s *Simulator) blockMovementSemantics(b world.Block) block.MovementSemantics {
 	if s.BlockSemantics != nil {
 		semantics := s.BlockSemantics.BlockMovementSemantics(b)
 		if !validGroundFriction(semantics.GroundFriction) {
-			semantics.GroundFriction = DefaultMovementBlockSemantics(b).GroundFriction
+			semantics.GroundFriction = block.Resolve(b, BlockName(b)).GroundFriction
 		}
 		return semantics
 	}
-	return DefaultMovementBlockSemantics(b)
+	return block.Resolve(b, BlockName(b))
 }
