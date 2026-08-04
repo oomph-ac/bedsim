@@ -7,12 +7,12 @@ import (
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
+	movementblock "github.com/oomph-ac/bedsim/block"
 )
 
-// SoulSandGroundFrictionMultiplier is the native friction adjustment used by
-// SoulSandBlock::calcGroundFriction when Soul Speed is not active. Soul sand
-// and soul soil share this ground-friction path.
-const SoulSandGroundFrictionMultiplier float32 = 1.225000023841858
+// SoulSandGroundFrictionMultiplier is retained as a root-package alias for
+// the owner constant in bedsim/block.
+const SoulSandGroundFrictionMultiplier = movementblock.SoulGroundFrictionMultiplier
 
 type blockNameKey struct {
 	base, state uint64
@@ -40,20 +40,7 @@ func BlockName(b world.Block) string {
 
 // BlockFriction returns the friction of the block.
 func BlockFriction(b world.Block) float32 {
-	if f, ok := b.(block.Frictional); ok {
-		return float32(f.Friction())
-	}
-
-	switch BlockName(b) {
-	case "minecraft:slime":
-		return 0.8
-	case "minecraft:ice", "minecraft:packed_ice":
-		return 0.98
-	case "minecraft:blue_ice":
-		return 0.99
-	default:
-		return 0.6
-	}
+	return movementblock.Friction(b, BlockName(b))
 }
 
 // BlockGroundFriction returns the friction used by ordinary grounded travel.
@@ -61,91 +48,40 @@ func BlockFriction(b world.Block) float32 {
 // ordinary friction directly, while soul sand and soul soil apply a movement
 // specific adjustment in the native travel path.
 func BlockGroundFriction(b world.Block) float32 {
-	friction := BlockFriction(b)
-	if isSoulGroundBlock(b, BlockName(b)) {
-		friction *= SoulSandGroundFrictionMultiplier
-	}
-	return friction
-}
-
-func isSoulGroundBlock(b world.Block, name string) bool {
-	switch b.(type) {
-	case block.SoulSand, block.SoulSoil:
-		return true
-	}
-	return name == "minecraft:soul_sand" || name == "minecraft:soul_soil"
+	return DefaultMovementBlockSemantics(b).GroundFriction
 }
 
 // BlockClimbable returns whether the given block is climbable.
 func BlockClimbable(b world.Block) bool {
-	switch b.(type) {
-	case block.Ladder:
-		return true
-	}
-
-	switch BlockName(b) {
-	case "minecraft:vine", "minecraft:cave_vines", "minecraft:cave_vines_body_with_berries", "minecraft:cave_vines_head_with_berries",
-		"minecraft:twisting_vines", "minecraft:weeping_vines":
-		return true
-	default:
-		return false
-	}
+	return DefaultMovementBlockSemantics(b).Climbable
 }
 
 // BlockCobweb reports whether the block applies the cobweb movement slowdown.
 // "web" is the canonical Bedrock identifier; accepting "cobweb" as well
 // keeps custom registries and older adapters interoperable.
 func BlockCobweb(b world.Block) bool {
-	switch BlockName(b) {
-	case "minecraft:web", "minecraft:cobweb":
-		return true
-	default:
-		return false
-	}
+	return DefaultMovementBlockSemantics(b).Cobweb
 }
 
 // MovementBounce identifies the vanilla vertical response when an entity
 // lands on a block.
-type MovementBounce uint8
+type MovementBounce = movementblock.Bounce
 
 const (
-	MovementBounceNone MovementBounce = iota
-	MovementBounceSlime
-	MovementBounceBed
+	MovementBounceNone  = movementblock.BounceNone
+	MovementBounceSlime = movementblock.BounceSlime
+	MovementBounceBed   = movementblock.BounceBed
 )
 
 // MovementBlockSemantics is the complete set of block properties consumed by
 // the movement integrator. A custom registry must return all properties from
 // one world-consistent snapshot; zero values mean ordinary block behaviour.
-type MovementBlockSemantics struct {
-	GroundFriction float32
-	Climbable      bool
-	Cobweb         bool
-	Bounce         MovementBounce
-
-	// Unsupported marks blocks whose collision/contact behaviour is not safe
-	// for authoritative simulation. Bamboo is the built-in example.
-	Unsupported bool
-}
+type MovementBlockSemantics = movementblock.MovementSemantics
 
 // DefaultMovementBlockSemantics resolves the vanilla movement properties for
 // a block using the built-in Dragonfly-backed registry.
 func DefaultMovementBlockSemantics(b world.Block) MovementBlockSemantics {
-	semantics := MovementBlockSemantics{
-		GroundFriction: BlockGroundFriction(b),
-		Climbable:      BlockClimbable(b),
-		Cobweb:         BlockCobweb(b),
-	}
-
-	switch BlockName(b) {
-	case "minecraft:slime":
-		semantics.Bounce = MovementBounceSlime
-	case "minecraft:bed":
-		semantics.Bounce = MovementBounceBed
-	case "minecraft:bamboo":
-		semantics.Unsupported = true
-	}
-	return semantics
+	return movementblock.Resolve(b, BlockName(b), BlockFriction(b))
 }
 
 // BlockSupportHeight returns the effective standing surface height for a ground

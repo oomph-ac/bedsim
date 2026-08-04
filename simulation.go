@@ -452,21 +452,6 @@ func (s *Simulator) simulationIsReliable(state *MovementState) bool {
 		return true
 	}
 
-	stateBB := state.BoundingBox(s.Options.UseSlideOffset)
-	isReliable := true
-	for _, b := range nearbyBlocks(stateBB.Grow(1), s.World) {
-		if _, isAir := b.(block.Air); isAir {
-			continue
-		}
-		if s.blockMovementSemantics(b).Unsupported {
-			isReliable = false
-			break
-		}
-	}
-	if !isReliable {
-		return false
-	}
-
 	if state.GameMode != packet.GameTypeSurvival && state.GameMode != packet.GameTypeAdventure {
 		return false
 	}

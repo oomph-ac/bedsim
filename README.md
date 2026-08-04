@@ -46,9 +46,13 @@ Set `BlockSemantics` when movement behavior must come from a per-world block
 registry or custom block data instead of bedsim's Dragonfly-backed defaults.
 The adapter implements `BlockMovementSemanticsProvider` and returns the full
 `MovementBlockSemantics` bundle: ground friction, climbability, cobweb status,
-slime/bed bounce behavior, and whether the block is unsafe for authoritative
-simulation. Custom friction values must be finite and positive; invalid values
-fall back to Dragonfly defaults.
+and slime/bed bounce behavior. The built-in owners for these semantics live in
+the `github.com/oomph-ac/bedsim/block` package. Custom friction values must be
+finite and positive; invalid values fall back to Dragonfly defaults.
+
+BedSim's semantics package does not mutate Dragonfly's registry. Applications
+own registry setup and must register any additional block implementations
+before finalizing their registry.
 
 Implement `DepthStriderProvider` on the inventory adapter when Depth Strider
 should affect water movement.

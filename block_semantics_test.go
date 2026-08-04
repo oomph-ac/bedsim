@@ -27,13 +27,12 @@ func TestBlockGroundFrictionSoulBlocks(t *testing.T) {
 
 func TestDefaultMovementBlockSemantics(t *testing.T) {
 	tests := []struct {
-		name        string
-		block       world.Block
-		climbable   bool
-		cobweb      bool
-		bounce      MovementBounce
-		unsupported bool
-		groundWant  float32
+		name       string
+		block      world.Block
+		climbable  bool
+		cobweb     bool
+		bounce     MovementBounce
+		groundWant float32
 	}{
 		{
 			name:       "air",
@@ -74,28 +73,24 @@ func TestDefaultMovementBlockSemantics(t *testing.T) {
 			if got.Bounce != tt.bounce {
 				t.Fatalf("bounce = %v, want %v", got.Bounce, tt.bounce)
 			}
-			if got.Unsupported != tt.unsupported {
-				t.Fatalf("unsupported = %v, want %v", got.Unsupported, tt.unsupported)
-			}
 		})
 	}
 }
 
 func TestDefaultMovementBlockSemanticsSpecialBlocks(t *testing.T) {
 	for name, want := range map[string]struct {
-		block       world.Block
-		bounce      MovementBounce
-		unsupported bool
+		block  world.Block
+		bounce MovementBounce
 	}{
 		"slime":  {block: semanticsNamedBlock{"minecraft:slime"}, bounce: MovementBounceSlime},
 		"bed":    {block: semanticsNamedBlock{"minecraft:bed"}, bounce: MovementBounceBed},
-		"bamboo": {block: semanticsNamedBlock{"minecraft:bamboo"}, unsupported: true},
+		"bamboo": {block: semanticsNamedBlock{"minecraft:bamboo"}},
 		"cobweb": {block: semanticsNamedBlock{"minecraft:web"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got := DefaultMovementBlockSemantics(want.block)
-			if got.Bounce != want.bounce || got.Unsupported != want.unsupported {
-				t.Fatalf("semantics = %+v, want bounce=%v unsupported=%v", got, want.bounce, want.unsupported)
+			if got.Bounce != want.bounce {
+				t.Fatalf("semantics = %+v, want bounce=%v", got, want.bounce)
 			}
 			if name == "cobweb" && !got.Cobweb {
 				t.Fatalf("expected cobweb semantics")
@@ -119,7 +114,6 @@ type extendedMovementSemantics struct {
 	climbable      bool
 	cobweb         bool
 	bounce         MovementBounce
-	unsupported    bool
 }
 
 func (s extendedMovementSemantics) BlockMovementSemantics(world.Block) MovementBlockSemantics {
@@ -128,7 +122,6 @@ func (s extendedMovementSemantics) BlockMovementSemantics(world.Block) MovementB
 		Climbable:      s.climbable,
 		Cobweb:         s.cobweb,
 		Bounce:         s.bounce,
-		Unsupported:    s.unsupported,
 	}
 }
 
@@ -139,14 +132,20 @@ func TestSimulatorCompleteBlockSemanticsProvider(t *testing.T) {
 			climbable:      true,
 			cobweb:         true,
 			bounce:         MovementBounceBed,
-			unsupported:    true,
 		},
 	}
 
 	got := sim.blockMovementSemantics(block.Air{})
 	if got.GroundFriction != 0.37 || !got.Climbable || !got.Cobweb ||
-		got.Bounce != MovementBounceBed || !got.Unsupported {
+		got.Bounce != MovementBounceBed {
 		t.Fatalf("got incomplete semantic bundle: %+v", got)
+	}
+}
+
+func TestBambooDoesNotInvalidateSimulation(t *testing.T) {
+	sim := &Simulator{World: blockMovementWorld{b: block.Bamboo{}}}
+	if !sim.simulationIsReliable(newBaseState()) {
+		t.Fatal("bamboo should use ordinary collision simulation")
 	}
 }
 
