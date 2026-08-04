@@ -337,10 +337,8 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	moveRelativeSpeed := state.AirSpeed
 	if state.OnGround {
 		mSpeed := state.MovementSpeed
-		if s.blockName(blockUnder) == "minecraft:soul_sand" {
-			mSpeed *= 0.543
-		}
-		blockFriction *= s.blockFriction(blockUnder)
+		blockSemantics := s.blockMovementSemantics(blockUnder)
+		blockFriction *= blockSemantics.GroundFriction
 		moveRelativeSpeed = mSpeed * (0.16277136 / (blockFriction * blockFriction * blockFriction))
 	}
 
@@ -364,12 +362,12 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 
 	var clientJumpPrevented bool
 	s.debugfIf(attemptKnockback(state), "knockback applied: %v", state.Vel)
-	s.debugf("blockUnder=%s, blockFriction=%v, speed=%v", s.blockName(blockUnder), blockFriction, moveRelativeSpeed)
+	s.debugf("blockUnder=%s, blockFriction=%v, speed=%v", BlockName(blockUnder), blockFriction, moveRelativeSpeed)
 	moveRelative(state, moveRelativeSpeed)
 	s.debugf("moveRelative force applied (vel=%v)", state.Vel)
 	s.debugfIf(s.attemptJump(state, &clientJumpPrevented), "jump force applied (sprint=%v): %v", state.Sprinting, state.Vel)
 
-	nearClimbable := s.blockClimbable(s.blockAtPos(posFromVec3(state.Pos)))
+	nearClimbable := s.blockMovementSemantics(s.blockAtPos(posFromVec3(state.Pos))).Climbable
 	if nearClimbable {
 		newVel := state.Vel
 		negClimbSpeed := -ClimbSpeed
@@ -460,7 +458,7 @@ func (s *Simulator) simulationIsReliable(state *MovementState) bool {
 		if _, isAir := b.(block.Air); isAir {
 			continue
 		}
-		if s.blockName(b) == "minecraft:bamboo" {
+		if s.blockMovementSemantics(b).Unsupported {
 			isReliable = false
 			break
 		}
@@ -585,8 +583,8 @@ func (s *Simulator) walkOnBlock(state *MovementState, blockUnder world.Block) {
 
 	oldVel := state.Vel
 	newVel := state.Vel
-	switch s.blockName(blockUnder) {
-	case "minecraft:slime":
+	switch s.blockMovementSemantics(blockUnder).Bounce {
+	case MovementBounceSlime:
 		yMov := math32.Abs(newVel.Y())
 		if yMov < 0.1 && !state.PressingSneak {
 			d1 := 0.4 + yMov*0.2
@@ -606,13 +604,13 @@ func (s *Simulator) landOnBlock(state *MovementState, old mgl32.Vec3, blockUnder
 		return
 	}
 
-	switch s.blockName(blockUnder) {
-	case "minecraft:slime":
+	switch s.blockMovementSemantics(blockUnder).Bounce {
+	case MovementBounceSlime:
 		newVel[1] = SlimeBounceMultiplier * old.Y()
 		if math32.Abs(newVel[1]) < 1e-4 {
 			newVel[1] = 0.0
 		}
-	case "minecraft:bed":
+	case MovementBounceBed:
 		newVel[1] = math32.Min(1.0, BedBounceMultiplier*old.Y())
 	default:
 		newVel[1] = 0
@@ -1014,7 +1012,7 @@ func (s *Simulator) isInsideCobweb(state *MovementState) bool {
 		if _, isAir := b.(block.Air); isAir {
 			continue
 		}
-		if s.blockName(b) != "minecraft:web" {
+		if !s.blockMovementSemantics(b).Cobweb {
 			continue
 		}
 

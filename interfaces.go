@@ -19,13 +19,14 @@ type LiquidProvider interface {
 	Liquid(pos cube.Pos) (world.Liquid, bool)
 }
 
-// BlockSemanticsProvider resolves movement-relevant block behavior. Implement
-// this when names, friction, or climbability come from a per-world registry or
-// custom block data instead of Dragonfly's default block types.
-type BlockSemanticsProvider interface {
-	BlockName(world.Block) string
-	BlockFriction(world.Block) float32
-	BlockClimbable(world.Block) bool
+// BlockMovementSemanticsProvider resolves the complete movement-relevant
+// behavior for a block. Implement this when block properties come from a
+// per-world registry or custom block data instead of Dragonfly's defaults.
+//
+// GroundFriction is the post-adjustment value used by grounded travel. A
+// non-positive or non-finite value falls back to bedsim's default resolution.
+type BlockMovementSemanticsProvider interface {
+	BlockMovementSemantics(world.Block) MovementBlockSemantics
 }
 
 // DefaultBlockSemantics uses bedsim's built-in Dragonfly-backed block helpers.

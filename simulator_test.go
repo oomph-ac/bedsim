@@ -114,21 +114,11 @@ func (m mockInventory) HasElytra() bool {
 }
 
 type overrideBlockSemantics struct {
-	name      string
-	friction  float32
-	climbable bool
+	semantics MovementBlockSemantics
 }
 
-func (s overrideBlockSemantics) BlockName(world.Block) string {
-	return s.name
-}
-
-func (s overrideBlockSemantics) BlockFriction(world.Block) float32 {
-	return s.friction
-}
-
-func (s overrideBlockSemantics) BlockClimbable(world.Block) bool {
-	return s.climbable
+func (s overrideBlockSemantics) BlockMovementSemantics(world.Block) MovementBlockSemantics {
+	return s.semantics
 }
 
 func newBaseState() *MovementState {
@@ -341,21 +331,25 @@ func TestSimulatorBlockSemanticsOverridesDefaults(t *testing.T) {
 	sim := &Simulator{
 		World: mockWorld{},
 		BlockSemantics: overrideBlockSemantics{
-			name:      "minecraft:custom_floor",
-			friction:  0.42,
-			climbable: true,
+			semantics: MovementBlockSemantics{
+				GroundFriction: 0.42,
+				Climbable:      true,
+				Cobweb:         true,
+				Bounce:         MovementBounceBed,
+			},
 		},
 	}
 	b := block.Air{}
 
-	if got := sim.blockName(b); got != "minecraft:custom_floor" {
-		t.Fatalf("expected semantic block name, got %q", got)
+	got := sim.blockMovementSemantics(b)
+	if got.GroundFriction != 0.42 {
+		t.Fatalf("expected semantic block friction, got %v", got.GroundFriction)
 	}
-	if got := sim.blockFriction(b); got != 0.42 {
-		t.Fatalf("expected semantic block friction, got %v", got)
-	}
-	if !sim.blockClimbable(b) {
+	if !got.Climbable {
 		t.Fatalf("expected semantic climbable value")
+	}
+	if !got.Cobweb || got.Bounce != MovementBounceBed {
+		t.Fatalf("expected complete semantic bundle, got %+v", got)
 	}
 }
 
@@ -363,14 +357,10 @@ func TestSimulatorDefaultBlockSemanticsFallback(t *testing.T) {
 	b := block.Air{}
 	sim := &Simulator{World: mockWorld{}}
 
-	if got := sim.blockName(b); got != BlockName(b) {
-		t.Fatalf("expected default block name, got %q", got)
-	}
-	if got := sim.blockFriction(b); got != BlockFriction(b) {
-		t.Fatalf("expected default block friction, got %v", got)
-	}
-	if got := sim.blockClimbable(b); got != BlockClimbable(b) {
-		t.Fatalf("expected default climbable value, got %v", got)
+	got := sim.blockMovementSemantics(b)
+	want := DefaultMovementBlockSemantics(b)
+	if got != want {
+		t.Fatalf("expected default movement semantics %+v, got %+v", want, got)
 	}
 }
 
@@ -394,11 +384,10 @@ func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) 
 			sim := &Simulator{
 				World: mockWorld{},
 				BlockSemantics: overrideBlockSemantics{
-					name:     "minecraft:custom_floor",
-					friction: tt.friction,
+					semantics: MovementBlockSemantics{GroundFriction: tt.friction},
 				},
 			}
-			if got := sim.blockFriction(b); got != want {
+			if got := sim.blockMovementSemantics(b).GroundFriction; got != want {
 				t.Fatalf("expected invalid semantic friction to fall back to %v, got %v", want, got)
 			}
 		})

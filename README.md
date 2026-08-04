@@ -24,7 +24,7 @@ Implement provider adapters to bridge your world and player systems:
 ```go
 sim := bedsim.Simulator{
     World:          myWorldProvider,      // block lookups, collisions, chunk-loaded checks
-    BlockSemantics: myBlockSemantics,     // optional: per-world names, friction, climbability
+    BlockSemantics: myBlockSemantics,     // optional: complete per-world movement semantics
     Liquids:        myLiquidProvider,     // second block layer (waterlogged blocks)
     Effects:        myEffectsProvider,    // jump boost, levitation, slow falling
     Inventory:      myInventoryProvider,  // elytra equipped check
@@ -44,8 +44,11 @@ if result.NeedsCorrection {
 
 Set `BlockSemantics` when movement behavior must come from a per-world block
 registry or custom block data instead of bedsim's Dragonfly-backed defaults.
-Custom friction values must be finite and positive; invalid values fall back to
-Dragonfly defaults.
+The adapter implements `BlockMovementSemanticsProvider` and returns the full
+`MovementBlockSemantics` bundle: ground friction, climbability, cobweb status,
+slime/bed bounce behavior, and whether the block is unsafe for authoritative
+simulation. Custom friction values must be finite and positive; invalid values
+fall back to Dragonfly defaults.
 
 Implement `DepthStriderProvider` on the inventory adapter when Depth Strider
 should affect water movement.

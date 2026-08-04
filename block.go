@@ -9,6 +9,11 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
+// SoulSandGroundFrictionMultiplier is the native friction adjustment used by
+// SoulSandBlock::calcGroundFriction when Soul Speed is not active. Soul sand
+// and soul soil share this ground-friction path.
+const SoulSandGroundFrictionMultiplier float32 = 1.225000023841858
+
 type blockNameKey struct {
 	base, state uint64
 }
@@ -51,6 +56,26 @@ func BlockFriction(b world.Block) float32 {
 	}
 }
 
+// BlockGroundFriction returns the friction used by ordinary grounded travel.
+// It is intentionally separate from BlockFriction: most blocks expose their
+// ordinary friction directly, while soul sand and soul soil apply a movement
+// specific adjustment in the native travel path.
+func BlockGroundFriction(b world.Block) float32 {
+	friction := BlockFriction(b)
+	if isSoulGroundBlock(b, BlockName(b)) {
+		friction *= SoulSandGroundFrictionMultiplier
+	}
+	return friction
+}
+
+func isSoulGroundBlock(b world.Block, name string) bool {
+	switch b.(type) {
+	case block.SoulSand, block.SoulSoil:
+		return true
+	}
+	return name == "minecraft:soul_sand" || name == "minecraft:soul_soil"
+}
+
 // BlockClimbable returns whether the given block is climbable.
 func BlockClimbable(b world.Block) bool {
 	switch b.(type) {
@@ -65,6 +90,62 @@ func BlockClimbable(b world.Block) bool {
 	default:
 		return false
 	}
+}
+
+// BlockCobweb reports whether the block applies the cobweb movement slowdown.
+// "web" is the canonical Bedrock identifier; accepting "cobweb" as well
+// keeps custom registries and older adapters interoperable.
+func BlockCobweb(b world.Block) bool {
+	switch BlockName(b) {
+	case "minecraft:web", "minecraft:cobweb":
+		return true
+	default:
+		return false
+	}
+}
+
+// MovementBounce identifies the vanilla vertical response when an entity
+// lands on a block.
+type MovementBounce uint8
+
+const (
+	MovementBounceNone MovementBounce = iota
+	MovementBounceSlime
+	MovementBounceBed
+)
+
+// MovementBlockSemantics is the complete set of block properties consumed by
+// the movement integrator. A custom registry must return all properties from
+// one world-consistent snapshot; zero values mean ordinary block behaviour.
+type MovementBlockSemantics struct {
+	GroundFriction float32
+	Climbable      bool
+	Cobweb         bool
+	Bounce         MovementBounce
+
+	// Unsupported marks blocks whose collision/contact behaviour is not safe
+	// for authoritative simulation. Bamboo is the built-in example.
+	Unsupported bool
+}
+
+// DefaultMovementBlockSemantics resolves the vanilla movement properties for
+// a block using the built-in Dragonfly-backed registry.
+func DefaultMovementBlockSemantics(b world.Block) MovementBlockSemantics {
+	semantics := MovementBlockSemantics{
+		GroundFriction: BlockGroundFriction(b),
+		Climbable:      BlockClimbable(b),
+		Cobweb:         BlockCobweb(b),
+	}
+
+	switch BlockName(b) {
+	case "minecraft:slime":
+		semantics.Bounce = MovementBounceSlime
+	case "minecraft:bed":
+		semantics.Bounce = MovementBounceBed
+	case "minecraft:bamboo":
+		semantics.Unsupported = true
+	}
+	return semantics
 }
 
 // BlockSupportHeight returns the effective standing surface height for a ground

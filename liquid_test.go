@@ -1355,9 +1355,10 @@ func TestClimbUsesEffectiveJumping(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			sim := newLiquidSim(newLiquidWorld())
 			sim.BlockSemantics = overrideBlockSemantics{
-				name:      "minecraft:ladder",
-				friction:  DefaultBlockFriction,
-				climbable: true,
+				semantics: MovementBlockSemantics{
+					GroundFriction: DefaultBlockFriction,
+					Climbable:      true,
+				},
 			}
 			state := submergedState()
 			apply(state)
