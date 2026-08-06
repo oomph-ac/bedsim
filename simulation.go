@@ -245,11 +245,12 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	wasSwimming := state.Swimming
 	if input.StopSwimming {
 		state.Swimming = false
+		s.restorePoseAfterSwimming(state, poseCollisionsAvailable)
 	} else if input.StartSwimming {
 		state.Swimming = true
-		state.Sneaking = false
-		state.Crawling = false
-		state.Size[1] = state.StandingHeight
+		if state.SwimPose() || poseCollisionsAvailable && s.canFitHeight(state, state.StandingHeight) {
+			setSwimmingPoseFlags(state)
+		}
 	}
 	if wasSwimming {
 		state.SwimAmount = ClampFloat(state.SwimAmount+0.1, 0, 1)
@@ -389,6 +390,10 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	waterBlocks := s.touchingLiquidBlocks(state, liquidWater)
 	lavaBlocks := s.touchingLiquidBlocks(state, liquidLava)
 	inWater := len(waterBlocks) != 0
+	if inWater && state.Swimming {
+		state.SwimWaterGraceTicks = grace
+		setSwimmingPoseFlags(state)
+	}
 	if !state.Flying && s.attemptRiptide(state, inWater) {
 		s.debugf("riptide launch applied: %v", state.Vel)
 	}
@@ -1286,4 +1291,28 @@ func (s *Simulator) poseCollisionsAvailable(state *MovementState) bool {
 	chunkX := int32(math32.Floor(state.Pos.X())) >> 4
 	chunkZ := int32(math32.Floor(state.Pos.Z())) >> 4
 	return s.World.IsChunkLoaded(chunkX, chunkZ)
+}
+
+func setSwimmingPoseFlags(state *MovementState) {
+	state.Sneaking = false
+	state.Crawling = false
+	state.Size[1] = state.StandingHeight
+}
+
+func (s *Simulator) restorePoseAfterSwimming(state *MovementState, collisionsAvailable bool) {
+	if collisionsAvailable && s.canFitHeight(state, state.StandingHeight) {
+		state.Sneaking = false
+		state.Crawling = false
+		state.Size[1] = state.StandingHeight
+		return
+	}
+	if collisionsAvailable && s.canFitHeight(state, state.SneakingHeight) {
+		state.Sneaking = true
+		state.Crawling = false
+		state.Size[1] = state.SneakingHeight
+		return
+	}
+	state.Sneaking = false
+	state.Crawling = true
+	state.Size[1] = state.CrawlingHeight
 }

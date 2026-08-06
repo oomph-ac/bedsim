@@ -143,6 +143,36 @@ func TestStopCrawlingWhileSneakingUsesCrouchHeight(t *testing.T) {
 	}
 }
 
+func TestStopSwimmingFallsBackToCrawlUnderLowCeiling(t *testing.T) {
+	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(-1, 0.7, -1, 1, 2, 1),
+	}}}
+	state := newBaseState()
+	state.Swimming = true
+	state.SwimWaterGraceTicks = 1
+
+	sim.applyInput(state, InputState{StopSwimming: true})
+
+	if state.Swimming || !state.Crawling || state.Size.Y() != 0.6 {
+		t.Fatalf("expected crawl fallback after swimming, got swimming=%v crawling=%v size=%v", state.Swimming, state.Crawling, state.Size)
+	}
+}
+
+func TestStartSwimmingWithoutSwimPosePreservesFittingCrawl(t *testing.T) {
+	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(-1, 0.7, -1, 1, 2, 1),
+	}}}
+	state := newBaseState()
+	state.Crawling = true
+	state.Size[1] = 0.6
+
+	sim.applyInput(state, InputState{StartSwimming: true})
+
+	if !state.Swimming || !state.Crawling || state.Size.Y() != 0.6 {
+		t.Fatalf("expected crawl pose until swim collapse is observed, got swimming=%v crawling=%v size=%v", state.Swimming, state.Crawling, state.Size)
+	}
+}
+
 func TestPoseRestoresCustomStandingHeight(t *testing.T) {
 	state := newBaseState()
 	state.Size[1] = 2
