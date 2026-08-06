@@ -5,9 +5,9 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-type ClimbableBlock struct{}
+type climbableBlock struct{}
 
-func (ClimbableBlock) Matches(b world.Block, name string) bool {
+func (climbableBlock) Matches(b world.Block, name string) bool {
 	if _, ok := b.(dfblock.Ladder); ok {
 		return true
 	}
@@ -21,6 +21,6 @@ func (ClimbableBlock) Matches(b world.Block, name string) bool {
 	}
 }
 
-func (ClimbableBlock) Apply(s *MovementSemantics) {
+func (climbableBlock) Apply(s *resolution) {
 	s.Climbable = true
 }

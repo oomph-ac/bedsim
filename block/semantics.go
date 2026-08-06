@@ -30,18 +30,23 @@ type MovementSemantics struct {
 	Bounce                               Bounce
 }
 
-// Owner contributes movement behavior for a block family.
-type Owner interface {
+// rule contributes movement behavior for a block family.
+type rule interface {
 	Matches(world.Block, string) bool
-	Apply(*MovementSemantics)
+	Apply(*resolution)
 }
 
-var owners = [...]Owner{
-	SoulSand{},
-	ClimbableBlock{},
-	Cobweb{},
-	Slime{},
-	Bed{},
+type resolution struct {
+	MovementSemantics
+	groundFrictionSet bool
+}
+
+var rules = [...]rule{
+	soulSand{},
+	climbableBlock{},
+	cobweb{},
+	slime{},
+	bed{},
 	frictionBlock{name: "minecraft:ice", friction: 0.98},
 	frictionBlock{name: "minecraft:packed_ice", friction: 0.98},
 	frictionBlock{name: "minecraft:blue_ice", friction: 0.989},
@@ -49,32 +54,27 @@ var owners = [...]Owner{
 
 // Resolve returns built-in movement semantics for b.
 func Resolve(b world.Block, name string) MovementSemantics {
-	semantics := MovementSemantics{
-		GroundFriction:                       Friction(b, name),
-		GroundAccelerationFrictionMultiplier: 1,
+	result := resolution{
+		MovementSemantics: MovementSemantics{
+			GroundAccelerationFrictionMultiplier: 1,
+		},
 	}
-	for _, owner := range owners {
-		if owner.Matches(b, name) {
-			owner.Apply(&semantics)
+	if f, ok := b.(dfblock.Frictional); ok {
+		result.GroundFriction = float32(f.Friction())
+		result.groundFrictionSet = true
+	}
+	for _, rule := range rules {
+		if rule.Matches(b, name) {
+			rule.Apply(&result)
 		}
 	}
-	return semantics
+	if !result.groundFrictionSet {
+		result.GroundFriction = 0.6
+	}
+	return result.MovementSemantics
 }
 
 // Friction returns a block's ordinary friction.
 func Friction(b world.Block, name string) float32 {
-	if f, ok := b.(dfblock.Frictional); ok {
-		return float32(f.Friction())
-	}
-
-	for _, owner := range owners {
-		frictionOwner, ok := owner.(interface{ Friction() (float32, bool) })
-		if !ok || !owner.Matches(b, name) {
-			continue
-		}
-		if friction, ok := frictionOwner.Friction(); ok {
-			return friction
-		}
-	}
-	return 0.6
+	return Resolve(b, name).GroundFriction
 }

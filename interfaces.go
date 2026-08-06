@@ -20,8 +20,11 @@ type LiquidProvider interface {
 	Liquid(pos cube.Pos) (world.Liquid, bool)
 }
 
-// BlockMovementSemanticsProvider resolves movement behavior from a custom
-// world registry or block data.
+// BlockMovementSemanticsProvider resolves the complete movement behavior for a
+// block from a custom world registry or block data. GroundFriction and
+// GroundAccelerationFrictionMultiplier must be finite and positive; invalid
+// values fall back to BedSim's built-in semantics. Boolean and bounce values are
+// used as returned, including their zero values.
 type BlockMovementSemanticsProvider interface {
 	BlockMovementSemantics(world.Block) block.MovementSemantics
 }

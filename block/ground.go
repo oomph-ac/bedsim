@@ -5,15 +5,15 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-type SoulSand struct{}
+type soulSand struct{}
 
-func (SoulSand) Matches(b world.Block, name string) bool {
+func (soulSand) Matches(b world.Block, name string) bool {
 	if _, ok := b.(dfblock.SoulSand); ok {
 		return true
 	}
 	return name == "minecraft:soul_sand"
 }
 
-func (SoulSand) Apply(s *MovementSemantics) {
+func (soulSand) Apply(s *resolution) {
 	s.GroundAccelerationFrictionMultiplier *= SoulSandAccelerationFrictionMultiplier
 }

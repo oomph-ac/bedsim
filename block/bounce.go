@@ -5,30 +5,32 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-type Slime struct{}
+type slime struct{}
 
-func (Slime) Matches(b world.Block, name string) bool {
+func (slime) Matches(b world.Block, name string) bool {
 	if _, ok := b.(dfblock.Slime); ok {
 		return true
 	}
 	return name == "minecraft:slime"
 }
 
-func (Slime) Apply(s *MovementSemantics) {
+func (slime) Apply(s *resolution) {
+	if !s.groundFrictionSet {
+		s.GroundFriction = 0.8
+		s.groundFrictionSet = true
+	}
 	s.Bounce = BounceSlime
 }
 
-func (Slime) Friction() (float32, bool) { return 0.8, true }
+type bed struct{}
 
-type Bed struct{}
-
-func (Bed) Matches(b world.Block, name string) bool {
+func (bed) Matches(b world.Block, name string) bool {
 	if _, ok := b.(dfblock.Bed); ok {
 		return true
 	}
 	return name == "minecraft:bed"
 }
 
-func (Bed) Apply(s *MovementSemantics) {
+func (bed) Apply(s *resolution) {
 	s.Bounce = BounceBed
 }

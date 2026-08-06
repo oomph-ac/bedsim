@@ -47,7 +47,7 @@ registry or custom block data instead of bedsim's Dragonfly-backed defaults.
 The adapter implements `BlockMovementSemanticsProvider` and returns the full
 `block.MovementSemantics` bundle: ground friction, any acceleration-only
 friction multiplier, climbability, cobweb status, and slime/bed bounce
-behavior. Built-in owners live in the
+behavior. Built-in rules live in the
 `github.com/oomph-ac/bedsim/block` package. Custom ground friction must be
 finite and positive; an invalid value falls back to the built-in resolver. An
 invalid acceleration multiplier likewise falls back to the built-in block
