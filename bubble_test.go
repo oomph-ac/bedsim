@@ -55,18 +55,24 @@ func TestBubbleColumnSurfaceAcceptsRegistryBackedAir(t *testing.T) {
 	}
 }
 
-func TestBubbleColumnAppliesOnceAcrossMultipleCells(t *testing.T) {
-	w := environmentWorld{bubbles: map[cube.Pos]BubbleColumnDirection{
-		{0, 0, 0}: BubbleColumnUp,
-		{0, 1, 0}: BubbleColumnUp,
-	}}
+func TestBubbleColumnAppliesForEachOccupiedCell(t *testing.T) {
+	w := environmentWorld{
+		bubbles: map[cube.Pos]BubbleColumnDirection{
+			{0, 0, 0}: BubbleColumnUp,
+			{0, 1, 0}: BubbleColumnUp,
+		},
+		blocks: map[cube.Pos]world.Block{
+			{0, 0, 0}: block.Water{Still: true, Depth: 8},
+			{0, 1, 0}: block.Water{Still: true, Depth: 8},
+		},
+	}
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
 
 	(&Simulator{World: w}).applyBubbleColumns(state)
 
-	if want := float32(0.1); math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("bubble-column velocity = %v, want one impulse %v", state.Vel.Y(), want)
+	if want := float32(0.16); math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("bubble-column velocity = %v, want per-cell impulses totaling %v", state.Vel.Y(), want)
 	}
 }
 

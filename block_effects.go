@@ -31,7 +31,11 @@ func queueStuckSpeedMultiplier(state *MovementState, multiplier mgl32.Vec3) {
 
 func applyStuckSpeedMultiplier(state *MovementState) bool {
 	multiplier := state.StuckSpeedMultiplier
-	if state.NoClip || multiplier.LenSqr() <= 1e-7 {
+	if multiplier.LenSqr() <= 1e-7 {
+		return false
+	}
+	if state.NoClip {
+		state.StuckSpeedMultiplier = mgl32.Vec3{}
 		return false
 	}
 	state.SetVel(mgl32.Vec3{

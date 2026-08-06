@@ -58,7 +58,6 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 				above := pos.Side(cube.FaceUp)
 				_, liquidAbove := s.liquidAt(above)
 				applyBubbleColumn(state, direction, !liquidAbove && s.blockAir(s.blockAtPos(above)))
-				return
 			}
 		}
 	}

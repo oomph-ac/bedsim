@@ -65,6 +65,19 @@ func TestStuckMovementMultiplierAppliesOnceAndClearsVelocity(t *testing.T) {
 	}
 }
 
+func TestNoClipDiscardsQueuedStuckMovement(t *testing.T) {
+	state := newBaseState()
+	state.NoClip = true
+	state.StuckSpeedMultiplier = mgl32.Vec3{0.8, 0.75, 0.8}
+
+	if applyStuckSpeedMultiplier(state) {
+		t.Fatal("expected no-clip movement not to consume a multiplier")
+	}
+	if state.StuckSpeedMultiplier != (mgl32.Vec3{}) {
+		t.Fatalf("expected no-clip movement to discard the queued effect, got %v", state.StuckSpeedMultiplier)
+	}
+}
+
 func TestStuckMovementDoesNotBounce(t *testing.T) {
 	sim := &Simulator{
 		World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
