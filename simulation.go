@@ -51,6 +51,7 @@ func (s *Simulator) debugfIf(cond bool, format string, args ...any) {
 }
 
 func (s *Simulator) simulateCore(state *MovementState) SimulationOutcome {
+	state.ensurePoseHeights()
 	defer func() {
 		state.RiptideReady = false
 	}()

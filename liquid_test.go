@@ -368,6 +368,22 @@ func TestStartSwimmingClearsSneaking(t *testing.T) {
 	}
 }
 
+func TestSimulateStateInitializesPoseHeightBeforeSwimming(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Swimming = true
+	state.StandingHeight = 0
+	state.SneakingHeight = 0
+	state.CrawlingHeight = 0
+
+	(&Simulator{World: w}).SimulateState(state)
+
+	if state.StandingHeight != 1.8 || state.Size.Y() != 1.8 {
+		t.Fatalf("expected initialized standing pose, got standing=%v size=%v", state.StandingHeight, state.Size)
+	}
+}
+
 // StopSwimming wins when both flags arrive in the same tick.
 func TestStopSwimmingTakesPriority(t *testing.T) {
 	sim := newLiquidSim(newLiquidWorld())
