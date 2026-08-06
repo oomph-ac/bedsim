@@ -114,6 +114,9 @@ type MovementState struct {
 	// RiptideInRain is server-observed weather exposure that permits a
 	// validated Riptide release without direct block-water contact.
 	RiptideInRain bool
+	// InVehicle is server-authoritative mounted state. Riptide cannot start
+	// while the player is riding a vehicle.
+	InVehicle bool
 
 	Flying, MayFly, TrustFlyStatus bool
 	JustDisabledFlight             bool

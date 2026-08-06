@@ -125,6 +125,22 @@ func TestRiptideDoesNotLaunchWhileFlying(t *testing.T) {
 	}
 }
 
+func TestRiptideDoesNotLaunchWhileMounted(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
+	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Gravity = NormalGravity
+	state.InVehicle = true
+	state.RiptideReady = true
+
+	sim.Simulate(state, InputState{StartSpinAttack: true})
+
+	if state.RiptideTicks != 0 {
+		t.Fatalf("expected mounted player not to start riptide, got %d ticks", state.RiptideTicks)
+	}
+}
+
 func TestRiptideRequiresValidatedTridentRelease(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
 	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
