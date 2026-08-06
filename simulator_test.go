@@ -2,14 +2,15 @@ package bedsim
 
 import (
 	"fmt"
-	"math"
+	"github.com/chewxy/math32"
 	"strings"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/go-gl/mathgl/mgl64"
+	"github.com/go-gl/mathgl/mgl32"
+	movementblock "github.com/oomph-ac/bedsim/block"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -19,11 +20,11 @@ func (mockWorld) Block(pos cube.Pos) world.Block {
 	return block.Air{}
 }
 
-func (mockWorld) BlockCollisions(pos cube.Pos) []cube.BBox {
+func (mockWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	return nil
 }
 
-func (mockWorld) GetNearbyBBoxes(aabb cube.BBox) []cube.BBox {
+func (mockWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
 	return nil
 }
 
@@ -33,23 +34,57 @@ func (mockWorld) IsChunkLoaded(chunkX, chunkZ int32) bool {
 
 type staticWorld struct {
 	chunkLoaded bool
-	boxes       []cube.BBox
+	boxes       []cube.BBox32
+}
+
+type cobwebWorld struct {
+	pos cube.Pos
+}
+
+type nonCollidingCobwebWorld struct {
+	cobwebWorld
+}
+
+func (w cobwebWorld) Block(pos cube.Pos) world.Block {
+	if pos == w.pos {
+		return block.Cobweb{}
+	}
+	return block.Air{}
+}
+
+func (w cobwebWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
+	if pos != w.pos {
+		return nil
+	}
+	return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1)}
+}
+
+func (nonCollidingCobwebWorld) BlockCollisions(cube.Pos) []cube.BBox32 {
+	return nil
+}
+
+func (cobwebWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 {
+	return nil
+}
+
+func (cobwebWorld) IsChunkLoaded(int32, int32) bool {
+	return true
 }
 
 func (w staticWorld) Block(pos cube.Pos) world.Block {
 	return block.Air{}
 }
 
-func (w staticWorld) BlockCollisions(pos cube.Pos) []cube.BBox {
+func (w staticWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	return nil
 }
 
-func (w staticWorld) GetNearbyBBoxes(aabb cube.BBox) []cube.BBox {
+func (w staticWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
 	if len(w.boxes) == 0 {
 		return nil
 	}
 
-	out := make([]cube.BBox, 0, len(w.boxes))
+	out := make([]cube.BBox32, 0, len(w.boxes))
 	for _, bb := range w.boxes {
 		if aabb.IntersectsWith(bb) {
 			out = append(out, bb)
@@ -80,34 +115,24 @@ func (m mockInventory) HasElytra() bool {
 }
 
 type overrideBlockSemantics struct {
-	name      string
-	friction  float64
-	climbable bool
+	semantics movementblock.MovementSemantics
 }
 
-func (s overrideBlockSemantics) BlockName(world.Block) string {
-	return s.name
-}
-
-func (s overrideBlockSemantics) BlockFriction(world.Block) float64 {
-	return s.friction
-}
-
-func (s overrideBlockSemantics) BlockClimbable(world.Block) bool {
-	return s.climbable
+func (s overrideBlockSemantics) BlockMovementSemantics(world.Block) movementblock.MovementSemantics {
+	return s.semantics
 }
 
 func newBaseState() *MovementState {
 	return &MovementState{
 		Client: ClientState{
-			Pos: mgl64.Vec3{},
-			Vel: mgl64.Vec3{},
-			Mov: mgl64.Vec3{},
+			Pos: mgl32.Vec3{},
+			Vel: mgl32.Vec3{},
+			Mov: mgl32.Vec3{},
 		},
-		Pos:                  mgl64.Vec3{},
-		Vel:                  mgl64.Vec3{},
-		Mov:                  mgl64.Vec3{},
-		Size:                 mgl64.Vec3{0.6, 1.8, 1},
+		Pos:                  mgl32.Vec3{},
+		Vel:                  mgl32.Vec3{},
+		Mov:                  mgl32.Vec3{},
+		Size:                 mgl32.Vec3{0.6, 1.8, 1},
 		MovementSpeed:        0.1,
 		DefaultMovementSpeed: 0.1,
 		AirSpeed:             0.02,
@@ -118,6 +143,28 @@ func newBaseState() *MovementState {
 		GameMode:             packet.GameTypeSurvival,
 		TicksSinceKnockback:  1,
 		TicksSinceTeleport:   1,
+	}
+}
+
+func TestInsideCobwebTranslatesBlockVolume(t *testing.T) {
+	pos := cube.Pos{32, 64, -24}
+	sim := &Simulator{World: cobwebWorld{pos: pos}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
+
+	if !sim.isInsideCobweb(state) {
+		t.Fatal("expected intersection with translated cobweb block volume away from the origin")
+	}
+}
+
+func TestInsideCobwebUsesFullBlockVolumeWithoutCollisionBoxes(t *testing.T) {
+	pos := cube.Pos{32, 64, -24}
+	sim := &Simulator{World: nonCollidingCobwebWorld{cobwebWorld{pos: pos}}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
+
+	if !sim.isInsideCobweb(state) {
+		t.Fatal("expected a non-collidable cobweb to occupy its full block volume")
 	}
 }
 
@@ -143,9 +190,9 @@ func TestSimulateMoveRelative(t *testing.T) {
 	state := newBaseState()
 
 	input := InputState{
-		MoveVector: mgl64.Vec2{0, 1},
-		ClientPos:  mgl64.Vec3{},
-		ClientVel:  mgl64.Vec3{},
+		MoveVector: mgl32.Vec2{0, 1},
+		ClientPos:  mgl32.Vec3{},
+		ClientVel:  mgl32.Vec3{},
 		Yaw:        0,
 		Pitch:      0,
 		HeadYaw:    0,
@@ -167,7 +214,7 @@ func TestSimulateStateOutcomeTeleport(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.TeleportPos = mgl64.Vec3{12, 63, -4}
+	state.TeleportPos = mgl32.Vec3{12, 63, -4}
 	state.TicksSinceTeleport = 0
 	state.TeleportCompletionTicks = 0
 	state.TeleportIsSmoothed = false
@@ -188,8 +235,8 @@ func TestSimulateStateTeleportDoesNotUpdateFallDistance(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.Pos = mgl64.Vec3{0, 70, 0}
-	state.TeleportPos = mgl64.Vec3{0, 60, 0}
+	state.Pos = mgl32.Vec3{0, 70, 0}
+	state.TeleportPos = mgl32.Vec3{0, 60, 0}
 	state.TicksSinceTeleport = 0
 	state.TeleportCompletionTicks = 0
 
@@ -210,10 +257,10 @@ func TestSimulateStateOutcomeUnreliable(t *testing.T) {
 
 	state := newBaseState()
 	state.GameMode = packet.GameTypeCreative
-	state.Pos = mgl64.Vec3{10, 70, 10}
-	state.Client.Pos = mgl64.Vec3{3, 64, -1}
-	state.Vel = mgl64.Vec3{0.3, 0.9, -0.2}
-	state.Client.Vel = mgl64.Vec3{-0.1, 0, 0.2}
+	state.Pos = mgl32.Vec3{10, 70, 10}
+	state.Client.Pos = mgl32.Vec3{3, 64, -1}
+	state.Vel = mgl32.Vec3{0.3, 0.9, -0.2}
+	state.Client.Vel = mgl32.Vec3{-0.1, 0, 0.2}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnreliable {
@@ -236,10 +283,10 @@ func TestSimulateStateNoClipPassesThroughClientState(t *testing.T) {
 	state := newBaseState()
 	state.NoClip = true
 	state.OnGround = true
-	state.Pos = mgl64.Vec3{10, 70, 10}
-	state.Client.Pos = mgl64.Vec3{3, 64, -1}
-	state.Vel = mgl64.Vec3{1, 2, 3}
-	state.Client.Vel = mgl64.Vec3{0.1, 0.2, 0.3}
+	state.Pos = mgl32.Vec3{10, 70, 10}
+	state.Client.Pos = mgl32.Vec3{3, 64, -1}
+	state.Vel = mgl32.Vec3{1, 2, 3}
+	state.Client.Vel = mgl32.Vec3{0.1, 0.2, 0.3}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnreliable {
@@ -258,15 +305,15 @@ func TestSimulateStateNoClipPassesThroughClientState(t *testing.T) {
 
 func TestUpdateFallDistanceUsesResolvedGroundState(t *testing.T) {
 	state := newBaseState()
-	state.Pos = mgl64.Vec3{0, 10, 0}
+	state.Pos = mgl32.Vec3{0, 10, 0}
 
-	state.SetPos(mgl64.Vec3{0, 7, 0})
+	state.SetPos(mgl32.Vec3{0, 7, 0})
 	updateFallDistance(state, 10)
 	if state.FallDistance != 3 {
 		t.Fatalf("expected fall distance to increase after downward move, got %v", state.FallDistance)
 	}
 
-	state.SetPos(mgl64.Vec3{0, 8, 0})
+	state.SetPos(mgl32.Vec3{0, 8, 0})
 	updateFallDistance(state, 7)
 	if state.FallDistance != 0 {
 		t.Fatalf("expected upward move to reset fall distance, got %v", state.FallDistance)
@@ -274,7 +321,7 @@ func TestUpdateFallDistanceUsesResolvedGroundState(t *testing.T) {
 
 	state.FallDistance = 4
 	state.OnGround = true
-	state.SetPos(mgl64.Vec3{0, 6, 0})
+	state.SetPos(mgl32.Vec3{0, 6, 0})
 	updateFallDistance(state, 8)
 	if state.FallDistance != 0 {
 		t.Fatalf("expected grounded move to clear fall distance, got %v", state.FallDistance)
@@ -285,21 +332,25 @@ func TestSimulatorBlockSemanticsOverridesDefaults(t *testing.T) {
 	sim := &Simulator{
 		World: mockWorld{},
 		BlockSemantics: overrideBlockSemantics{
-			name:      "minecraft:custom_floor",
-			friction:  0.42,
-			climbable: true,
+			semantics: movementblock.MovementSemantics{
+				GroundFriction: 0.42,
+				Climbable:      true,
+				Cobweb:         true,
+				Bounce:         movementblock.BounceBed,
+			},
 		},
 	}
 	b := block.Air{}
 
-	if got := sim.blockName(b); got != "minecraft:custom_floor" {
-		t.Fatalf("expected semantic block name, got %q", got)
+	got := sim.blockMovementSemantics(b)
+	if got.GroundFriction != 0.42 {
+		t.Fatalf("expected semantic block friction, got %v", got.GroundFriction)
 	}
-	if got := sim.blockFriction(b); got != 0.42 {
-		t.Fatalf("expected semantic block friction, got %v", got)
-	}
-	if !sim.blockClimbable(b) {
+	if !got.Climbable {
 		t.Fatalf("expected semantic climbable value")
+	}
+	if !got.Cobweb || got.Bounce != movementblock.BounceBed {
+		t.Fatalf("expected complete semantic bundle, got %+v", got)
 	}
 }
 
@@ -307,30 +358,26 @@ func TestSimulatorDefaultBlockSemanticsFallback(t *testing.T) {
 	b := block.Air{}
 	sim := &Simulator{World: mockWorld{}}
 
-	if got := sim.blockName(b); got != BlockName(b) {
-		t.Fatalf("expected default block name, got %q", got)
-	}
-	if got := sim.blockFriction(b); got != BlockFriction(b) {
-		t.Fatalf("expected default block friction, got %v", got)
-	}
-	if got := sim.blockClimbable(b); got != BlockClimbable(b) {
-		t.Fatalf("expected default climbable value, got %v", got)
+	got := sim.blockMovementSemantics(b)
+	want := movementblock.Resolve(b, BlockName(b))
+	if got != want {
+		t.Fatalf("expected default movement semantics %+v, got %+v", want, got)
 	}
 }
 
 func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) {
 	b := block.Air{}
-	want := BlockFriction(b)
+	want := movementblock.Friction(b, BlockName(b))
 
 	tests := []struct {
 		name     string
-		friction float64
+		friction float32
 	}{
 		{name: "zero", friction: 0},
 		{name: "negative", friction: -0.42},
-		{name: "nan", friction: math.NaN()},
-		{name: "positive infinity", friction: math.Inf(1)},
-		{name: "negative infinity", friction: math.Inf(-1)},
+		{name: "nan", friction: math32.NaN()},
+		{name: "positive infinity", friction: math32.Inf(1)},
+		{name: "negative infinity", friction: math32.Inf(-1)},
 	}
 
 	for _, tt := range tests {
@@ -338,14 +385,31 @@ func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) 
 			sim := &Simulator{
 				World: mockWorld{},
 				BlockSemantics: overrideBlockSemantics{
-					name:     "minecraft:custom_floor",
-					friction: tt.friction,
+					semantics: movementblock.MovementSemantics{GroundFriction: tt.friction},
 				},
 			}
-			if got := sim.blockFriction(b); got != want {
+			if got := sim.blockMovementSemantics(b).GroundFriction; got != want {
 				t.Fatalf("expected invalid semantic friction to fall back to %v, got %v", want, got)
 			}
 		})
+	}
+}
+
+func TestSimulatorInvalidAccelerationMultiplierFallsBackToBuiltIn(t *testing.T) {
+	b := block.SoulSand{}
+	want := movementblock.Resolve(b, BlockName(b)).GroundAccelerationFrictionMultiplier
+	sim := &Simulator{
+		World: mockWorld{},
+		BlockSemantics: overrideBlockSemantics{
+			semantics: movementblock.MovementSemantics{
+				GroundFriction:                       DefaultBlockFriction,
+				GroundAccelerationFrictionMultiplier: 0,
+			},
+		},
+	}
+
+	if got := sim.blockMovementSemantics(b).GroundAccelerationFrictionMultiplier; got != want {
+		t.Fatalf("expected invalid acceleration multiplier to fall back to %v, got %v", want, got)
 	}
 }
 
@@ -356,13 +420,13 @@ func TestSimulateStateOutcomeUnloadedChunk(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.Vel = mgl64.Vec3{0.2, 0.1, -0.1}
+	state.Vel = mgl32.Vec3{0.2, 0.1, -0.1}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnloadedChunk {
 		t.Fatalf("expected unloaded chunk outcome, got %v", result.Outcome)
 	}
-	if state.Vel != (mgl64.Vec3{}) {
+	if state.Vel != (mgl32.Vec3{}) {
 		t.Fatalf("expected velocity to be cleared, got %v", state.Vel)
 	}
 }
@@ -375,13 +439,13 @@ func TestSimulateStateOutcomeImmobileOrNotReady(t *testing.T) {
 
 	state := newBaseState()
 	state.Immobile = true
-	state.Vel = mgl64.Vec3{0.5, -0.3, 0.5}
+	state.Vel = mgl32.Vec3{0.5, -0.3, 0.5}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeImmobileOrNotReady {
 		t.Fatalf("expected immobile/not-ready outcome, got %v", result.Outcome)
 	}
-	if state.Vel != (mgl64.Vec3{}) {
+	if state.Vel != (mgl32.Vec3{}) {
 		t.Fatalf("expected velocity to be cleared, got %v", state.Vel)
 	}
 }
@@ -394,7 +458,7 @@ func TestSimulateStateSkipsGravityWhenDisabled(t *testing.T) {
 
 	state := newBaseState()
 	state.HasGravity = false
-	state.Impulse = mgl64.Vec2{0, 0.98}
+	state.Impulse = mgl32.Vec2{0, 0.98}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeNormal {
@@ -415,7 +479,7 @@ func TestSimulateStateInvalidGlideContinuesNormalMovement(t *testing.T) {
 	state := newBaseState()
 	state.Gliding = true
 	state.OnGround = true
-	state.Impulse = mgl64.Vec2{0, 0.98}
+	state.Impulse = mgl32.Vec2{0, 0.98}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeNormal {
@@ -442,7 +506,7 @@ func TestSimulateStateDebugTraceIncludesCollisionStream(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.Impulse = mgl64.Vec2{0, 0.98}
+	state.Impulse = mgl32.Vec2{0, 0.98}
 
 	result := sim.SimulateState(state)
 	if result.Outcome != SimulationOutcomeNormal {
@@ -470,8 +534,8 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 	sim := &Simulator{
 		World: staticWorld{
 			chunkLoaded: true,
-			boxes: []cube.BBox{
-				cube.Box(0, 2, 1, 1, 3, 2),
+			boxes: []cube.BBox32{
+				cube.Box32(0, 2, 1, 1, 3, 2),
 			},
 		},
 		Effects: mockEffects{},
@@ -483,12 +547,12 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 	}
 
 	state := newBaseState()
-	state.Pos = mgl64.Vec3{0, 0, 0.69}
+	state.Pos = mgl32.Vec3{0, 0, 0.69}
 	state.Client.Pos = state.Pos
 	state.OnGround = true
 	state.Jumping = true
 	state.Sprinting = true
-	state.Rotation = mgl64.Vec3{0, 0, 0}
+	state.Rotation = mgl32.Vec3{0, 0, 0}
 	state.JumpHeight = DefaultJumpHeight
 
 	result := sim.SimulateState(state)
@@ -509,13 +573,13 @@ func TestStepUpTiebreaker(t *testing.T) {
 	// Geometry: ground at Y=0, a 0.5-high slab at X=1 (X=1..2, Y=0..0.5).
 	// The player stands on the ground at X≈0.5, walks in +X toward the slab.
 	// The step-up (0.5 blocks) is within StepHeight (0.5625).
-	slabBox := cube.Box(1, 0, -1, 2, 0.5, 2)
-	groundBox := cube.Box(-1, -1, -1, 1, 0, 2)
+	slabBox := cube.Box32(1, 0, -1, 2, 0.5, 2)
+	groundBox := cube.Box32(-1, -1, -1, 1, 0, 2)
 
-	startPos := mgl64.Vec3{0.5, 0, 0.5}
+	startPos := mgl32.Vec3{0.5, 0, 0.5}
 
-	runSim := func(ignoreStepTiebreaker bool) (mgl64.Vec3, bool) {
-		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox{slabBox, groundBox}}
+	runSim := func(ignoreStepTiebreaker bool) (mgl32.Vec3, bool) {
+		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox32{slabBox, groundBox}}
 		sim := &Simulator{
 			World:   w,
 			Effects: mockEffects{},
@@ -531,9 +595,9 @@ func TestStepUpTiebreaker(t *testing.T) {
 		state.JumpHeight = DefaultJumpHeight
 
 		input := InputState{
-			MoveVector: mgl64.Vec2{0, 1},
+			MoveVector: mgl32.Vec2{0, 1},
 			ClientPos:  startPos,
-			ClientVel:  mgl64.Vec3{},
+			ClientVel:  mgl32.Vec3{},
 			Yaw:        -90, // face +X
 			HeadYaw:    -90,
 		}
@@ -564,8 +628,8 @@ func TestStepUpTiebreaker(t *testing.T) {
 
 	t.Run("blocked step still rejected with flag", func(t *testing.T) {
 		// Place a ceiling directly above the slab so stepping up would cause collision.
-		ceilingBox := cube.Box(1, 1.3, -1, 2, 2.3, 2) // leaves only 0.8 gap, player is 1.8 tall
-		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox{slabBox, groundBox, ceilingBox}}
+		ceilingBox := cube.Box32(1, 1.3, -1, 2, 2.3, 2) // leaves only 0.8 gap, player is 1.8 tall
+		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox32{slabBox, groundBox, ceilingBox}}
 		sim := &Simulator{
 			World:   w,
 			Effects: mockEffects{},
@@ -581,9 +645,9 @@ func TestStepUpTiebreaker(t *testing.T) {
 		state.JumpHeight = DefaultJumpHeight
 
 		input := InputState{
-			MoveVector: mgl64.Vec2{0, 1},
+			MoveVector: mgl32.Vec2{0, 1},
 			ClientPos:  startPos,
-			ClientVel:  mgl64.Vec3{},
+			ClientVel:  mgl32.Vec3{},
 			Yaw:        -90,
 			HeadYaw:    -90,
 		}
@@ -610,8 +674,8 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			name: "authoritative velocity-only drift",
 			mode: SimulationModeAuthoritative,
 			mutate: func(state *MovementState) {
-				state.Vel = mgl64.Vec3{0.5, 0, 0}
-				state.Client.Vel = mgl64.Vec3{}
+				state.Vel = mgl32.Vec3{0.5, 0, 0}
+				state.Client.Vel = mgl32.Vec3{}
 			},
 			wantSet: true,
 		},
@@ -619,8 +683,8 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			name: "permissive velocity-only drift",
 			mode: SimulationModePermissive,
 			mutate: func(state *MovementState) {
-				state.Vel = mgl64.Vec3{0.5, 0, 0}
-				state.Client.Vel = mgl64.Vec3{}
+				state.Vel = mgl32.Vec3{0.5, 0, 0}
+				state.Client.Vel = mgl32.Vec3{}
 			},
 			wantSet: false,
 		},
@@ -628,8 +692,8 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			name: "permissive position drift",
 			mode: SimulationModePermissive,
 			mutate: func(state *MovementState) {
-				state.Pos = mgl64.Vec3{0.5, 0, 0}
-				state.Client.Pos = mgl64.Vec3{}
+				state.Pos = mgl32.Vec3{0.5, 0, 0}
+				state.Client.Pos = mgl32.Vec3{}
 			},
 			wantSet: true,
 		},
@@ -637,8 +701,8 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			name: "passive position drift",
 			mode: SimulationModePassive,
 			mutate: func(state *MovementState) {
-				state.Pos = mgl64.Vec3{0.5, 0, 0}
-				state.Client.Pos = mgl64.Vec3{}
+				state.Pos = mgl32.Vec3{0.5, 0, 0}
+				state.Client.Pos = mgl32.Vec3{}
 			},
 			wantSet: false,
 		},

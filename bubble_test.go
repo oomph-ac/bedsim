@@ -1,13 +1,13 @@
 package bedsim
 
 import (
-	"math"
+	"github.com/chewxy/math32"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/go-gl/mathgl/mgl64"
+	"github.com/go-gl/mathgl/mgl32"
 )
 
 func TestBubbleColumnUsesBoarImpulsesAndCaps(t *testing.T) {
@@ -15,8 +15,8 @@ func TestBubbleColumnUsesBoarImpulsesAndCaps(t *testing.T) {
 		name      string
 		direction BubbleColumnDirection
 		surface   bool
-		initial   float64
-		want      float64
+		initial   float32
+		want      float32
 	}{
 		{name: "submerged up", direction: BubbleColumnUp, initial: 0, want: 0.06},
 		{name: "submerged up cap", direction: BubbleColumnUp, initial: 0.69, want: 0.70},
@@ -33,7 +33,7 @@ func TestBubbleColumnUsesBoarImpulsesAndCaps(t *testing.T) {
 			state := newBaseState()
 			state.Vel[1] = tt.initial
 			applyBubbleColumn(state, tt.direction, tt.surface)
-			if math.Abs(state.Vel.Y()-tt.want) > 1e-12 {
+			if math32.Abs(state.Vel.Y()-tt.want) > 1e-6 {
 				t.Fatalf("expected y velocity %v, got %v", tt.want, state.Vel.Y())
 			}
 		})
@@ -43,10 +43,10 @@ func TestBubbleColumnUsesBoarImpulsesAndCaps(t *testing.T) {
 func TestBubbleColumnSurfaceAcceptsRegistryBackedAir(t *testing.T) {
 	w := environmentWorld{
 		bubbles: map[cube.Pos]BubbleColumnDirection{{0, 0, 0}: BubbleColumnUp},
-		blocks:  map[cube.Pos]world.Block{{0, 1, 0}: namedBlock{name: "minecraft:air"}},
+		blocks:  map[cube.Pos]world.Block{{0, 1, 0}: semanticsNamedBlock{name: "minecraft:air"}},
 	}
 	state := newBaseState()
-	state.Pos = mgl64.Vec3{0.5, 0, 0.5}
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
 
 	(&Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}).applyBubbleColumns(state)
 
@@ -55,16 +55,31 @@ func TestBubbleColumnSurfaceAcceptsRegistryBackedAir(t *testing.T) {
 	}
 }
 
+func TestBubbleColumnAppliesOnceAcrossMultipleCells(t *testing.T) {
+	w := environmentWorld{bubbles: map[cube.Pos]BubbleColumnDirection{
+		{0, 0, 0}: BubbleColumnUp,
+		{0, 1, 0}: BubbleColumnUp,
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+
+	(&Simulator{World: w}).applyBubbleColumns(state)
+
+	if want := float32(0.1); math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("bubble-column velocity = %v, want one impulse %v", state.Vel.Y(), want)
+	}
+}
+
 func TestRiptideLaunchesInWaterAndStartsSpinAttack(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
 	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
 	state := newBaseState()
-	state.Pos = mgl64.Vec3{0.5, 0, 0.5}
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
 	state.Gravity = NormalGravity
 
 	sim.Simulate(state, InputState{StartSpinAttack: true})
 
-	if want := 1.8; math.Abs(state.Vel.Z()-want) > 1e-9 {
+	if want := float32(1.8); math32.Abs(state.Vel.Z()-want) > 1e-6 {
 		t.Fatalf("expected riptide velocity %v, got %v", want, state.Vel.Z())
 	}
 	if state.RiptideTicks != 19 {

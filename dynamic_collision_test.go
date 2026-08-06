@@ -1,13 +1,13 @@
 package bedsim
 
 import (
-	"math"
+	"github.com/chewxy/math32"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/go-gl/mathgl/mgl64"
+	"github.com/go-gl/mathgl/mgl32"
 )
 
 type dynamicCollisionWorld struct {
@@ -15,10 +15,10 @@ type dynamicCollisionWorld struct {
 	lastContext MovementCollisionContext
 }
 
-func (w *dynamicCollisionWorld) GetMovementBBoxes(_ cube.BBox, context MovementCollisionContext) []cube.BBox {
+func (w *dynamicCollisionWorld) GetMovementBBoxes(_ cube.BBox32, context MovementCollisionContext) []cube.BBox32 {
 	w.lastContext = context
 	if context.LeatherBoots && !context.Descending && !context.WantDown {
-		return []cube.BBox{cube.Box(0, 0, 0, 1, 1, 1)}
+		return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1)}
 	}
 	return nil
 }
@@ -46,8 +46,8 @@ func (leatherEquipment) EnchantmentLevel(MovementEnchantment) int { return 0 }
 func (leatherEquipment) WearingLeatherBoots() bool                { return true }
 
 func TestCannotUnsneakUnderLowCeiling(t *testing.T) {
-	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox{
-		cube.Box(-1, 1.5, -1, 1, 2, 1),
+	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(-1, 1.5, -1, 1, 2, 1),
 	}}}
 	state := newBaseState()
 	state.Sneaking = true
@@ -61,8 +61,8 @@ func TestCannotUnsneakUnderLowCeiling(t *testing.T) {
 }
 
 func TestCannotStopCrawlingUnderLowCeiling(t *testing.T) {
-	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox{
-		cube.Box(-1, 0.7, -1, 1, 2, 1),
+	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(-1, 0.7, -1, 1, 2, 1),
 	}}}
 	state := newBaseState()
 	state.Crawling = true
@@ -92,12 +92,12 @@ func TestSneakingInWaterDescends(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
 	sim := &Simulator{World: w}
 	state := newBaseState()
-	state.Pos = mgl64.Vec3{0.5, 0, 0.5}
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
 	state.Gravity = NormalGravity
 
 	sim.Simulate(state, InputState{SneakDown: true, Sneaking: true})
 
-	if want := -0.037; math.Abs(state.Vel.Y()-want) > 1e-12 {
+	if want := float32(-0.037); math32.Abs(state.Vel.Y()-want) > 1e-6 {
 		t.Fatalf("expected water descent velocity %v, got %v", want, state.Vel.Y())
 	}
 }

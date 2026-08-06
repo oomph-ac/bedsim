@@ -22,15 +22,15 @@ func (w environmentWorld) Block(pos cube.Pos) world.Block {
 	return block.Air{}
 }
 
-func (w environmentWorld) BlockCollisions(pos cube.Pos) []cube.BBox {
+func (w environmentWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
 	if w.solids[pos] {
-		return []cube.BBox{cube.Box(0, 0, 0, 1, 1, 1).Translate(pos.Vec3())}
+		return []cube.BBox32{cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))}
 	}
 	return nil
 }
 
-func (w environmentWorld) GetNearbyBBoxes(cube.BBox) []cube.BBox { return nil }
-func (w environmentWorld) IsChunkLoaded(int32, int32) bool       { return true }
+func (w environmentWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 { return nil }
+func (w environmentWorld) IsChunkLoaded(int32, int32) bool           { return true }
 
 func (w environmentWorld) Liquid(pos cube.Pos) (world.Liquid, bool) {
 	liquid, ok := w.Block(pos).(world.Liquid)

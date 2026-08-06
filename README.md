@@ -15,33 +15,7 @@ go get github.com/oomph-ac/bedsim
 
 ## Setup
 
-Before calling any bedsim function (`BlockName`, `BlockClimbable`, `BlockFriction`, or running a simulation tick), you **must** finalize the Dragonfly block registry used by your world. Without this, block runtime/hash lookups may be incomplete and `BlockName` can cache incorrect mappings permanently.
-
-```go
-import "github.com/df-mc/dragonfly/server/world"
-
-var blocks = world.NewBlockRegistry()
-
-func init() {
-    // Register custom blocks/states before finalizing.
-    // blocks.RegisterBlock(...)
-    // blocks.RegisterBlockState(...)
-
-    blocks.Finalize()
-}
-```
-
-```go
-conf := server.DefaultConfig()
-conf.Blocks = blocks
-
-sessionConf := session.Config{BlockRegistry: blocks}
-
-ch := chunk.New(blocks, world.Overworld.Range())
-decoded, err := chunk.NetworkDecode(blocks, payload, subChunkCount, world.Overworld.Range())
-```
-
-If you use only vanilla blocks, `world.DefaultBlockRegistry` is still valid after it has been finalized by Dragonfly configuration setup or by an explicit `world.DefaultBlockRegistry.Finalize()` call. If you register custom blocks, do so **before** calling `Finalize`.
+BedSim does not manage Dragonfly's block registry lifecycle. `BlockName` obtains the canonical name from the supplied `world.Block` and caches it by the block's raw base and state hashes.
 
 ## Usage
 
@@ -50,7 +24,7 @@ Implement provider adapters to bridge your world and player systems:
 ```go
 sim := bedsim.Simulator{
     World:          myWorldProvider,      // block lookups, collisions, chunk-loaded checks
-    BlockSemantics: myBlockSemantics,     // optional: per-world names, friction, climbability
+    BlockSemantics: myBlockSemantics,     // optional: complete per-world movement semantics
     Liquids:        myLiquidProvider,     // second block layer (waterlogged blocks)
     Effects:        myEffectsProvider,    // jump boost, levitation, slow falling
     Inventory:      myInventoryProvider,  // elytra equipped check
@@ -71,8 +45,19 @@ if result.NeedsCorrection {
 
 Set `BlockSemantics` when movement behavior must come from a per-world block
 registry or custom block data instead of bedsim's Dragonfly-backed defaults.
-Custom friction values must be finite and positive; invalid values fall back to
-Dragonfly defaults.
+The adapter implements `BlockMovementSemanticsProvider` and returns the full
+`block.MovementSemantics` bundle: ground friction, any acceleration-only
+friction multiplier, Soul Speed interaction, climbability, cobweb status,
+slime/bed bounce behavior, inside-block movement, and vertical traversal.
+Built-in rules live in the
+`github.com/oomph-ac/bedsim/block` package. Custom ground friction must be
+finite and positive; an invalid value falls back to the built-in resolver. An
+invalid acceleration multiplier likewise falls back to the built-in block
+semantics.
+
+BedSim's semantics package does not mutate Dragonfly's registry. Applications
+own registry setup and must register any additional block implementations
+before finalizing their registry.
 
 Implement `DepthStriderProvider` on the inventory adapter when Depth Strider
 should affect water movement.

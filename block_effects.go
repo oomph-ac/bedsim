@@ -1,23 +1,24 @@
 package bedsim
 
 import (
-	"math"
+	"github.com/chewxy/math32"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
+	movementblock "github.com/oomph-ac/bedsim/block"
 )
 
-func applyInsideBlockMovement(state *MovementState, blockName string) {
+func applyInsideBlockMovement(state *MovementState, movement movementblock.InsideMovement) {
 	velocity := state.Vel
-	switch blockName {
-	case "minecraft:honey_block":
+	switch movement {
+	case movementblock.InsideMovementHoney:
 		velocity[0] *= 0.4
 		velocity[1] = max(-0.12, velocity[1])
 		velocity[2] *= 0.4
-	case "minecraft:sweet_berry_bush":
+	case movementblock.InsideMovementSweetBerryBush:
 		velocity[0] *= 0.8
 		velocity[1] *= 0.75
 		velocity[2] *= 0.8
-	case "minecraft:powder_snow":
+	case movementblock.InsideMovementPowderSnow:
 		velocity[0] *= 0.9
 		velocity[1] *= 1.5
 		velocity[2] *= 0.9
@@ -25,16 +26,16 @@ func applyInsideBlockMovement(state *MovementState, blockName string) {
 	state.SetVel(velocity)
 }
 
-func applyAscendableMovement(state *MovementState, blockName string, leatherBoots bool) {
+func applyAscendableMovement(state *MovementState, traversal movementblock.Traversal, leatherBoots bool) {
 	velocity := state.Vel
-	switch blockName {
-	case "minecraft:scaffolding":
+	switch traversal {
+	case movementblock.TraversalScaffolding:
 		if state.PressingDescend {
 			velocity[1] = -0.15
 		} else if state.PressingAscend {
 			velocity[1] = 0.15
 		}
-	case "minecraft:powder_snow":
+	case movementblock.TraversalPowderSnow:
 		if state.PressingDescend {
 			velocity[1] = -0.15
 		} else if state.PressingAscend && leatherBoots {
@@ -50,22 +51,19 @@ func (s *Simulator) applyInsideBlockEffects(state *MovementState) {
 	}
 	bb := state.BoundingBox(s.Options.UseSlideOffset)
 	min, maxPoint := bb.Min(), bb.Max()
-	for x := int(math.Floor(min.X())); x < int(math.Ceil(maxPoint.X())); x++ {
-		for y := int(math.Floor(min.Y())); y < int(math.Ceil(maxPoint.Y())); y++ {
-			for z := int(math.Floor(min.Z())); z < int(math.Ceil(maxPoint.Z())); z++ {
+	for x := int(math32.Floor(min.X())); x < int(math32.Ceil(maxPoint.X())); x++ {
+		for y := int(math32.Floor(min.Y())); y < int(math32.Ceil(maxPoint.Y())); y++ {
+			for z := int(math32.Floor(min.Z())); z < int(math32.Ceil(maxPoint.Z())); z++ {
 				pos := cube.Pos{x, y, z}
-				if !bb.IntersectsWith(cube.Box(0, 0, 0, 1, 1, 1).Translate(pos.Vec3())) {
+				if !bb.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
 					continue
 				}
 				b := s.World.Block(pos)
-				if s.blockAir(b) {
+				semantics := s.blockMovementSemantics(b)
+				if semantics.Cobweb {
 					continue
 				}
-				name := s.blockName(b)
-				if name == "minecraft:web" {
-					continue
-				}
-				applyInsideBlockMovement(state, name)
+				applyInsideBlockMovement(state, semantics.InsideMovement)
 			}
 		}
 	}

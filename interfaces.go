@@ -3,13 +3,15 @@ package bedsim
 import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/oomph-ac/bedsim/block"
 )
 
 // WorldProvider bridges the world/chunk system for collision and block lookups.
 type WorldProvider interface {
 	Block(pos cube.Pos) world.Block
-	BlockCollisions(pos cube.Pos) []cube.BBox
-	GetNearbyBBoxes(aabb cube.BBox) []cube.BBox
+	// BlockCollisions returns block-local collision boxes at pos.
+	BlockCollisions(pos cube.Pos) []cube.BBox32
+	GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32
 	IsChunkLoaded(chunkX, chunkZ int32) bool
 }
 
@@ -21,7 +23,7 @@ type LiquidProvider interface {
 // MovementCollisionContext contains player-dependent state needed by dynamic
 // collision shapes such as scaffolding and powder snow.
 type MovementCollisionContext struct {
-	Position     [3]float64
+	Position     [3]float32
 	Sneaking     bool
 	Descending   bool
 	WantDown     bool
@@ -31,16 +33,16 @@ type MovementCollisionContext struct {
 // MovementCollisionProvider optionally resolves collision boxes whose shape
 // depends on current player input or equipment.
 type MovementCollisionProvider interface {
-	GetMovementBBoxes(aabb cube.BBox, context MovementCollisionContext) []cube.BBox
+	GetMovementBBoxes(aabb cube.BBox32, context MovementCollisionContext) []cube.BBox32
 }
 
-// BlockSemanticsProvider resolves movement-relevant block behavior. Implement
-// this when names, friction, or climbability come from a per-world registry or
-// custom block data instead of Dragonfly's default block types.
-type BlockSemanticsProvider interface {
-	BlockName(world.Block) string
-	BlockFriction(world.Block) float64
-	BlockClimbable(world.Block) bool
+// BlockMovementSemanticsProvider resolves the complete movement behavior for a
+// block from a custom world registry or block data. GroundFriction and
+// GroundAccelerationFrictionMultiplier must be finite and positive; invalid
+// values fall back to BedSim's built-in semantics. Boolean and enum values are
+// used as returned, including their zero values.
+type BlockMovementSemanticsProvider interface {
+	BlockMovementSemantics(world.Block) block.MovementSemantics
 }
 
 // DefaultBlockSemantics uses bedsim's built-in Dragonfly-backed block helpers.
