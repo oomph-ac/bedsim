@@ -50,7 +50,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	// Captured before updateSwimTravel, matching the upstream ordering.
 	jumping := state.EffectiveJumping
 	if water {
-		if state.WantDown || state.WantDownSlow {
+		if state.WantDown || state.WantDownSlow || state.PressingDescend {
 			vel := state.Vel
 			vel[1] -= 0.04
 			state.SetVel(vel)
@@ -82,11 +82,16 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		if state.Swimming && state.SwimSpeedMultiplier != 0 {
 			swimSpeedMultiplier = state.SwimSpeedMultiplier
 		}
-		if inventory, ok := s.Inventory.(DepthStriderProvider); ok {
-			depthStriderLevel = math32.Min(math32.Max(float32(inventory.DepthStriderLevel()), 0), 3)
-			if !state.OnGround {
-				depthStriderLevel *= 0.5
+		if s.Equipment != nil {
+			depthStriderLevel = math32.Min(math32.Max(float32(s.Equipment.EnchantmentLevel(EnchantmentDepthStrider)), 0), 3)
+		}
+		if depthStriderLevel == 0 {
+			if inventory, ok := s.Inventory.(DepthStriderProvider); ok {
+				depthStriderLevel = math32.Min(math32.Max(float32(inventory.DepthStriderLevel()), 0), 3)
 			}
+		}
+		if !state.OnGround {
+			depthStriderLevel *= 0.5
 		}
 		depthStriderFraction := depthStriderLevel / 3
 		if swimSpeedMultiplier > 1 {
@@ -97,11 +102,20 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	}
 
 	moveRelative(state, moveRelativeSpeed)
+	stuckMovement := applyStuckSpeedMultiplier(state)
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
 	s.tryCollisions(state, false)
+	stopRiptideOnBlockCollision(state)
+	if stuckMovement {
+		state.SetMov(state.Vel)
+		state.SetVel(mgl32.Vec3{})
+		oldVel = mgl32.Vec3{}
+	}
 	s.setPostCollisionMotion(state, oldVel, oldOnGround, block.Air{})
-	state.SetMov(state.Vel)
+	if !stuckMovement {
+		state.SetMov(state.Vel)
+	}
 
 	vel := state.Vel
 	if water {
@@ -133,7 +147,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	if state.CollideX || state.CollideZ {
 		raised := mgl32.Vec3{vel.X(), vel.Y() + 0.6 + initialY - state.Pos.Y(), vel.Z()}
 		raisedBox := state.BoundingBox(s.Options.UseSlideOffset).Translate(raised)
-		hasCollision := hasNearbyBBoxes(s.World, raisedBox)
+		hasCollision := s.hasNearbyBBoxes(state, raisedBox)
 		hasLiquid := s.containsAnyLiquid(raisedBox)
 		s.debugf("liquid exit probe collision=%t liquid=%t box=%v", hasCollision, hasLiquid, raisedBox)
 		if !hasCollision && !hasLiquid {
@@ -141,6 +155,8 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		}
 	}
 	state.SetVel(vel)
+	s.applyBubbleColumns(state)
+	s.applyInsideBlockEffects(state)
 	state.FallDistance = 0
 }
 
@@ -164,7 +180,7 @@ func (s *Simulator) updateSwimTravel(state *MovementState) {
 		rate = 0.085
 	}
 
-	if targetY > 0 && !state.WantDownSlow {
+	if targetY > 0 && !state.WantDownSlow && !state.PressingDescend {
 		belowPos := posFromVec3(state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset - 1.1}))
 		if _, belowAir := s.liquidMovementBlock(belowPos).(block.Air); belowAir {
 			liquidPos := posFromVec3(state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset - 1.2}))

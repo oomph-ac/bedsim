@@ -16,4 +16,5 @@ func (soulSand) Matches(b world.Block, name string) bool {
 
 func (soulSand) Apply(s *resolution) {
 	s.GroundAccelerationFrictionMultiplier *= SoulSandAccelerationFrictionMultiplier
+	s.SoulSpeedNeutralizesAccelerationFriction = true
 }

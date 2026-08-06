@@ -20,10 +20,26 @@ type LiquidProvider interface {
 	Liquid(pos cube.Pos) (world.Liquid, bool)
 }
 
+// MovementCollisionContext contains player-dependent state needed by dynamic
+// collision shapes such as scaffolding and powder snow.
+type MovementCollisionContext struct {
+	Position     [3]float32
+	Sneaking     bool
+	Descending   bool
+	WantDown     bool
+	LeatherBoots bool
+}
+
+// MovementCollisionProvider optionally resolves collision boxes whose shape
+// depends on current player input or equipment.
+type MovementCollisionProvider interface {
+	GetMovementBBoxes(aabb cube.BBox32, context MovementCollisionContext) []cube.BBox32
+}
+
 // BlockMovementSemanticsProvider resolves the complete movement behavior for a
 // block from a custom world registry or block data. GroundFriction and
 // GroundAccelerationFrictionMultiplier must be finite and positive; invalid
-// values fall back to BedSim's built-in semantics. Boolean and bounce values are
+// values fall back to BedSim's built-in semantics. Boolean and enum values are
 // used as returned, including their zero values.
 type BlockMovementSemanticsProvider interface {
 	BlockMovementSemantics(world.Block) block.MovementSemantics
@@ -45,4 +61,21 @@ type InventoryProvider interface {
 // DepthStriderProvider exposes the equipped Depth Strider level.
 type DepthStriderProvider interface {
 	DepthStriderLevel() int
+}
+
+// MovementEnchantment identifies enchantments that directly affect movement.
+type MovementEnchantment uint8
+
+const (
+	EnchantmentDepthStrider MovementEnchantment = iota
+	EnchantmentSoulSpeed
+	EnchantmentSwiftSneak
+	EnchantmentRiptide
+)
+
+// MovementEquipmentProvider exposes equipment and enchantments whose effects
+// are part of client movement physics.
+type MovementEquipmentProvider interface {
+	EnchantmentLevel(enchantment MovementEnchantment) int
+	WearingLeatherBoots() bool
 }

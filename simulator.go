@@ -3,8 +3,9 @@ package bedsim
 import (
 	"github.com/chewxy/math32"
 
+	dfblock "github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/oomph-ac/bedsim/block"
+	movementblock "github.com/oomph-ac/bedsim/block"
 )
 
 // SimulationMode defines how strict the simulator should be with client corrections.
@@ -71,11 +72,12 @@ type Simulator struct {
 	Liquids   LiquidProvider
 	Effects   EffectsProvider
 	Inventory InventoryProvider
+	Equipment MovementEquipmentProvider
 	Options   SimulationOptions
 }
 
-func (DefaultBlockSemantics) BlockMovementSemantics(b world.Block) block.MovementSemantics {
-	return block.Resolve(b, BlockName(b))
+func (DefaultBlockSemantics) BlockMovementSemantics(b world.Block) movementblock.MovementSemantics {
+	return movementblock.Resolve(b, BlockName(b))
 }
 
 // swimWaterGraceTicks resolves the configured grace window: zero means the
@@ -99,14 +101,14 @@ func validGroundAccelerationFrictionMultiplier(multiplier float32) bool {
 	return multiplier > 0 && !math32.IsInf(multiplier, 1)
 }
 
-func (s *Simulator) blockMovementSemantics(b world.Block) block.MovementSemantics {
+func (s *Simulator) blockMovementSemantics(b world.Block) movementblock.MovementSemantics {
 	if s.BlockSemantics != nil {
 		semantics := s.BlockSemantics.BlockMovementSemantics(b)
-		var fallback block.MovementSemantics
+		var fallback movementblock.MovementSemantics
 		resolvedFallback := false
-		resolveFallback := func() block.MovementSemantics {
+		resolveFallback := func() movementblock.MovementSemantics {
 			if !resolvedFallback {
-				fallback = block.Resolve(b, BlockName(b))
+				fallback = movementblock.Resolve(b, BlockName(b))
 				resolvedFallback = true
 			}
 			return fallback
@@ -119,5 +121,12 @@ func (s *Simulator) blockMovementSemantics(b world.Block) block.MovementSemantic
 		}
 		return semantics
 	}
-	return block.Resolve(b, BlockName(b))
+	return movementblock.Resolve(b, BlockName(b))
+}
+
+func (s *Simulator) blockAir(b world.Block) bool {
+	if _, ok := b.(dfblock.Air); ok {
+		return true
+	}
+	return BlockName(b) == "minecraft:air"
 }

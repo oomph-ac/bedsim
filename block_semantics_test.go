@@ -13,10 +13,11 @@ import (
 
 func TestSoulBlocksKeepOrdinaryGroundFriction(t *testing.T) {
 	for name, tt := range map[string]struct {
-		block      world.Block
-		accelScale float32
+		block                world.Block
+		accelScale           float32
+		soulSpeedNeutralizes bool
 	}{
-		"soul sand": {block: block.SoulSand{}, accelScale: movementblock.SoulSandAccelerationFrictionMultiplier},
+		"soul sand": {block: block.SoulSand{}, accelScale: movementblock.SoulSandAccelerationFrictionMultiplier, soulSpeedNeutralizes: true},
 		"soul soil": {block: block.SoulSoil{}, accelScale: 1},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -26,6 +27,9 @@ func TestSoulBlocksKeepOrdinaryGroundFriction(t *testing.T) {
 			}
 			if got.GroundAccelerationFrictionMultiplier != tt.accelScale {
 				t.Fatalf("ground acceleration friction multiplier = %.8f, want %.8f", got.GroundAccelerationFrictionMultiplier, tt.accelScale)
+			}
+			if got.SoulSpeedNeutralizesAccelerationFriction != tt.soulSpeedNeutralizes {
+				t.Fatalf("soul-speed neutralization = %t, want %t", got.SoulSpeedNeutralizesAccelerationFriction, tt.soulSpeedNeutralizes)
 			}
 		})
 	}
@@ -119,6 +123,29 @@ func TestDefaultMovementBlockSemanticsSpecialBlocks(t *testing.T) {
 			}
 			if name == "cobweb" && !got.Cobweb {
 				t.Fatalf("expected cobweb semantics")
+			}
+		})
+	}
+}
+
+func TestEnvironmentMovementSemantics(t *testing.T) {
+	tests := []struct {
+		name      string
+		inside    movementblock.InsideMovement
+		traversal movementblock.Traversal
+		honey     bool
+	}{
+		{name: "minecraft:honey_block", honey: true},
+		{name: "minecraft:sweet_berry_bush", inside: movementblock.InsideMovementSweetBerryBush},
+		{name: "minecraft:powder_snow", inside: movementblock.InsideMovementPowderSnow, traversal: movementblock.TraversalPowderSnow},
+		{name: "minecraft:scaffolding", traversal: movementblock.TraversalScaffolding},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := movementblock.Resolve(semanticsNamedBlock{tt.name}, tt.name)
+			if got.InsideMovement != tt.inside || got.Traversal != tt.traversal || got.Honey != tt.honey {
+				t.Fatalf("semantics = %+v, want inside=%v traversal=%v honey=%v", got, tt.inside, tt.traversal, tt.honey)
 			}
 		})
 	}

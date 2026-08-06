@@ -21,13 +21,36 @@ const (
 	BounceBed
 )
 
+// InsideMovement identifies velocity changes applied while an entity overlaps
+// a block's volume.
+type InsideMovement uint8
+
+const (
+	InsideMovementNone InsideMovement = iota
+	InsideMovementSweetBerryBush
+	InsideMovementPowderSnow
+)
+
+// Traversal identifies input-driven vertical movement supported by a block.
+type Traversal uint8
+
+const (
+	TraversalNone Traversal = iota
+	TraversalScaffolding
+	TraversalPowderSnow
+)
+
 // MovementSemantics is the movement behavior resolved for a block.
 type MovementSemantics struct {
-	GroundFriction                       float32
-	GroundAccelerationFrictionMultiplier float32
-	Climbable                            bool
-	Cobweb                               bool
-	Bounce                               Bounce
+	GroundFriction                           float32
+	GroundAccelerationFrictionMultiplier     float32
+	Climbable                                bool
+	Cobweb                                   bool
+	Honey                                    bool
+	Bounce                                   Bounce
+	InsideMovement                           InsideMovement
+	Traversal                                Traversal
+	SoulSpeedNeutralizesAccelerationFriction bool
 }
 
 // rule contributes movement behavior for a block family.
@@ -47,6 +70,10 @@ var rules = [...]rule{
 	cobweb{},
 	slime{},
 	bed{},
+	environmentRule{name: "minecraft:honey_block", honey: true},
+	environmentRule{name: "minecraft:sweet_berry_bush", inside: InsideMovementSweetBerryBush},
+	environmentRule{name: "minecraft:powder_snow", inside: InsideMovementPowderSnow, traversal: TraversalPowderSnow},
+	environmentRule{name: "minecraft:scaffolding", traversal: TraversalScaffolding},
 	frictionBlock{name: "minecraft:ice", friction: 0.98},
 	frictionBlock{name: "minecraft:packed_ice", friction: 0.98},
 	frictionBlock{name: "minecraft:blue_ice", friction: 0.989},

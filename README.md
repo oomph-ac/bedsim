@@ -2,7 +2,7 @@
 
 Server-side Minecraft Bedrock movement simulation library for Go.
 
-`bedsim` replicates the Bedrock client's movement physics (collisions, stepping, edge-avoidance, liquids, gliding, teleportation) on the server, producing authoritative position and velocity values that can be compared against client-reported state.
+`bedsim` replicates the Bedrock client's movement physics on the server, producing authoritative position and velocity values that can be compared against client-reported state. It covers collisions, stepping, edge avoidance, liquids and currents, swimming, bubble columns, Riptide, crawling, gliding, movement enchantments, movement-sensitive blocks, and teleportation.
 
 Original code was written by [ethaniccc](https://github.com/ethaniccc) in [oomph](https://github.com/oomph-ac/oomph) and has been ported over into this library.
 The liquid movement physics were ported from [oomph#145](https://github.com/oomph-ac/oomph/pull/145) by [NopeNotDark](https://github.com/NopeNotDark).
@@ -28,6 +28,7 @@ sim := bedsim.Simulator{
     Liquids:        myLiquidProvider,     // second block layer (waterlogged blocks)
     Effects:        myEffectsProvider,    // jump boost, levitation, slow falling
     Inventory:      myInventoryProvider,  // elytra equipped check
+    Equipment:      myEquipmentProvider,  // movement enchantments and leather boots
     Options: bedsim.SimulationOptions{
         Mode:                        bedsim.SimulationModeAuthoritative,
         PositionCorrectionThreshold: 0.5,
@@ -46,8 +47,9 @@ Set `BlockSemantics` when movement behavior must come from a per-world block
 registry or custom block data instead of bedsim's Dragonfly-backed defaults.
 The adapter implements `BlockMovementSemanticsProvider` and returns the full
 `block.MovementSemantics` bundle: ground friction, any acceleration-only
-friction multiplier, climbability, cobweb status, and slime/bed bounce
-behavior. Built-in rules live in the
+friction multiplier, Soul Speed interaction, climbability, cobweb status,
+slime/bed bounce behavior, inside-block movement, and vertical traversal.
+Built-in rules live in the
 `github.com/oomph-ac/bedsim/block` package. Custom ground friction must be
 finite and positive; an invalid value falls back to the built-in resolver. An
 invalid acceleration multiplier likewise falls back to the built-in block
@@ -72,6 +74,37 @@ should affect water movement.
 > used instead. This keeps pre-existing integrations working, but it is
 > discovered by type assertion, so a signature typo degrades silently — prefer
 > the explicit field.
+
+### Optional movement capabilities
+
+`WorldProvider` is the only required world interface. A world may additionally
+implement `BubbleColumnProvider` for upward/downward columns and
+`MovementCollisionProvider` for player-dependent collision shapes such as
+scaffolding and powder snow. Dynamic collision resolution receives sneak and
+descend intent plus leather-boots state.
+
+`MovementEquipmentProvider` supplies Depth Strider, Soul Speed, Swift Sneak,
+Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
+extension remains a fallback when the equipment provider reports no Depth
+Strider level. `EffectsProvider` also controls Weaving-aware web movement.
+
+Riptide input flags are not trusted on their own. Set `MovementState.RiptideReady`
+for the simulation tick only after validating a charged Riptide-trident release.
+Set `MovementState.RiptideCollision` after a server-observed entity collision to
+authorize the corresponding stop/reversal; ordinary client stop flags are ignored.
+Set `MovementState.RiptideInRain` from trusted weather exposure when rain should
+permit launch without direct water contact.
+
+Pose changes update `MovementState.Size`. Set `StandingHeight`,
+`SneakingHeight`, or `CrawlingHeight` when using non-vanilla dimensions; zero
+values preserve the current standing height and use vanilla crouch/crawl
+heights.
+
+Movement-sensitive block behavior includes honey blocks, sweet berry bushes,
+powder snow, scaffolding, webs (including Weaving), soul sand with Soul
+Speed, slime blocks, beds, climbables, fences/walls, and per-block friction.
+Dynamic collision behavior still depends on the world adapter returning the
+correct shapes for the current block state.
 
 ### Liquid movement
 

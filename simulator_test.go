@@ -450,6 +450,39 @@ func TestSimulateStateOutcomeImmobileOrNotReady(t *testing.T) {
 	}
 }
 
+func TestEarlyExitClearsQueuedStuckMovement(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*MovementState)
+		world WorldProvider
+	}{
+		{name: "unloaded chunk", world: staticWorld{chunkLoaded: false}},
+		{name: "immobile", world: mockWorld{}, setup: func(state *MovementState) { state.Immobile = true }},
+		{name: "unreliable", world: mockWorld{}, setup: func(state *MovementState) { state.GameMode = packet.GameTypeCreative }},
+		{name: "teleport", world: mockWorld{}, setup: func(state *MovementState) {
+			state.TeleportCompletionTicks = 1
+			state.PendingTeleports = 1
+			state.TeleportPos = mgl32.Vec3{10, 20, 30}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := newBaseState()
+			state.StuckSpeedMultiplier = mgl32.Vec3{0.8, 0.75, 0.8}
+			if tt.setup != nil {
+				tt.setup(state)
+			}
+
+			(&Simulator{World: tt.world}).SimulateState(state)
+
+			if state.StuckSpeedMultiplier != (mgl32.Vec3{}) {
+				t.Fatalf("expected queued stuck movement to clear, got %v", state.StuckSpeedMultiplier)
+			}
+		})
+	}
+}
+
 func TestSimulateStateSkipsGravityWhenDisabled(t *testing.T) {
 	sim := &Simulator{
 		World:   mockWorld{},
@@ -572,7 +605,7 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 func TestStepUpTiebreaker(t *testing.T) {
 	// Geometry: ground at Y=0, a 0.5-high slab at X=1 (X=1..2, Y=0..0.5).
 	// The player stands on the ground at X≈0.5, walks in +X toward the slab.
-	// The step-up (0.5 blocks) is within StepHeight (0.6).
+	// The step-up (0.5 blocks) is within StepHeight (0.5625).
 	slabBox := cube.Box32(1, 0, -1, 2, 0.5, 2)
 	groundBox := cube.Box32(-1, -1, -1, 1, 0, 2)
 

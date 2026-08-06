@@ -5,7 +5,7 @@ import "github.com/df-mc/dragonfly/server/world"
 type cobweb struct{}
 
 func (cobweb) Matches(_ world.Block, name string) bool {
-	return name == "minecraft:web" || name == "minecraft:cobweb"
+	return name == "minecraft:web"
 }
 
 func (cobweb) Apply(s *resolution) {
