@@ -4,6 +4,7 @@ import (
 	"github.com/chewxy/math32"
 
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/oomph-ac/bedsim/block"
 )
 
 // SimulationMode defines how strict the simulator should be with client corrections.
@@ -64,7 +65,7 @@ type Simulator struct {
 	World WorldProvider
 	// BlockSemantics optionally resolves movement-specific block behavior from
 	// the same world snapshot as World. Nil uses DefaultBlockSemantics.
-	BlockSemantics BlockSemanticsProvider
+	BlockSemantics BlockMovementSemanticsProvider
 	// Liquids exposes second-layer liquids. World is used when it implements
 	// LiquidProvider; otherwise waterlogged blocks are invisible.
 	Liquids   LiquidProvider
@@ -73,16 +74,8 @@ type Simulator struct {
 	Options   SimulationOptions
 }
 
-func (DefaultBlockSemantics) BlockName(b world.Block) string {
-	return BlockName(b)
-}
-
-func (DefaultBlockSemantics) BlockFriction(b world.Block) float32 {
-	return BlockFriction(b)
-}
-
-func (DefaultBlockSemantics) BlockClimbable(b world.Block) bool {
-	return BlockClimbable(b)
+func (DefaultBlockSemantics) BlockMovementSemantics(b world.Block) block.MovementSemantics {
+	return block.Resolve(b, BlockName(b))
 }
 
 // swimWaterGraceTicks resolves the configured grace window: zero means the
@@ -98,25 +91,33 @@ func (s *Simulator) swimWaterGraceTicks() int64 {
 	}
 }
 
-func (s *Simulator) blockName(b world.Block) string {
-	if s.BlockSemantics != nil {
-		return s.BlockSemantics.BlockName(b)
-	}
-	return BlockName(b)
+func validGroundFriction(friction float32) bool {
+	return friction > 0 && !math32.IsInf(friction, 1)
 }
 
-func (s *Simulator) blockFriction(b world.Block) float32 {
+func validGroundAccelerationFrictionMultiplier(multiplier float32) bool {
+	return multiplier > 0 && !math32.IsInf(multiplier, 1)
+}
+
+func (s *Simulator) blockMovementSemantics(b world.Block) block.MovementSemantics {
 	if s.BlockSemantics != nil {
-		if friction := s.BlockSemantics.BlockFriction(b); friction > 0 && !math32.IsInf(friction, 1) {
-			return friction
+		semantics := s.BlockSemantics.BlockMovementSemantics(b)
+		var fallback block.MovementSemantics
+		resolvedFallback := false
+		resolveFallback := func() block.MovementSemantics {
+			if !resolvedFallback {
+				fallback = block.Resolve(b, BlockName(b))
+				resolvedFallback = true
+			}
+			return fallback
 		}
+		if !validGroundFriction(semantics.GroundFriction) {
+			semantics.GroundFriction = resolveFallback().GroundFriction
+		}
+		if !validGroundAccelerationFrictionMultiplier(semantics.GroundAccelerationFrictionMultiplier) {
+			semantics.GroundAccelerationFrictionMultiplier = resolveFallback().GroundAccelerationFrictionMultiplier
+		}
+		return semantics
 	}
-	return BlockFriction(b)
-}
-
-func (s *Simulator) blockClimbable(b world.Block) bool {
-	if s.BlockSemantics != nil {
-		return s.BlockSemantics.BlockClimbable(b)
-	}
-	return BlockClimbable(b)
+	return block.Resolve(b, BlockName(b))
 }

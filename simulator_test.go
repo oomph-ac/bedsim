@@ -10,6 +10,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
+	movementblock "github.com/oomph-ac/bedsim/block"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -114,21 +115,11 @@ func (m mockInventory) HasElytra() bool {
 }
 
 type overrideBlockSemantics struct {
-	name      string
-	friction  float32
-	climbable bool
+	semantics movementblock.MovementSemantics
 }
 
-func (s overrideBlockSemantics) BlockName(world.Block) string {
-	return s.name
-}
-
-func (s overrideBlockSemantics) BlockFriction(world.Block) float32 {
-	return s.friction
-}
-
-func (s overrideBlockSemantics) BlockClimbable(world.Block) bool {
-	return s.climbable
+func (s overrideBlockSemantics) BlockMovementSemantics(world.Block) movementblock.MovementSemantics {
+	return s.semantics
 }
 
 func newBaseState() *MovementState {
@@ -341,21 +332,25 @@ func TestSimulatorBlockSemanticsOverridesDefaults(t *testing.T) {
 	sim := &Simulator{
 		World: mockWorld{},
 		BlockSemantics: overrideBlockSemantics{
-			name:      "minecraft:custom_floor",
-			friction:  0.42,
-			climbable: true,
+			semantics: movementblock.MovementSemantics{
+				GroundFriction: 0.42,
+				Climbable:      true,
+				Cobweb:         true,
+				Bounce:         movementblock.BounceBed,
+			},
 		},
 	}
 	b := block.Air{}
 
-	if got := sim.blockName(b); got != "minecraft:custom_floor" {
-		t.Fatalf("expected semantic block name, got %q", got)
+	got := sim.blockMovementSemantics(b)
+	if got.GroundFriction != 0.42 {
+		t.Fatalf("expected semantic block friction, got %v", got.GroundFriction)
 	}
-	if got := sim.blockFriction(b); got != 0.42 {
-		t.Fatalf("expected semantic block friction, got %v", got)
-	}
-	if !sim.blockClimbable(b) {
+	if !got.Climbable {
 		t.Fatalf("expected semantic climbable value")
+	}
+	if !got.Cobweb || got.Bounce != movementblock.BounceBed {
+		t.Fatalf("expected complete semantic bundle, got %+v", got)
 	}
 }
 
@@ -363,20 +358,16 @@ func TestSimulatorDefaultBlockSemanticsFallback(t *testing.T) {
 	b := block.Air{}
 	sim := &Simulator{World: mockWorld{}}
 
-	if got := sim.blockName(b); got != BlockName(b) {
-		t.Fatalf("expected default block name, got %q", got)
-	}
-	if got := sim.blockFriction(b); got != BlockFriction(b) {
-		t.Fatalf("expected default block friction, got %v", got)
-	}
-	if got := sim.blockClimbable(b); got != BlockClimbable(b) {
-		t.Fatalf("expected default climbable value, got %v", got)
+	got := sim.blockMovementSemantics(b)
+	want := movementblock.Resolve(b, BlockName(b))
+	if got != want {
+		t.Fatalf("expected default movement semantics %+v, got %+v", want, got)
 	}
 }
 
 func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) {
 	b := block.Air{}
-	want := BlockFriction(b)
+	want := movementblock.Friction(b, BlockName(b))
 
 	tests := []struct {
 		name     string
@@ -394,14 +385,31 @@ func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) 
 			sim := &Simulator{
 				World: mockWorld{},
 				BlockSemantics: overrideBlockSemantics{
-					name:     "minecraft:custom_floor",
-					friction: tt.friction,
+					semantics: movementblock.MovementSemantics{GroundFriction: tt.friction},
 				},
 			}
-			if got := sim.blockFriction(b); got != want {
+			if got := sim.blockMovementSemantics(b).GroundFriction; got != want {
 				t.Fatalf("expected invalid semantic friction to fall back to %v, got %v", want, got)
 			}
 		})
+	}
+}
+
+func TestSimulatorInvalidAccelerationMultiplierFallsBackToBuiltIn(t *testing.T) {
+	b := block.SoulSand{}
+	want := movementblock.Resolve(b, BlockName(b)).GroundAccelerationFrictionMultiplier
+	sim := &Simulator{
+		World: mockWorld{},
+		BlockSemantics: overrideBlockSemantics{
+			semantics: movementblock.MovementSemantics{
+				GroundFriction:                       DefaultBlockFriction,
+				GroundAccelerationFrictionMultiplier: 0,
+			},
+		},
+	}
+
+	if got := sim.blockMovementSemantics(b).GroundAccelerationFrictionMultiplier; got != want {
+		t.Fatalf("expected invalid acceleration multiplier to fall back to %v, got %v", want, got)
 	}
 }
 
