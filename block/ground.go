@@ -15,18 +15,5 @@ func (SoulSand) Matches(b world.Block, name string) bool {
 }
 
 func (SoulSand) Apply(s *MovementSemantics) {
-	s.GroundFriction *= SoulGroundFrictionMultiplier
-}
-
-type SoulSoil struct{}
-
-func (SoulSoil) Matches(b world.Block, name string) bool {
-	if _, ok := b.(dfblock.SoulSoil); ok {
-		return true
-	}
-	return name == "minecraft:soul_soil"
-}
-
-func (SoulSoil) Apply(s *MovementSemantics) {
-	s.GroundFriction *= SoulGroundFrictionMultiplier
+	s.GroundAccelerationFrictionMultiplier *= SoulSandAccelerationFrictionMultiplier
 }

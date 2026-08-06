@@ -11,16 +11,21 @@ import (
 	movementblock "github.com/oomph-ac/bedsim/block"
 )
 
-func TestBlockGroundFrictionSoulBlocks(t *testing.T) {
-	want := DefaultBlockFriction * movementblock.SoulGroundFrictionMultiplier
-
-	for name, b := range map[string]world.Block{
-		"soul sand": block.SoulSand{},
-		"soul soil": block.SoulSoil{},
+func TestSoulBlocksKeepOrdinaryGroundFriction(t *testing.T) {
+	for name, tt := range map[string]struct {
+		block      world.Block
+		accelScale float32
+	}{
+		"soul sand": {block: block.SoulSand{}, accelScale: movementblock.SoulSandAccelerationFrictionMultiplier},
+		"soul soil": {block: block.SoulSoil{}, accelScale: 1},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got := movementblock.Resolve(b, BlockName(b)).GroundFriction; math.Abs(float64(got-want)) > 1e-6 {
-				t.Fatalf("ground friction = %.8f, want %.8f", got, want)
+			got := movementblock.Resolve(tt.block, BlockName(tt.block))
+			if got.GroundFriction != DefaultBlockFriction {
+				t.Fatalf("ground friction = %.8f, want %.8f", got.GroundFriction, DefaultBlockFriction)
+			}
+			if got.GroundAccelerationFrictionMultiplier != tt.accelScale {
+				t.Fatalf("ground acceleration friction multiplier = %.8f, want %.8f", got.GroundAccelerationFrictionMultiplier, tt.accelScale)
 			}
 		})
 	}
@@ -47,6 +52,12 @@ func TestDefaultMovementBlockSemantics(t *testing.T) {
 			groundWant: DefaultBlockFriction,
 		},
 		{
+			name:       "registry-backed ladder",
+			block:      semanticsNamedBlock{"minecraft:ladder"},
+			climbable:  true,
+			groundWant: DefaultBlockFriction,
+		},
+		{
 			name:       "vines",
 			block:      block.Vines{},
 			climbable:  true,
@@ -55,7 +66,7 @@ func TestDefaultMovementBlockSemantics(t *testing.T) {
 		{
 			name:       "soul soil",
 			block:      block.SoulSoil{},
-			groundWant: DefaultBlockFriction * movementblock.SoulGroundFrictionMultiplier,
+			groundWant: DefaultBlockFriction,
 		},
 	}
 
@@ -73,6 +84,19 @@ func TestDefaultMovementBlockSemantics(t *testing.T) {
 			}
 			if got.Bounce != tt.bounce {
 				t.Fatalf("bounce = %v, want %v", got.Bounce, tt.bounce)
+			}
+		})
+	}
+}
+
+func TestBlueIceFrictionMatchesAcrossBlockRepresentations(t *testing.T) {
+	for name, b := range map[string]world.Block{
+		"dragonfly":       block.BlueIce{},
+		"registry-backed": semanticsNamedBlock{"minecraft:blue_ice"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := movementblock.Resolve(b, BlockName(b)).GroundFriction; got != 0.989 {
+				t.Fatalf("blue ice friction = %.8f, want 0.989", got)
 			}
 		})
 	}
@@ -111,33 +135,36 @@ func (b semanticsNamedBlock) EncodeBlock() (string, map[string]any) {
 func (b semanticsNamedBlock) Model() world.BlockModel { return block.Air{}.Model() }
 
 type extendedMovementSemantics struct {
-	groundFriction float32
-	climbable      bool
-	cobweb         bool
-	bounce         movementblock.Bounce
+	groundFriction                       float32
+	groundAccelerationFrictionMultiplier float32
+	climbable                            bool
+	cobweb                               bool
+	bounce                               movementblock.Bounce
 }
 
 func (s extendedMovementSemantics) BlockMovementSemantics(world.Block) movementblock.MovementSemantics {
 	return movementblock.MovementSemantics{
-		GroundFriction: s.groundFriction,
-		Climbable:      s.climbable,
-		Cobweb:         s.cobweb,
-		Bounce:         s.bounce,
+		GroundFriction:                       s.groundFriction,
+		GroundAccelerationFrictionMultiplier: s.groundAccelerationFrictionMultiplier,
+		Climbable:                            s.climbable,
+		Cobweb:                               s.cobweb,
+		Bounce:                               s.bounce,
 	}
 }
 
 func TestSimulatorCompleteBlockSemanticsProvider(t *testing.T) {
 	sim := &Simulator{
 		BlockSemantics: extendedMovementSemantics{
-			groundFriction: 0.37,
-			climbable:      true,
-			cobweb:         true,
-			bounce:         movementblock.BounceBed,
+			groundFriction:                       0.37,
+			groundAccelerationFrictionMultiplier: 1.25,
+			climbable:                            true,
+			cobweb:                               true,
+			bounce:                               movementblock.BounceBed,
 		},
 	}
 
 	got := sim.blockMovementSemantics(block.Air{})
-	if got.GroundFriction != 0.37 || !got.Climbable || !got.Cobweb ||
+	if got.GroundFriction != 0.37 || got.GroundAccelerationFrictionMultiplier != 1.25 || !got.Climbable || !got.Cobweb ||
 		got.Bounce != movementblock.BounceBed {
 		t.Fatalf("got incomplete semantic bundle: %+v", got)
 	}
@@ -147,26 +174,6 @@ func TestBambooDoesNotInvalidateSimulation(t *testing.T) {
 	sim := &Simulator{World: blockMovementWorld{b: block.Bamboo{}}}
 	if !sim.simulationIsReliable(newBaseState()) {
 		t.Fatal("bamboo should use ordinary collision simulation")
-	}
-}
-
-func TestSimulatorInvalidBlockSemanticsFrictionFallsBack(t *testing.T) {
-	for name, friction := range map[string]float32{
-		"zero":              0,
-		"negative":          -0.42,
-		"nan":               float32(math.NaN()),
-		"positive infinity": float32(math.Inf(1)),
-		"negative infinity": float32(math.Inf(-1)),
-	} {
-		t.Run(name, func(t *testing.T) {
-			sim := &Simulator{
-				BlockSemantics: extendedMovementSemantics{groundFriction: friction},
-			}
-			got := sim.blockMovementSemantics(block.Air{}).GroundFriction
-			if got != DefaultBlockFriction {
-				t.Fatalf("ground friction = %v, want %v", got, DefaultBlockFriction)
-			}
-		})
 	}
 }
 
@@ -190,26 +197,37 @@ func (blockMovementWorld) IsChunkLoaded(int32, int32) bool {
 	return true
 }
 
-func TestSimulateGroundUsesSoulSoilFriction(t *testing.T) {
-	sim := &Simulator{
-		World:   blockMovementWorld{b: block.SoulSoil{}},
-		Effects: mockEffects{},
-	}
+func TestSimulateSoulGroundSeparatesAccelerationFromDrag(t *testing.T) {
+	for name, tt := range map[string]struct {
+		block                      world.Block
+		accelerationFrictionFactor float32
+	}{
+		"soul sand": {block: block.SoulSand{}, accelerationFrictionFactor: 1.225000023841858},
+		"soul soil": {block: block.SoulSoil{}, accelerationFrictionFactor: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			sim := &Simulator{
+				World:   blockMovementWorld{b: tt.block},
+				Effects: mockEffects{},
+			}
 
-	state := newBaseState()
-	state.Pos = mgl32.Vec3{0, 1, 0}
-	state.Client.Pos = state.Pos
-	state.OnGround = true
-	state.HasGravity = false
-	state.Impulse = mgl32.Vec2{0, 0.98}
+			state := newBaseState()
+			state.Pos = mgl32.Vec3{0, 1, 0}
+			state.Client.Pos = state.Pos
+			state.OnGround = true
+			state.HasGravity = false
+			state.Impulse = mgl32.Vec2{0, 0.98}
 
-	result := sim.SimulateState(state)
-	groundFriction := DefaultAirFriction * movementblock.Resolve(block.SoulSoil{}, BlockName(block.SoulSoil{})).GroundFriction
-	moveRelativeSpeed := state.MovementSpeed *
-		(0.16277136 / (groundFriction * groundFriction * groundFriction))
-	wantZ := 0.98 * moveRelativeSpeed * groundFriction
+			result := sim.SimulateState(state)
+			groundFriction := DefaultAirFriction * DefaultBlockFriction
+			accelerationFriction := groundFriction * tt.accelerationFrictionFactor
+			moveRelativeSpeed := state.MovementSpeed *
+				(0.16277136 / (accelerationFriction * accelerationFriction * accelerationFriction))
+			wantZ := 0.98 * moveRelativeSpeed * groundFriction
 
-	if math.Abs(float64(result.Velocity.Z()-wantZ)) > 1e-5 {
-		t.Fatalf("ground velocity Z = %.8f, want %.8f", result.Velocity.Z(), wantZ)
+			if math.Abs(float64(result.Velocity.Z()-wantZ)) > 1e-5 {
+				t.Fatalf("ground velocity Z = %.8f, want %.8f", result.Velocity.Z(), wantZ)
+			}
+		})
 	}
 }

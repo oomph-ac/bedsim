@@ -340,7 +340,8 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		mSpeed := state.MovementSpeed
 		blockSemantics := s.blockMovementSemantics(blockUnder)
 		blockFriction *= blockSemantics.GroundFriction
-		moveRelativeSpeed = mSpeed * (0.16277136 / (blockFriction * blockFriction * blockFriction))
+		accelerationFriction := blockFriction * blockSemantics.GroundAccelerationFrictionMultiplier
+		moveRelativeSpeed = mSpeed * (0.16277136 / (accelerationFriction * accelerationFriction * accelerationFriction))
 	}
 
 	if state.Gliding {
@@ -998,11 +999,10 @@ func (s *Simulator) isInsideCobweb(state *MovementState) bool {
 		if _, isAir := b.(block.Air); isAir {
 			continue
 		}
-		if !s.blockMovementSemantics(b).Cobweb {
+		if !bb.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
 			continue
 		}
-
-		if bb.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
+		if s.blockMovementSemantics(b).Cobweb {
 			insideCobweb = true
 		}
 		if insideCobweb {

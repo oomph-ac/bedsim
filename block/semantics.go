@@ -6,8 +6,11 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 )
 
-// SoulGroundFrictionMultiplier is the vanilla soul-ground adjustment.
-const SoulGroundFrictionMultiplier float32 = 1.225000023841858
+// SoulSandAccelerationFrictionMultiplier is the native adjustment used when
+// calculating grounded acceleration on soul sand. Ordinary drag still uses the
+// block's unadjusted friction. This exact native value replaces the legacy
+// 0.543 speed approximation.
+const SoulSandAccelerationFrictionMultiplier float32 = 1.225000023841858
 
 // Bounce identifies a block's landing response.
 type Bounce uint8
@@ -20,10 +23,11 @@ const (
 
 // MovementSemantics is the movement behavior resolved for a block.
 type MovementSemantics struct {
-	GroundFriction float32
-	Climbable      bool
-	Cobweb         bool
-	Bounce         Bounce
+	GroundFriction                       float32
+	GroundAccelerationFrictionMultiplier float32
+	Climbable                            bool
+	Cobweb                               bool
+	Bounce                               Bounce
 }
 
 // Owner contributes movement behavior for a block family.
@@ -34,19 +38,21 @@ type Owner interface {
 
 var owners = [...]Owner{
 	SoulSand{},
-	SoulSoil{},
 	ClimbableBlock{},
 	Cobweb{},
 	Slime{},
 	Bed{},
 	frictionBlock{name: "minecraft:ice", friction: 0.98},
 	frictionBlock{name: "minecraft:packed_ice", friction: 0.98},
-	frictionBlock{name: "minecraft:blue_ice", friction: 0.99},
+	frictionBlock{name: "minecraft:blue_ice", friction: 0.989},
 }
 
 // Resolve returns built-in movement semantics for b.
 func Resolve(b world.Block, name string) MovementSemantics {
-	semantics := MovementSemantics{GroundFriction: Friction(b, name)}
+	semantics := MovementSemantics{
+		GroundFriction:                       Friction(b, name),
+		GroundAccelerationFrictionMultiplier: 1,
+	}
 	for _, owner := range owners {
 		if owner.Matches(b, name) {
 			owner.Apply(&semantics)

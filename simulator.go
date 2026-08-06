@@ -95,11 +95,27 @@ func validGroundFriction(friction float32) bool {
 	return friction > 0 && !math32.IsInf(friction, 1)
 }
 
+func validGroundAccelerationFrictionMultiplier(multiplier float32) bool {
+	return multiplier > 0 && !math32.IsInf(multiplier, 1)
+}
+
 func (s *Simulator) blockMovementSemantics(b world.Block) block.MovementSemantics {
 	if s.BlockSemantics != nil {
 		semantics := s.BlockSemantics.BlockMovementSemantics(b)
+		var fallback block.MovementSemantics
+		resolvedFallback := false
+		resolveFallback := func() block.MovementSemantics {
+			if !resolvedFallback {
+				fallback = block.Resolve(b, BlockName(b))
+				resolvedFallback = true
+			}
+			return fallback
+		}
 		if !validGroundFriction(semantics.GroundFriction) {
-			semantics.GroundFriction = block.Resolve(b, BlockName(b)).GroundFriction
+			semantics.GroundFriction = resolveFallback().GroundFriction
+		}
+		if !validGroundAccelerationFrictionMultiplier(semantics.GroundAccelerationFrictionMultiplier) {
+			semantics.GroundAccelerationFrictionMultiplier = resolveFallback().GroundAccelerationFrictionMultiplier
 		}
 		return semantics
 	}

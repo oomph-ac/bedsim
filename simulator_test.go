@@ -395,6 +395,24 @@ func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) 
 	}
 }
 
+func TestSimulatorInvalidAccelerationMultiplierFallsBackToBuiltIn(t *testing.T) {
+	b := block.SoulSand{}
+	want := movementblock.Resolve(b, BlockName(b)).GroundAccelerationFrictionMultiplier
+	sim := &Simulator{
+		World: mockWorld{},
+		BlockSemantics: overrideBlockSemantics{
+			semantics: movementblock.MovementSemantics{
+				GroundFriction:                       DefaultBlockFriction,
+				GroundAccelerationFrictionMultiplier: 0,
+			},
+		},
+	}
+
+	if got := sim.blockMovementSemantics(b).GroundAccelerationFrictionMultiplier; got != want {
+		t.Fatalf("expected invalid acceleration multiplier to fall back to %v, got %v", want, got)
+	}
+}
+
 func TestSimulateStateOutcomeUnloadedChunk(t *testing.T) {
 	sim := &Simulator{
 		World:   staticWorld{chunkLoaded: false},
