@@ -450,6 +450,39 @@ func TestSimulateStateOutcomeImmobileOrNotReady(t *testing.T) {
 	}
 }
 
+func TestEarlyExitClearsQueuedStuckMovement(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*MovementState)
+		world WorldProvider
+	}{
+		{name: "unloaded chunk", world: staticWorld{chunkLoaded: false}},
+		{name: "immobile", world: mockWorld{}, setup: func(state *MovementState) { state.Immobile = true }},
+		{name: "unreliable", world: mockWorld{}, setup: func(state *MovementState) { state.GameMode = packet.GameTypeCreative }},
+		{name: "teleport", world: mockWorld{}, setup: func(state *MovementState) {
+			state.TeleportCompletionTicks = 1
+			state.PendingTeleports = 1
+			state.TeleportPos = mgl32.Vec3{10, 20, 30}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := newBaseState()
+			state.StuckSpeedMultiplier = mgl32.Vec3{0.8, 0.75, 0.8}
+			if tt.setup != nil {
+				tt.setup(state)
+			}
+
+			(&Simulator{World: tt.world}).SimulateState(state)
+
+			if state.StuckSpeedMultiplier != (mgl32.Vec3{}) {
+				t.Fatalf("expected queued stuck movement to clear, got %v", state.StuckSpeedMultiplier)
+			}
+		})
+	}
+}
+
 func TestSimulateStateSkipsGravityWhenDisabled(t *testing.T) {
 	sim := &Simulator{
 		World:   mockWorld{},

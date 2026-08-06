@@ -76,6 +76,7 @@ func TestRiptideLaunchesInWaterAndStartsSpinAttack(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
 	state.Gravity = NormalGravity
+	state.RiptideReady = true
 
 	sim.Simulate(state, InputState{StartSpinAttack: true})
 
@@ -84,5 +85,98 @@ func TestRiptideLaunchesInWaterAndStartsSpinAttack(t *testing.T) {
 	}
 	if state.RiptideTicks != 19 {
 		t.Fatalf("expected 19 riptide ticks after the launch tick, got %d", state.RiptideTicks)
+	}
+}
+
+func TestRiptideDoesNotLaunchInLava(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Lava{Still: true, Depth: 8}}}
+	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Gravity = NormalGravity
+	state.RiptideReady = true
+
+	sim.Simulate(state, InputState{StartSpinAttack: true})
+
+	if state.RiptideTicks != 0 {
+		t.Fatalf("expected lava not to start riptide, got %d ticks", state.RiptideTicks)
+	}
+}
+
+func TestRiptideDoesNotLaunchWhileFlying(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
+	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Flying = true
+	state.Gravity = NormalGravity
+	state.RiptideReady = true
+
+	sim.Simulate(state, InputState{StartSpinAttack: true})
+
+	if state.RiptideTicks != 0 {
+		t.Fatalf("expected flying not to start riptide, got %d ticks", state.RiptideTicks)
+	}
+}
+
+func TestRiptideRequiresValidatedTridentRelease(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
+	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Gravity = NormalGravity
+
+	sim.Simulate(state, InputState{StartSpinAttack: true})
+
+	if state.RiptideTicks != 0 {
+		t.Fatalf("expected unvalidated start flag not to launch, got %d ticks", state.RiptideTicks)
+	}
+}
+
+func TestRiptideLaunchesInRainWithoutBlockWater(t *testing.T) {
+	sim := &Simulator{World: mockWorld{}, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
+	state := newBaseState()
+	state.Gravity = NormalGravity
+	state.RiptideReady = true
+	state.RiptideInRain = true
+
+	sim.Simulate(state, InputState{StartSpinAttack: true})
+
+	if state.RiptideTicks != 19 {
+		t.Fatalf("expected rain-authorized riptide launch, got %d ticks", state.RiptideTicks)
+	}
+}
+
+func TestRiptideStopsOnNormalMovementWallCollision(t *testing.T) {
+	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(0.5, -1, -1, 1.5, 2, 1),
+	}}}
+	state := newBaseState()
+	state.Vel = mgl32.Vec3{1, 0, 0}
+	state.RiptideTicks = 10
+	state.HasGravity = false
+
+	sim.SimulateState(state)
+
+	if state.RiptideTicks != 0 {
+		t.Fatalf("expected wall collision to stop riptide, got %d ticks", state.RiptideTicks)
+	}
+}
+
+func TestRiptideStopRequiresValidatedEntityCollision(t *testing.T) {
+	sim := &Simulator{}
+	state := newBaseState()
+	state.RiptideTicks = 10
+	state.Vel = mgl32.Vec3{1, 0, 0}
+
+	sim.applyInput(state, InputState{StopSpinAttack: true})
+	if state.RiptideTicks != 10 || state.Vel.X() != 1 {
+		t.Fatalf("spoofed stop changed riptide: ticks=%d vel=%v", state.RiptideTicks, state.Vel)
+	}
+
+	state.RiptideCollision = true
+	sim.applyInput(state, InputState{StopSpinAttack: true})
+	if state.RiptideTicks != 0 || state.Vel.X() != -0.2 {
+		t.Fatalf("validated stop was not applied: ticks=%d vel=%v", state.RiptideTicks, state.Vel)
 	}
 }

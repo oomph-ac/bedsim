@@ -88,6 +88,13 @@ Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
 extension remains a fallback when the equipment provider reports no Depth
 Strider level. `EffectsProvider` also controls Weaving-aware web movement.
 
+Riptide input flags are not trusted on their own. Set `MovementState.RiptideReady`
+for the simulation tick only after validating a charged Riptide-trident release.
+Set `MovementState.RiptideCollision` after a server-observed entity collision to
+authorize the corresponding stop/reversal; ordinary client stop flags are ignored.
+Set `MovementState.RiptideInRain` from trusted weather exposure when rain should
+permit launch without direct water contact.
+
 Pose changes update `MovementState.Size`. Set `StandingHeight`,
 `SneakingHeight`, or `CrawlingHeight` when using non-vanilla dimensions; zero
 values preserve the current standing height and use vanilla crouch/crawl

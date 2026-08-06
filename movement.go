@@ -29,6 +29,10 @@ type MovementState struct {
 	SlideOffset mgl32.Vec2
 	Impulse     mgl32.Vec2
 	Size        mgl32.Vec3
+	// StuckSpeedMultiplier is the strongest queued berry-bush or powder-snow
+	// multiplier. It applies to one displacement, then clears along with
+	// persistent velocity.
+	StuckSpeedMultiplier mgl32.Vec3
 	// StandingHeight, SneakingHeight, and CrawlingHeight preserve custom entity
 	// dimensions across pose transitions. Zero values use the current standing
 	// height and vanilla player pose heights respectively.
@@ -102,6 +106,14 @@ type MovementState struct {
 	TicksSinceCanSlowdown int
 	RiptideTicks          int
 	StartingSpinAttack    bool
+	// RiptideReady is a one-tick trusted latch set after validating a charged
+	// Riptide trident release. RiptideCollision is set after a server-observed
+	// entity collision and authorizes the matching stop/reversal.
+	RiptideReady     bool
+	RiptideCollision bool
+	// RiptideInRain is server-observed weather exposure that permits a
+	// validated Riptide release without direct block-water contact.
+	RiptideInRain bool
 
 	Flying, MayFly, TrustFlyStatus bool
 	JustDisabledFlight             bool

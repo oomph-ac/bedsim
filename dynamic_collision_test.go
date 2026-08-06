@@ -45,6 +45,33 @@ type leatherEquipment struct{}
 func (leatherEquipment) EnchantmentLevel(MovementEnchantment) int { return 0 }
 func (leatherEquipment) WearingLeatherBoots() bool                { return true }
 
+type unloadedCollisionWorld struct {
+	staticWorld
+	nearbyCalls int
+}
+
+func (w *unloadedCollisionWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
+	w.nearbyCalls++
+	return w.staticWorld.GetNearbyBBoxes(aabb)
+}
+
+func TestPoseTransitionsDoNotReadCollisionsFromUnloadedChunks(t *testing.T) {
+	w := &unloadedCollisionWorld{staticWorld: staticWorld{chunkLoaded: false}}
+	sim := &Simulator{World: w}
+	state := newBaseState()
+	state.Sneaking = true
+	state.Size[1] = 1.49
+
+	result := sim.Simulate(state, InputState{StopSneaking: true})
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("expected unloaded outcome, got %v", result.Outcome)
+	}
+	if w.nearbyCalls != 0 {
+		t.Fatalf("expected no collision queries in an unloaded chunk, got %d", w.nearbyCalls)
+	}
+}
+
 func TestCannotUnsneakUnderLowCeiling(t *testing.T) {
 	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
 		cube.Box32(-1, 1.5, -1, 1, 2, 1),
@@ -54,9 +81,35 @@ func TestCannotUnsneakUnderLowCeiling(t *testing.T) {
 	state.Size[1] = 1.49
 
 	sim.applyInput(state, InputState{StopSneaking: true})
+	sim.applyInput(state, InputState{})
 
 	if !state.Sneaking || state.Size.Y() != 1.49 {
 		t.Fatalf("expected forced sneak pose under ceiling, got sneaking=%v size=%v", state.Sneaking, state.Size)
+	}
+}
+
+func TestReleasingSneakDownRestoresStandingPose(t *testing.T) {
+	sim := &Simulator{World: staticWorld{chunkLoaded: true}}
+	state := newBaseState()
+
+	sim.applyInput(state, InputState{SneakDown: true})
+	sim.applyInput(state, InputState{})
+
+	if state.Sneaking || state.Size.Y() != state.StandingHeight {
+		t.Fatalf("expected standing pose after releasing sneak, got sneaking=%v size=%v", state.Sneaking, state.Size)
+	}
+}
+
+func TestCanFitHeightUsesRequestedHeightWhileSwimming(t *testing.T) {
+	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(-1, 1, -1, 1, 2, 1),
+	}}}
+	state := newBaseState()
+	state.Swimming = true
+	state.SwimWaterGraceTicks = 1
+
+	if sim.canFitHeight(state, 1.8) {
+		t.Fatal("expected standing-height fit check to collide despite active swim pose")
 	}
 }
 
@@ -72,6 +125,21 @@ func TestCannotStopCrawlingUnderLowCeiling(t *testing.T) {
 
 	if !state.Crawling || state.Size.Y() != 0.6 {
 		t.Fatalf("expected forced crawl pose under ceiling, got crawling=%v size=%v", state.Crawling, state.Size)
+	}
+}
+
+func TestStopCrawlingWhileSneakingUsesCrouchHeight(t *testing.T) {
+	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(-1, 1.6, -1, 1, 2, 1),
+	}}}
+	state := newBaseState()
+	state.Crawling = true
+	state.Size[1] = 0.6
+
+	sim.applyInput(state, InputState{StopCrawling: true, SneakDown: true})
+
+	if state.Crawling || !state.Sneaking || state.Size.Y() != 1.49 {
+		t.Fatalf("expected crouch pose under ceiling, got crawling=%v sneaking=%v size=%v", state.Crawling, state.Sneaking, state.Size)
 	}
 }
 

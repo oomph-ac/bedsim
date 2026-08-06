@@ -355,9 +355,16 @@ func TestSwimAmountClampedToUnitRange(t *testing.T) {
 func TestStartSwimmingClearsSneaking(t *testing.T) {
 	sim := newLiquidSim(newLiquidWorld())
 	state := newBaseState()
+	state.Crawling = true
 	sim.applyInput(state, InputState{SneakDown: true, StartSneaking: true, StartSwimming: true})
 	if state.Sneaking {
 		t.Fatal("StartSwimming must clear Sneaking")
+	}
+	if state.Size.Y() != state.StandingHeight {
+		t.Fatalf("StartSwimming must clear the crouched height, got %v", state.Size.Y())
+	}
+	if state.Crawling {
+		t.Fatal("StartSwimming must clear Crawling")
 	}
 }
 

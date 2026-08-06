@@ -64,8 +64,8 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 	}
 }
 
-func (s *Simulator) attemptRiptide(state *MovementState, touchingLiquid bool) bool {
-	if s.Equipment == nil || state.RiptideTicks > 0 || !touchingLiquid {
+func (s *Simulator) attemptRiptide(state *MovementState, touchingWater bool) bool {
+	if s.Equipment == nil || state.RiptideTicks > 0 || !state.RiptideReady || (!touchingWater && !state.RiptideInRain) {
 		return false
 	}
 	level := s.Equipment.EnchantmentLevel(EnchantmentRiptide)
@@ -81,6 +81,14 @@ func (s *Simulator) attemptRiptide(state *MovementState, touchingLiquid bool) bo
 	}
 	state.SetVel(state.Vel.Add(direction))
 	state.RiptideTicks = 20
+	state.RiptideCollision = false
 	state.StartingSpinAttack = false
 	return true
+}
+
+func stopRiptideOnBlockCollision(state *MovementState) {
+	if state.RiptideTicks > 0 && (state.CollideX || state.CollideZ) {
+		state.RiptideTicks = 0
+		state.RiptideCollision = false
+	}
 }

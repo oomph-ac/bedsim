@@ -102,11 +102,20 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	}
 
 	moveRelative(state, moveRelativeSpeed)
+	stuckMovement := applyStuckSpeedMultiplier(state)
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
 	s.tryCollisions(state, false)
+	stopRiptideOnBlockCollision(state)
+	if stuckMovement {
+		state.SetMov(state.Vel)
+		state.SetVel(mgl32.Vec3{})
+		oldVel = mgl32.Vec3{}
+	}
 	s.setPostCollisionMotion(state, oldVel, oldOnGround, block.Air{})
-	state.SetMov(state.Vel)
+	if !stuckMovement {
+		state.SetMov(state.Vel)
+	}
 
 	vel := state.Vel
 	if water {
@@ -138,13 +147,12 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	if state.CollideX || state.CollideZ {
 		raised := mgl32.Vec3{vel.X(), vel.Y() + 0.6 + initialY - state.Pos.Y(), vel.Z()}
 		raisedBox := state.BoundingBox(s.Options.UseSlideOffset).Translate(raised)
-		hasCollision := len(s.nearbyBBoxes(state, raisedBox)) > 0
+		hasCollision := s.hasNearbyBBoxes(state, raisedBox)
 		hasLiquid := s.containsAnyLiquid(raisedBox)
 		s.debugf("liquid exit probe collision=%t liquid=%t box=%v", hasCollision, hasLiquid, raisedBox)
 		if !hasCollision && !hasLiquid {
 			vel[1] = 0.3
 		}
-		state.RiptideTicks = 0
 	}
 	state.SetVel(vel)
 	s.applyBubbleColumns(state)

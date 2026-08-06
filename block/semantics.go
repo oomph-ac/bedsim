@@ -27,7 +27,6 @@ type InsideMovement uint8
 
 const (
 	InsideMovementNone InsideMovement = iota
-	InsideMovementHoney
 	InsideMovementSweetBerryBush
 	InsideMovementPowderSnow
 )
@@ -47,6 +46,7 @@ type MovementSemantics struct {
 	GroundAccelerationFrictionMultiplier     float32
 	Climbable                                bool
 	Cobweb                                   bool
+	Honey                                    bool
 	Bounce                                   Bounce
 	InsideMovement                           InsideMovement
 	Traversal                                Traversal
@@ -70,7 +70,7 @@ var rules = [...]rule{
 	cobweb{},
 	slime{},
 	bed{},
-	environmentRule{name: "minecraft:honey_block", inside: InsideMovementHoney},
+	environmentRule{name: "minecraft:honey_block", honey: true},
 	environmentRule{name: "minecraft:sweet_berry_bush", inside: InsideMovementSweetBerryBush},
 	environmentRule{name: "minecraft:powder_snow", inside: InsideMovementPowderSnow, traversal: TraversalPowderSnow},
 	environmentRule{name: "minecraft:scaffolding", traversal: TraversalScaffolding},
