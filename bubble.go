@@ -97,6 +97,7 @@ func (s *Simulator) simulateRiptide(state *MovementState) {
 	state.SetMov(state.Vel)
 	s.setPostCollisionMotion(state, oldVel, oldOnGround, block.Air{})
 	s.applyInsideBlockEffects(state)
+	s.applyBubbleColumns(state)
 }
 
 func stopRiptideOnBlockCollision(state *MovementState) {

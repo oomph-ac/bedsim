@@ -106,6 +106,12 @@ func TestBlueIceFrictionMatchesAcrossBlockRepresentations(t *testing.T) {
 	}
 }
 
+func TestFrostedIceFrictionMatchesVanillaIce(t *testing.T) {
+	if got := movementblock.Resolve(semanticsNamedBlock{"minecraft:frosted_ice"}, "minecraft:frosted_ice").GroundFriction; got != 0.98 {
+		t.Fatalf("frosted ice friction = %.8f, want 0.98", got)
+	}
+}
+
 func TestDefaultMovementBlockSemanticsSpecialBlocks(t *testing.T) {
 	for name, want := range map[string]struct {
 		block  world.Block
@@ -148,6 +154,13 @@ func TestEnvironmentMovementSemantics(t *testing.T) {
 				t.Fatalf("semantics = %+v, want inside=%v traversal=%v honey=%v", got, tt.inside, tt.traversal, tt.honey)
 			}
 		})
+	}
+}
+
+func TestHoneyBlockFrictionMatchesVanilla(t *testing.T) {
+	got := movementblock.Resolve(semanticsNamedBlock{"minecraft:honey_block"}, "minecraft:honey_block")
+	if got.GroundFriction != 0.8 {
+		t.Fatalf("honey block friction = %.8f, want 0.8", got.GroundFriction)
 	}
 }
 

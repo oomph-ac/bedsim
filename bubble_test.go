@@ -76,6 +76,22 @@ func TestBubbleColumnAppliesForEachOccupiedCell(t *testing.T) {
 	}
 }
 
+func TestBubbleColumnAppliesOutsideLiquidTravel(t *testing.T) {
+	w := environmentWorld{
+		bubbles: map[cube.Pos]BubbleColumnDirection{{0, 0, 0}: BubbleColumnUp},
+		blocks:  map[cube.Pos]world.Block{},
+	}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.HasGravity = false
+
+	(&Simulator{World: w}).SimulateState(state)
+
+	if state.Vel.Y() != 0.1 {
+		t.Fatalf("normal movement missed surface bubble impulse: %v", state.Vel.Y())
+	}
+}
+
 func TestRiptideLaunchesInWaterAndStartsSpinAttack(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
 	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}

@@ -85,6 +85,9 @@ type MovementState struct {
 
 	Swimming   bool
 	SwimAmount float32
+	// StoppedSwimmingThisTick selects the client's fast water drag on the
+	// transition out of swimming.
+	StoppedSwimmingThisTick bool
 	// SwimWaterGraceTicks retains recent server-observed water contact.
 	SwimWaterGraceTicks    int64
 	AutoJumpingInWater     bool

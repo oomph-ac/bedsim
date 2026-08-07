@@ -281,6 +281,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	}
 
 	wasSwimming := state.Swimming
+	state.StoppedSwimmingThisTick = input.StopSwimming
 	if input.StopSwimming {
 		state.Swimming = false
 		s.restorePoseAfterSwimming(state, poseCollisionsAvailable)
@@ -414,6 +415,7 @@ func (s *Simulator) tickState(state *MovementState) {
 		}
 	}
 	state.JustDisabledFlight = false
+	state.StoppedSwimmingThisTick = false
 }
 
 func (s *Simulator) simulateMovement(state *MovementState) {
@@ -513,6 +515,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 				state.SetVel(mgl32.Vec3{})
 			}
 			s.applyInsideBlockEffects(state)
+			s.applyBubbleColumns(state)
 			return
 		}
 
@@ -527,8 +530,14 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	s.debugf("moveRelative force applied (vel=%v)", state.Vel)
 	s.debugfIf(s.attemptJump(state, &clientJumpPrevented), "jump force applied (sprint=%v): %v", state.Sprinting, state.Vel)
 	insideSemantics := s.blockMovementSemantics(s.blockAtPos(posFromVec3(state.Pos)))
+	if insideSemantics.Traversal == movementblock.TraversalNone && state.SupportingBlockPos != nil {
+		supportingSemantics := s.blockMovementSemantics(s.blockAtPos(*state.SupportingBlockPos))
+		if supportingSemantics.Traversal != movementblock.TraversalNone {
+			insideSemantics = supportingSemantics
+		}
+	}
 	leatherBoots := s.Equipment != nil && s.Equipment.WearingLeatherBoots()
-	applyAscendableMovement(state, insideSemantics.Traversal, leatherBoots)
+	scaffoldDescend := applyAscendableMovement(state, insideSemantics.Traversal, leatherBoots)
 
 	nearClimbable := insideSemantics.Climbable || s.hasClimbableContact(state)
 	if nearClimbable {
@@ -605,7 +614,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	}
 
 	newVel := state.Vel
-	if s.Effects != nil {
+	if scaffoldDescend && !state.OnGround {
+		newVel[1] *= NormalGravityMultiplier
+	} else if s.Effects != nil {
 		if amp, ok := s.Effects.GetEffect(packet.EffectLevitation); ok {
 			levSpeed := LevitationGravityMultiplier * float32(amp+1)
 			newVel[1] += (levSpeed - newVel[1]) * 0.2
@@ -621,6 +632,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	newVel[2] *= blockFriction
 	state.SetVel(newVel)
 	s.applyInsideBlockEffects(state)
+	s.applyBubbleColumns(state)
 }
 
 func (s *Simulator) simulationIsReliable(state *MovementState) bool {

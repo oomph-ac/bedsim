@@ -204,6 +204,41 @@ func TestSimulationAppliesScaffoldingTraversal(t *testing.T) {
 	}
 }
 
+func TestScaffoldingDescendSkipsAirGravity(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
+	}}
+	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Gravity = NormalGravity
+	state.HasGravity = true
+	state.PressingDescend = true
+	sim.SimulateState(state)
+	if math32.Abs(state.Vel.Y()-(-0.15*NormalGravityMultiplier)) > 1e-6 {
+		t.Fatalf("scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15*NormalGravityMultiplier)
+	}
+}
+
+func TestScaffoldingSupportEnablesDescent(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
+	}}
+	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
+	support := cube.Pos{0, 0, 0}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 1, 0.5}
+	state.OnGround = true
+	state.HasGravity = true
+	state.SupportingBlockPos = &support
+	state.PressingDescend = true
+
+	sim.SimulateState(state)
+	if math32.Abs(state.Vel.Y()-(-0.15*NormalGravityMultiplier)) > 1e-6 {
+		t.Fatalf("supported scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15*NormalGravityMultiplier)
+	}
+}
+
 func TestSimulationDetectsNonSolidWebAndAppliesWeaving(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:web"},

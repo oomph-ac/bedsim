@@ -121,7 +121,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	vel := state.Vel
 	if water {
 		drag := float32(0.8)
-		if state.Sprinting {
+		if state.Sprinting || state.StoppedSwimmingThisTick {
 			drag = 0.9
 		}
 		if depthStriderLevel > 0 && swimSpeedMultiplier <= 1 {

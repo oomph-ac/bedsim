@@ -75,6 +75,7 @@ var rules = [...]rule{
 	environmentRule{name: "minecraft:powder_snow", inside: InsideMovementPowderSnow, traversal: TraversalPowderSnow},
 	environmentRule{name: "minecraft:scaffolding", traversal: TraversalScaffolding},
 	frictionBlock{name: "minecraft:ice", friction: 0.98},
+	frictionBlock{name: "minecraft:frosted_ice", friction: 0.98},
 	frictionBlock{name: "minecraft:packed_ice", friction: 0.98},
 	frictionBlock{name: "minecraft:blue_ice", friction: 0.989},
 }

@@ -47,12 +47,14 @@ func applyStuckSpeedMultiplier(state *MovementState) bool {
 	return true
 }
 
-func applyAscendableMovement(state *MovementState, traversal movementblock.Traversal, leatherBoots bool) {
+func applyAscendableMovement(state *MovementState, traversal movementblock.Traversal, leatherBoots bool) bool {
 	velocity := state.Vel
 	switch traversal {
 	case movementblock.TraversalScaffolding:
 		if state.PressingDescend {
 			velocity[1] = -0.15
+			state.SetVel(velocity)
+			return true
 		} else if state.PressingAscend {
 			velocity[1] = 0.15
 		}
@@ -64,6 +66,7 @@ func applyAscendableMovement(state *MovementState, traversal movementblock.Trave
 		}
 	}
 	state.SetVel(velocity)
+	return false
 }
 
 func (s *Simulator) applyInsideBlockEffects(state *MovementState) {
