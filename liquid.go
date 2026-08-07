@@ -100,8 +100,6 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 			moveRelativeSpeed += (state.MovementSpeed - moveRelativeSpeed) * depthStriderFraction
 		}
 	}
-	moveRelativeSpeed *= s.movementEffectMultiplier()
-
 	moveRelative(state, moveRelativeSpeed)
 	stuckMovement := applyStuckSpeedMultiplier(state)
 	oldVel := state.Vel

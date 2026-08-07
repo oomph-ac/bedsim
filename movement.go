@@ -48,7 +48,11 @@ type MovementState struct {
 	JumpStrength float32
 	FallDistance float32
 
-	MovementSpeed           float32
+	// MovementSpeed is the effective movement attribute used by travel. Include
+	// movement effects in this value before passing the state to BedSim.
+	MovementSpeed float32
+	// DefaultMovementSpeed is the effective non-sprinting movement attribute
+	// used when sprinting is toggled.
 	DefaultMovementSpeed    float32
 	AirSpeed                float32
 	UnderwaterMovementSpeed float32

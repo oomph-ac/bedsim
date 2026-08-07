@@ -100,6 +100,10 @@ authoritative events instead of setting their timer fields by hand. Set
 `MovementState.JumpStrength` for a custom base jump velocity; zero keeps the
 default.
 
+`MovementState.MovementSpeed` and `DefaultMovementSpeed` are effective movement
+attribute values. Include active Speed or Slowness modifiers in those values;
+BedSim uses them directly and does not apply the same modifiers a second time.
+
 Riptide input flags are not trusted on their own. Set `MovementState.RiptideReady`
 for the simulation tick only after validating a charged Riptide-trident release.
 Set `MovementState.RiptideCollision` after a server-observed entity collision to

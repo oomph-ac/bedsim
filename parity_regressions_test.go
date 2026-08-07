@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
 func TestZeroValueStateHasNoSyntheticEvents(t *testing.T) {
@@ -65,19 +66,34 @@ func TestSimulateStateLeavesTransientInputForCaller(t *testing.T) {
 	}
 }
 
-func TestActiveRiptideSkipsOrdinaryPhysics(t *testing.T) {
+func TestActiveRiptideAppliesImpulseWithoutOrdinaryPhysics(t *testing.T) {
 	state := newBaseState()
 	state.RiptideTicks = 5
 	state.Vel = mgl32.Vec3{0, 0.8, 0}
 	state.Impulse = mgl32.Vec2{0, 1}
 	state.Gravity = NormalGravity
 
-	(&Simulator{World: mockWorld{}}).SimulateState(state)
-	if state.Pos != (mgl32.Vec3{0, 0.8, 0}) {
-		t.Fatalf("riptide tick applied ordinary displacement: %v", state.Pos)
+	(&Simulator{World: mockWorld{}, Equipment: fixedEquipment{EnchantmentRiptide: 2}}).SimulateState(state)
+	if math32.Abs(state.Pos.Z()-2.25) > 1e-6 {
+		t.Fatalf("riptide tick did not apply directional displacement: %v", state.Pos)
 	}
-	if state.Vel != (mgl32.Vec3{0, 0.8, 0}) {
+	if math32.Abs(state.Vel.Y()-0.8) > 1e-6 || math32.Abs(state.Vel.Z()-2.25) > 1e-6 {
 		t.Fatalf("riptide tick applied ordinary acceleration: %v", state.Vel)
+	}
+}
+
+func TestMovementSpeedUsesEffectiveAttribute(t *testing.T) {
+	withoutEffect := newBaseState()
+	withoutEffect.MovementSpeed = 0.12
+	withoutEffect.DefaultMovementSpeed = 0.12
+	withoutEffect.Impulse = mgl32.Vec2{0, 1}
+
+	withEffect := *withoutEffect
+
+	base := (&Simulator{World: mockWorld{}}).SimulateState(withoutEffect)
+	withSpeedEffect := (&Simulator{World: mockWorld{}, Effects: fixedEffects{packet.EffectSpeed: 0}}).SimulateState(&withEffect)
+	if base.Velocity != withSpeedEffect.Velocity {
+		t.Fatalf("effective movement speed was modified by a second effect pass: base=%v with_effect=%v", base.Velocity, withSpeedEffect.Velocity)
 	}
 }
 

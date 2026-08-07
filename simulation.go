@@ -440,12 +440,12 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		state.SwimWaterGraceTicks = grace
 		setSwimmingPoseFlags(state)
 	}
-	riptideLaunched := !state.Flying && s.attemptRiptide(state, inWater)
+	riptideLaunched := !state.Flying && s.attemptRiptide(state, inWater, s.riptideHeadInWater(state))
 	if riptideLaunched {
 		s.debugf("riptide launch applied: %v", state.Vel)
 	}
 	if !state.Flying && state.RiptideTicks > 0 && !riptideLaunched {
-		s.simulateRiptide(state)
+		s.simulateRiptide(state, inWater, s.riptideHeadInWater(state))
 		return
 	}
 
@@ -491,8 +491,6 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		accelerationFriction := blockFriction * accelerationMultiplier
 		moveRelativeSpeed = mSpeed * (0.16277136 / (accelerationFriction * accelerationFriction * accelerationFriction))
 	}
-	moveRelativeSpeed *= s.movementEffectMultiplier()
-
 	if state.Gliding && s.Effects != nil {
 		if _, levitating := s.Effects.GetEffect(packet.EffectLevitation); levitating {
 			state.Gliding = false
@@ -614,19 +612,19 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	}
 
 	newVel := state.Vel
-	if scaffoldDescend && !state.OnGround {
-		newVel[1] *= NormalGravityMultiplier
-	} else if s.Effects != nil {
-		if amp, ok := s.Effects.GetEffect(packet.EffectLevitation); ok {
-			levSpeed := LevitationGravityMultiplier * float32(amp+1)
-			newVel[1] += (levSpeed - newVel[1]) * 0.2
+	if !scaffoldDescend {
+		if s.Effects != nil {
+			if amp, ok := s.Effects.GetEffect(packet.EffectLevitation); ok {
+				levSpeed := LevitationGravityMultiplier * float32(amp+1)
+				newVel[1] += (levSpeed - newVel[1]) * 0.2
+			} else if state.HasGravity {
+				newVel[1] -= effectiveGravity(state, newVel)
+				newVel[1] *= NormalGravityMultiplier
+			}
 		} else if state.HasGravity {
 			newVel[1] -= effectiveGravity(state, newVel)
 			newVel[1] *= NormalGravityMultiplier
 		}
-	} else if state.HasGravity {
-		newVel[1] -= effectiveGravity(state, newVel)
-		newVel[1] *= NormalGravityMultiplier
 	}
 	newVel[0] *= blockFriction
 	newVel[2] *= blockFriction
@@ -747,7 +745,7 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 		vel[0] += lookX * yAccel / lookHz
 		vel[2] += lookZ * yAccel / lookHz
 	}
-	if pitch < 0 && math32.Abs(lookHz) > 1e-6 {
+	if pitch < 0 && lookHz > 0 {
 		yAccel := velHz * -pitchSin * 0.04
 		vel[1] += yAccel * 3.2
 		vel[0] -= lookX * yAccel / lookHz
@@ -871,20 +869,6 @@ func moveRelative(state *MovementState, moveRelativeSpeed float32) {
 		newVel[2] += mf*v3 + ms*v2
 		state.SetVel(newVel)
 	}
-}
-
-func (s *Simulator) movementEffectMultiplier() float32 {
-	if s == nil || s.Effects == nil {
-		return 1
-	}
-	multiplier := float32(1)
-	if amplifier, ok := s.Effects.GetEffect(packet.EffectSpeed); ok {
-		multiplier *= 1 + 0.2*float32(amplifier+1)
-	}
-	if amplifier, ok := s.Effects.GetEffect(packet.EffectSlowness); ok {
-		multiplier *= math32.Max(0, 1-0.15*float32(amplifier+1))
-	}
-	return multiplier
 }
 
 func attemptKnockback(state *MovementState) bool {

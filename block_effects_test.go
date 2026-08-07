@@ -215,8 +215,8 @@ func TestScaffoldingDescendSkipsAirGravity(t *testing.T) {
 	state.HasGravity = true
 	state.PressingDescend = true
 	sim.SimulateState(state)
-	if math32.Abs(state.Vel.Y()-(-0.15*NormalGravityMultiplier)) > 1e-6 {
-		t.Fatalf("scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15*NormalGravityMultiplier)
+	if math32.Abs(state.Vel.Y()-(-0.15)) > 1e-6 {
+		t.Fatalf("scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15)
 	}
 }
 
@@ -234,8 +234,8 @@ func TestScaffoldingSupportEnablesDescent(t *testing.T) {
 	state.PressingDescend = true
 
 	sim.SimulateState(state)
-	if math32.Abs(state.Vel.Y()-(-0.15*NormalGravityMultiplier)) > 1e-6 {
-		t.Fatalf("supported scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15*NormalGravityMultiplier)
+	if math32.Abs(state.Vel.Y()-(-0.15)) > 1e-6 {
+		t.Fatalf("supported scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15)
 	}
 }
 

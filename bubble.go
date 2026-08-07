@@ -64,7 +64,7 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 	}
 }
 
-func (s *Simulator) attemptRiptide(state *MovementState, touchingWater bool) bool {
+func (s *Simulator) attemptRiptide(state *MovementState, touchingWater, headInWater bool) bool {
 	if s.Equipment == nil || state.InVehicle || state.RiptideTicks > 0 || !state.RiptideReady || (!touchingWater && !state.RiptideInRain) {
 		return false
 	}
@@ -72,21 +72,44 @@ func (s *Simulator) attemptRiptide(state *MovementState, touchingWater bool) boo
 	if level <= 0 || !state.StartingSpinAttack {
 		return false
 	}
-	force := 1.5 + 0.75*float32(level-1)
-	pitch := state.Rotation.X() * math32.Pi / 180
-	yaw := state.Rotation.Z() * math32.Pi / 180
-	direction := mgl32.Vec3{-MCSin(yaw) * MCCos(pitch), -MCSin(pitch), MCCos(yaw) * MCCos(pitch)}
-	if length := direction.Len(); length > 0 {
-		direction = direction.Mul(force / length)
-	}
-	state.SetVel(state.Vel.Add(direction))
+	state.SetVel(state.Vel.Add(s.riptideImpulse(state, level, touchingWater, headInWater)))
 	state.RiptideTicks = 20
 	state.RiptideCollision = false
 	state.StartingSpinAttack = false
 	return true
 }
 
-func (s *Simulator) simulateRiptide(state *MovementState) {
+func (s *Simulator) riptideImpulse(state *MovementState, level int, wasInWater, headInWater bool) mgl32.Vec3 {
+	force := 0.75 * float32(level+1)
+	pitch := state.Rotation.X() * math32.Pi / 180
+	yaw := state.Rotation.Z() * math32.Pi / 180
+	direction := mgl32.Vec3{-MCSin(yaw) * MCCos(pitch), -MCSin(pitch), MCCos(yaw) * MCCos(pitch)}
+	if length := direction.Len(); length > 0 {
+		direction = direction.Mul(force / length)
+	}
+	if wasInWater {
+		if headInWater {
+			direction[1] = direction[1] / 0.8 * NormalGravityMultiplier
+		} else {
+			direction[1] += 0.08
+		}
+	}
+	return direction
+}
+
+func (s *Simulator) riptideHeadInWater(state *MovementState) bool {
+	position := state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset, 0})
+	pos := posFromVec3(position)
+	liquid, ok := s.liquidAt(pos)
+	return ok && liquidWater.matches(liquid) && position.Y() < float32(pos.Y())+liquidHeight(liquid)
+}
+
+func (s *Simulator) simulateRiptide(state *MovementState, wasInWater, headInWater bool) {
+	if s.Equipment != nil {
+		if level := s.Equipment.EnchantmentLevel(EnchantmentRiptide); level > 0 {
+			state.SetVel(state.Vel.Add(s.riptideImpulse(state, level, wasInWater, headInWater)))
+		}
+	}
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
 	oldY := state.Pos.Y()
