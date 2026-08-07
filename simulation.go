@@ -17,7 +17,7 @@ import (
 // Simulate runs a movement simulation tick and returns the resulting state.
 func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationResult {
 	if state == nil || !finiteMovementState(state) || !finiteInput(input) {
-		return invalidSimulationResult()
+		return s.invalidSimulationResult()
 	}
 
 	pose := movementPoseSnapshot{
@@ -56,10 +56,12 @@ func (p movementPoseSnapshot) restore(state *MovementState) {
 }
 
 // SimulateState runs movement simulation using the current state values, without applying input updates
-// or advancing tick counters. This is useful when the caller handles input parsing and ticking externally.
+// or advancing tick counters. Callers that use it must advance tick counters
+// and clear transient fields such as KnockbackPending, RiptideReady, and
+// StoppedSwimmingThisTick themselves.
 func (s *Simulator) SimulateState(state *MovementState) SimulationResult {
 	if state == nil || !finiteMovementState(state) {
-		return invalidSimulationResult()
+		return s.invalidSimulationResult()
 	}
 	reason := s.simulateCore(state, false)
 	return s.resultFromState(state, reason)
@@ -77,8 +79,11 @@ func (s *Simulator) debugfIf(cond bool, format string, args ...any) {
 	}
 }
 
-func invalidSimulationResult() SimulationResult {
-	return SimulationResult{Outcome: SimulationOutcomeInvalidInput, NeedsCorrection: true}
+func (s *Simulator) invalidSimulationResult() SimulationResult {
+	return SimulationResult{
+		Outcome:         SimulationOutcomeInvalidInput,
+		NeedsCorrection: s == nil || s.Options.Mode != SimulationModePassive,
+	}
 }
 
 func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) SimulationOutcome {
@@ -361,6 +366,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	state.StartingSpinAttack = input.StartSpinAttack
 	if input.StopSpinAttack && state.RiptideTicks > 0 && state.RiptideCollision {
 		state.RiptideTicks = 0
+		state.RiptideLevel = 0
 		state.RiptideCollision = false
 		state.SetVel(state.Vel.Mul(-0.2))
 	}
@@ -412,6 +418,7 @@ func (s *Simulator) tickState(state *MovementState) {
 		state.RiptideTicks--
 		if state.RiptideTicks == 0 {
 			state.RiptideCollision = false
+			state.RiptideLevel = 0
 		}
 	}
 	state.JustDisabledFlight = false
@@ -440,6 +447,13 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		state.SwimWaterGraceTicks = grace
 		setSwimmingPoseFlags(state)
 	}
+	defer func() {
+		if inWater {
+			state.SwimWaterGraceTicks = grace
+		} else if state.SwimWaterGraceTicks > 0 {
+			state.SwimWaterGraceTicks--
+		}
+	}()
 	riptideLaunched := !state.Flying && s.attemptRiptide(state, inWater, s.riptideHeadInWater(state))
 	if riptideLaunched {
 		s.debugf("riptide launch applied: %v", state.Vel)
@@ -448,14 +462,6 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		s.simulateRiptide(state, inWater, s.riptideHeadInWater(state))
 		return
 	}
-
-	defer func() {
-		if inWater {
-			state.SwimWaterGraceTicks = grace
-		} else if state.SwimWaterGraceTicks > 0 {
-			state.SwimWaterGraceTicks--
-		}
-	}()
 
 	// Observed lava takes precedence over retained water evidence.
 	waterTravel := inWater ||
@@ -531,7 +537,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	if insideSemantics.Traversal == movementblock.TraversalNone && state.SupportingBlockPos != nil {
 		supportingSemantics := s.blockMovementSemantics(s.blockAtPos(*state.SupportingBlockPos))
 		if supportingSemantics.Traversal != movementblock.TraversalNone {
-			insideSemantics = supportingSemantics
+			insideSemantics.Traversal = supportingSemantics.Traversal
 		}
 	}
 	leatherBoots := s.Equipment != nil && s.Equipment.WearingLeatherBoots()
@@ -1275,7 +1281,7 @@ func (s *Simulator) hasClimbableContact(state *MovementState) bool {
 	if s.World == nil {
 		return false
 	}
-	box := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl32.Vec3{0.05, 0.05, 0.05})
+	box := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl32.Vec3{0.05, 0, 0.05})
 	if provider, ok := s.World.(ClimbableContactProvider); ok {
 		return provider.HasClimbableContact(box)
 	}
@@ -1358,6 +1364,9 @@ func (s *Simulator) findSupportingBlock(state *MovementState, bb cube.BBox32) {
 		}
 
 		for _, box := range boxes {
+			if BBHasZeroVolume(box) {
+				continue
+			}
 			if !bb.IntersectsWith(box.Translate(posVec3(pos))) {
 				continue
 			}

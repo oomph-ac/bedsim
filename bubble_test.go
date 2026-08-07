@@ -55,6 +55,33 @@ func TestBubbleColumnSurfaceAcceptsRegistryBackedAir(t *testing.T) {
 	}
 }
 
+type exactBubbleSurfaceWorld struct {
+	environmentWorld
+	surface bool
+}
+
+func (w exactBubbleSurfaceWorld) BubbleColumnSurface(cube.Pos) (bool, bool) {
+	return w.surface, true
+}
+
+func TestBubbleColumnUsesExactSurfaceProvider(t *testing.T) {
+	w := exactBubbleSurfaceWorld{
+		environmentWorld: environmentWorld{
+			bubbles: map[cube.Pos]BubbleColumnDirection{{0, 0, 0}: BubbleColumnUp},
+			blocks:  map[cube.Pos]world.Block{{0, 1, 0}: block.Water{Still: true, Depth: 8}},
+		},
+		surface: true,
+	}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+
+	(&Simulator{World: w}).applyBubbleColumns(state)
+
+	if state.Vel.Y() != 0.1 {
+		t.Fatalf("exact surface provider was ignored: %v", state.Vel.Y())
+	}
+}
+
 func TestBubbleColumnAppliesForEachOccupiedCell(t *testing.T) {
 	w := environmentWorld{
 		bubbles: map[cube.Pos]BubbleColumnDirection{

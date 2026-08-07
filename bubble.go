@@ -22,6 +22,13 @@ type BubbleColumnProvider interface {
 	BubbleColumn(pos cube.Pos) (BubbleColumnDirection, bool)
 }
 
+// BubbleColumnSurfaceProvider optionally supplies the exact client-side
+// surface variant for a bubble-column cell. The bool reports whether the
+// adapter knows the variant; false falls back to the block-above heuristic.
+type BubbleColumnSurfaceProvider interface {
+	BubbleColumnSurface(pos cube.Pos) (surface, known bool)
+}
+
 func applyBubbleColumn(state *MovementState, direction BubbleColumnDirection, surface bool) {
 	velocity := state.Vel
 	switch direction {
@@ -56,9 +63,16 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 				if !found {
 					continue
 				}
-				above := pos.Side(cube.FaceUp)
-				_, liquidAbove := s.liquidAt(above)
-				applyBubbleColumn(state, direction, !liquidAbove && s.blockAir(s.blockAtPos(above)))
+				surface, known := false, false
+				if surfaceProvider, ok := s.World.(BubbleColumnSurfaceProvider); ok {
+					surface, known = surfaceProvider.BubbleColumnSurface(pos)
+				}
+				if !known {
+					above := pos.Side(cube.FaceUp)
+					_, liquidAbove := s.liquidAt(above)
+					surface = !liquidAbove && s.blockAir(s.blockAtPos(above))
+				}
+				applyBubbleColumn(state, direction, surface)
 			}
 		}
 	}
@@ -74,6 +88,7 @@ func (s *Simulator) attemptRiptide(state *MovementState, touchingWater, headInWa
 	}
 	state.SetVel(state.Vel.Add(s.riptideImpulse(state, level, touchingWater, headInWater)))
 	state.RiptideTicks = 20
+	state.RiptideLevel = level
 	state.RiptideCollision = false
 	state.StartingSpinAttack = false
 	return true
@@ -105,10 +120,12 @@ func (s *Simulator) riptideHeadInWater(state *MovementState) bool {
 }
 
 func (s *Simulator) simulateRiptide(state *MovementState, wasInWater, headInWater bool) {
-	if s.Equipment != nil {
-		if level := s.Equipment.EnchantmentLevel(EnchantmentRiptide); level > 0 {
-			state.SetVel(state.Vel.Add(s.riptideImpulse(state, level, wasInWater, headInWater)))
-		}
+	level := state.RiptideLevel
+	if level <= 0 && s.Equipment != nil {
+		level = s.Equipment.EnchantmentLevel(EnchantmentRiptide)
+	}
+	if level > 0 {
+		state.SetVel(state.Vel.Add(s.riptideImpulse(state, level, wasInWater, headInWater)))
 	}
 	oldVel := state.Vel
 	oldOnGround := state.OnGround

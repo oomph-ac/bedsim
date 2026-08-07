@@ -79,7 +79,8 @@ should affect water movement.
 
 `WorldProvider` is the only required world interface. A world may additionally
 implement `BubbleColumnProvider` for upward/downward columns and
-`MovementCollisionProvider` for player-dependent collision shapes such as
+`BubbleColumnSurfaceProvider` when it can classify the exact surface variant,
+and `MovementCollisionProvider` for player-dependent collision shapes such as
 scaffolding and powder snow. Dynamic collision resolution receives sneak and
 descend intent plus leather-boots state.
 
@@ -103,6 +104,8 @@ default.
 `MovementState.MovementSpeed` and `DefaultMovementSpeed` are effective movement
 attribute values. Include active Speed or Slowness modifiers in those values;
 BedSim uses them directly and does not apply the same modifiers a second time.
+`JumpHeight` is derived during simulation; set `JumpStrength` when a custom
+base jump velocity is needed.
 
 Riptide input flags are not trusted on their own. Set `MovementState.RiptideReady`
 for the simulation tick only after validating a charged Riptide-trident release.

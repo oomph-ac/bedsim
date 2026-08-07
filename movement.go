@@ -42,7 +42,8 @@ type MovementState struct {
 
 	SupportingBlockPos *cube.Pos
 
-	Gravity    float32
+	Gravity float32
+	// JumpHeight is derived by Simulate from JumpStrength and active effects.
 	JumpHeight float32
 	// JumpStrength is the base jump velocity. Zero uses DefaultJumpHeight.
 	JumpStrength float32
@@ -116,7 +117,10 @@ type MovementState struct {
 	Crawling              bool
 	TicksSinceCanSlowdown int
 	RiptideTicks          int
-	StartingSpinAttack    bool
+	// RiptideLevel is captured when the spin attack starts. A non-zero value
+	// preserves the active attack's force if equipment changes mid-attack.
+	RiptideLevel       int
+	StartingSpinAttack bool
 	// RiptideReady is a one-tick trusted latch set after validating a charged
 	// Riptide trident release. RiptideCollision is set after a server-observed
 	// entity collision and authorizes the matching stop/reversal.

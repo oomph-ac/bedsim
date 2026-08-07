@@ -40,6 +40,15 @@ func TestSimulationRejectsNonFiniteInputAndState(t *testing.T) {
 	}
 }
 
+func TestPassiveModeDoesNotRequestCorrectionForInvalidInput(t *testing.T) {
+	result := (&Simulator{Options: SimulationOptions{Mode: SimulationModePassive}}).SimulateState(&MovementState{
+		Vel: mgl32.Vec3{math32.NaN(), 0, 0},
+	})
+	if result.Outcome != SimulationOutcomeInvalidInput || result.NeedsCorrection {
+		t.Fatalf("passive invalid-input result = %+v", result)
+	}
+}
+
 func TestMountedStateSkipsMovement(t *testing.T) {
 	state := newBaseState()
 	state.InVehicle = true
@@ -79,6 +88,30 @@ func TestActiveRiptideAppliesImpulseWithoutOrdinaryPhysics(t *testing.T) {
 	}
 	if math32.Abs(state.Vel.Y()-0.8) > 1e-6 || math32.Abs(state.Vel.Z()-2.25) > 1e-6 {
 		t.Fatalf("riptide tick applied ordinary acceleration: %v", state.Vel)
+	}
+}
+
+func TestActiveRiptideKeepsLaunchLevel(t *testing.T) {
+	state := newBaseState()
+	state.RiptideTicks = 5
+	state.RiptideLevel = 2
+
+	equipment := fixedEquipment{EnchantmentRiptide: 0}
+	(&Simulator{World: mockWorld{}, Equipment: equipment}).SimulateState(state)
+	if math32.Abs(state.Vel.Z()-2.25) > 1e-6 {
+		t.Fatalf("active Riptide did not keep its launch level: %v", state.Vel)
+	}
+}
+
+func TestActiveRiptideConsumesRetainedWaterGrace(t *testing.T) {
+	state := newBaseState()
+	state.RiptideTicks = 5
+	state.RiptideLevel = 2
+	state.SwimWaterGraceTicks = 2
+
+	(&Simulator{World: mockWorld{}, Equipment: fixedEquipment{}}).SimulateState(state)
+	if state.SwimWaterGraceTicks != 1 {
+		t.Fatalf("active Riptide retained water grace = %d, want 1", state.SwimWaterGraceTicks)
 	}
 }
 
@@ -181,6 +214,22 @@ func TestAdjacentClimbableContactIsDetected(t *testing.T) {
 	sim.SimulateState(state)
 	if state.Vel.Y() <= 0 {
 		t.Fatalf("adjacent ladder did not provide climb velocity: %v", state.Vel)
+	}
+}
+
+func TestClimbableBlockBelowIsNotContact(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, -1, 0}: block.Ladder{Facing: cube.West},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.EffectiveJumping = true
+	state.Gravity = NormalGravity
+
+	(&Simulator{World: w}).SimulateState(state)
+	if math32.Abs(state.Vel.Y()-ClimbSpeed) < 1e-6 {
+		t.Fatalf("ladder below the player was treated as climbable contact: %v", state.Vel)
 	}
 }
 
