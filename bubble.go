@@ -64,7 +64,7 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 }
 
 func (s *Simulator) attemptRiptide(state *MovementState, touchingWater bool) bool {
-	if s.Equipment == nil || state.RiptideTicks > 0 || !state.RiptideReady || (!touchingWater && !state.RiptideInRain) {
+	if s.Equipment == nil || state.InVehicle || state.RiptideTicks > 0 || !state.RiptideReady || (!touchingWater && !state.RiptideInRain) {
 		return false
 	}
 	level := s.Equipment.EnchantmentLevel(EnchantmentRiptide)
