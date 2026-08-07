@@ -3,6 +3,7 @@ package bedsim
 import (
 	"github.com/chewxy/math32"
 
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/go-gl/mathgl/mgl32"
 )
@@ -83,6 +84,19 @@ func (s *Simulator) attemptRiptide(state *MovementState, touchingWater bool) boo
 	state.RiptideCollision = false
 	state.StartingSpinAttack = false
 	return true
+}
+
+func (s *Simulator) simulateRiptide(state *MovementState) {
+	oldVel := state.Vel
+	oldOnGround := state.OnGround
+	oldY := state.Pos.Y()
+	state.OnGround = false
+	s.tryCollisions(state, false)
+	stopRiptideOnBlockCollision(state)
+	updateFallDistance(state, oldY)
+	state.SetMov(state.Vel)
+	s.setPostCollisionMotion(state, oldVel, oldOnGround, block.Air{})
+	s.applyInsideBlockEffects(state)
 }
 
 func stopRiptideOnBlockCollision(state *MovementState) {

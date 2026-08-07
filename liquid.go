@@ -100,6 +100,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 			moveRelativeSpeed += (state.MovementSpeed - moveRelativeSpeed) * depthStriderFraction
 		}
 	}
+	moveRelativeSpeed *= s.movementEffectMultiplier()
 
 	moveRelative(state, moveRelativeSpeed)
 	stuckMovement := applyStuckSpeedMultiplier(state)
@@ -182,7 +183,7 @@ func (s *Simulator) updateSwimTravel(state *MovementState) {
 
 	if targetY > 0 && !state.WantDownSlow && !state.PressingDescend {
 		belowPos := posFromVec3(state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset - 1.1}))
-		if _, belowAir := s.liquidMovementBlock(belowPos).(block.Air); belowAir {
+		if s.blockAir(s.liquidMovementBlock(belowPos)) {
 			liquidPos := posFromVec3(state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset - 1.2}))
 			if _, liquid := s.liquidAt(liquidPos); !liquid {
 				vel := state.Vel
@@ -215,6 +216,9 @@ func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) 
 				pos := cube.Pos{x, y, z}
 				liquid, ok := s.liquidAt(pos)
 				if !ok || !kind.matches(liquid) {
+					continue
+				}
+				if !liquidIntersects(box, pos, liquid) {
 					continue
 				}
 				if s.Options.Debugf != nil {
@@ -300,6 +304,11 @@ func liquidHeight(liquid world.Liquid) float32 {
 	return float32(liquid.LiquidDepth()+1) / 9
 }
 
+func liquidIntersects(box cube.BBox32, pos cube.Pos, liquid world.Liquid) bool {
+	surface := float32(pos[1]) + liquidHeight(liquid)
+	return box.Max().Y() > float32(pos[1]) && box.Min().Y() < surface
+}
+
 func (s *Simulator) containsAnyLiquid(box cube.BBox32) bool {
 	min, max := box.Min(), box.Max()
 	minX, minY, minZ := int(math32.Floor(min.X())), int(math32.Floor(min.Y())), int(math32.Floor(min.Z()))
@@ -307,7 +316,8 @@ func (s *Simulator) containsAnyLiquid(box cube.BBox32) bool {
 	for x := minX; x < maxX; x++ {
 		for z := minZ; z < maxZ; z++ {
 			for y := minY; y < maxY; y++ {
-				if _, ok := s.liquidAt(cube.Pos{x, y, z}); ok {
+				pos := cube.Pos{x, y, z}
+				if liquid, ok := s.liquidAt(pos); ok && liquidIntersects(box, pos, liquid) {
 					return true
 				}
 			}

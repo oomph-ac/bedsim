@@ -27,6 +27,9 @@ func (namedBlock) Model() world.BlockModel {
 }
 
 func TestBlockNameCachesRawHashPair(t *testing.T) {
+	key := blockNameKey{base: 0xf32ca, state: 7}
+	blockNameCache.Delete(key)
+	t.Cleanup(func() { blockNameCache.Delete(key) })
 	var calls int
 	b := namedBlock{name: "test:cached", base: 0xf32ca, state: 7, encodeCalls: &calls}
 
@@ -53,6 +56,9 @@ func TestBlockNameDoesNotCacheUnknownHash(t *testing.T) {
 }
 
 func TestBlockNameCachesMaxStateWithKnownBase(t *testing.T) {
+	key := blockNameKey{base: 1, state: math.MaxUint64}
+	blockNameCache.Delete(key)
+	t.Cleanup(func() { blockNameCache.Delete(key) })
 	var calls int
 	b := namedBlock{name: "test:max_state", base: 1, state: math.MaxUint64, encodeCalls: &calls}
 

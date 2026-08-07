@@ -11,6 +11,8 @@ const (
 	SimulationOutcomeUnreliable
 	SimulationOutcomeUnloadedChunk
 	SimulationOutcomeImmobileOrNotReady
+	SimulationOutcomeMounted
+	SimulationOutcomeInvalidInput
 )
 
 // SimulationResult captures the outcome of a single simulation tick.

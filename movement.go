@@ -42,8 +42,10 @@ type MovementState struct {
 
 	SupportingBlockPos *cube.Pos
 
-	Gravity      float32
-	JumpHeight   float32
+	Gravity    float32
+	JumpHeight float32
+	// JumpStrength is the base jump velocity. Zero uses DefaultJumpHeight.
+	JumpStrength float32
 	FallDistance float32
 
 	MovementSpeed           float32
@@ -59,6 +61,7 @@ type MovementState struct {
 
 	Knockback           mgl32.Vec3
 	TicksSinceKnockback uint64
+	KnockbackPending    bool
 
 	PendingTeleportPos mgl32.Vec3
 	PendingTeleports   int
@@ -67,6 +70,7 @@ type MovementState struct {
 	TicksSinceTeleport      uint64
 	TeleportCompletionTicks uint64
 	TeleportIsSmoothed      bool
+	TeleportPending         bool
 
 	Sprinting, PressingSprint         bool
 	ServerSprint, ServerSprintApplied bool
@@ -170,13 +174,38 @@ func (s *MovementState) SetRotation(newRot mgl32.Vec3) {
 }
 
 func (s *MovementState) HasKnockback() bool {
-	return s.TicksSinceKnockback == 0
+	return s.KnockbackPending || s.TicksSinceKnockback == 0 && s.Knockback != (mgl32.Vec3{})
 }
 
 func (s *MovementState) HasTeleport() bool {
+	if s.TeleportPending || s.PendingTeleports > 0 {
+		return true
+	}
+	if s.TeleportCompletionTicks == 0 {
+		return s.TicksSinceTeleport == 0 && s.TeleportPos != (mgl32.Vec3{})
+	}
 	return s.TicksSinceTeleport <= s.TeleportCompletionTicks
 }
 
 func (s *MovementState) RemainingTeleportTicks() int {
-	return int(s.TeleportCompletionTicks) - int(s.TicksSinceTeleport)
+	if !s.HasTeleport() || s.TicksSinceTeleport >= s.TeleportCompletionTicks {
+		return 0
+	}
+	return int(s.TeleportCompletionTicks - s.TicksSinceTeleport)
+}
+
+// QueueKnockback schedules one authoritative velocity replacement.
+func (s *MovementState) QueueKnockback(velocity mgl32.Vec3) {
+	s.Knockback = velocity
+	s.KnockbackPending = true
+	s.TicksSinceKnockback = 0
+}
+
+// QueueTeleport schedules one authoritative teleport.
+func (s *MovementState) QueueTeleport(pos mgl32.Vec3, smoothed bool, completionTicks uint64) {
+	s.TeleportPos = pos
+	s.TeleportIsSmoothed = smoothed
+	s.TeleportCompletionTicks = completionTicks
+	s.TicksSinceTeleport = 0
+	s.TeleportPending = true
 }

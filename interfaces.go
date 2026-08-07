@@ -15,6 +15,13 @@ type WorldProvider interface {
 	IsChunkLoaded(chunkX, chunkZ int32) bool
 }
 
+// MovementAreaProvider can provide a precise loaded/known check for a swept
+// movement volume. Worlds that only expose chunk loading use BedSim's
+// conservative chunk-range fallback.
+type MovementAreaProvider interface {
+	IsMovementAreaLoaded(aabb cube.BBox32) bool
+}
+
 // LiquidProvider returns liquids from either block layer at a position.
 type LiquidProvider interface {
 	Liquid(pos cube.Pos) (world.Liquid, bool)
@@ -34,6 +41,19 @@ type MovementCollisionContext struct {
 // depends on current player input or equipment.
 type MovementCollisionProvider interface {
 	GetMovementBBoxes(aabb cube.BBox32, context MovementCollisionContext) []cube.BBox32
+}
+
+// ClimbableContactProvider resolves orientation-aware ladder and vine contact.
+// The built-in fallback scans intersecting block volumes when this is absent.
+type ClimbableContactProvider interface {
+	HasClimbableContact(aabb cube.BBox32) bool
+}
+
+// MovementSupportProvider resolves the exact support block for dynamic shapes.
+// It is optional because a generic collision provider may not retain source
+// block identities.
+type MovementSupportProvider interface {
+	SupportingBlock(aabb cube.BBox32, context MovementCollisionContext) (cube.Pos, bool)
 }
 
 // BlockMovementSemanticsProvider resolves the complete movement behavior for a
