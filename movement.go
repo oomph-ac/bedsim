@@ -43,7 +43,8 @@ type MovementState struct {
 	SupportingBlockPos *cube.Pos
 
 	Gravity float32
-	// JumpHeight is derived by Simulate from JumpStrength and active effects.
+	// JumpHeight is an output derived by Simulate from JumpStrength and active
+	// effects; set JumpStrength to customize the base jump velocity.
 	JumpHeight float32
 	// JumpStrength is the base jump velocity. Zero uses DefaultJumpHeight.
 	JumpStrength float32
@@ -54,7 +55,10 @@ type MovementState struct {
 	MovementSpeed float32
 	// DefaultMovementSpeed is the effective non-sprinting movement attribute
 	// used when sprinting is toggled.
-	DefaultMovementSpeed    float32
+	DefaultMovementSpeed float32
+	// AirSpeed is the effective air acceleration speed. Simulate derives it
+	// from MovementSpeed when the latter is set; SimulateState callers provide
+	// it as part of the current state.
 	AirSpeed                float32
 	UnderwaterMovementSpeed float32
 	LavaMovementSpeed       float32
@@ -185,7 +189,7 @@ func (s *MovementState) SetRotation(newRot mgl32.Vec3) {
 }
 
 func (s *MovementState) HasKnockback() bool {
-	return s.KnockbackPending || s.TicksSinceKnockback == 0 && s.Knockback != (mgl32.Vec3{})
+	return s.KnockbackPending || (s.TicksSinceKnockback == 0 && s.Knockback != (mgl32.Vec3{}))
 }
 
 func (s *MovementState) HasTeleport() bool {
@@ -202,7 +206,12 @@ func (s *MovementState) RemainingTeleportTicks() int {
 	if !s.HasTeleport() || s.TicksSinceTeleport >= s.TeleportCompletionTicks {
 		return 0
 	}
-	return int(s.TeleportCompletionTicks - s.TicksSinceTeleport)
+	remaining := s.TeleportCompletionTicks - s.TicksSinceTeleport
+	maxInt := uint64(^uint(0) >> 1)
+	if remaining > maxInt {
+		return int(maxInt)
+	}
+	return int(remaining)
 }
 
 // QueueKnockback schedules one authoritative velocity replacement.
@@ -214,6 +223,7 @@ func (s *MovementState) QueueKnockback(velocity mgl32.Vec3) {
 
 // QueueTeleport schedules one authoritative teleport.
 func (s *MovementState) QueueTeleport(pos mgl32.Vec3, smoothed bool, completionTicks uint64) {
+	s.PendingTeleportPos = pos
 	s.TeleportPos = pos
 	s.TeleportIsSmoothed = smoothed
 	s.TeleportCompletionTicks = completionTicks

@@ -120,6 +120,7 @@ func (s *Simulator) riptideHeadInWater(state *MovementState) bool {
 }
 
 func (s *Simulator) simulateRiptide(state *MovementState, wasInWater, headInWater bool) {
+	s.debugfIf(attemptKnockback(state), "knockback applied during riptide: %v", state.Vel)
 	level := state.RiptideLevel
 	if level <= 0 && s.Equipment != nil {
 		level = s.Equipment.EnchantmentLevel(EnchantmentRiptide)
@@ -143,6 +144,7 @@ func (s *Simulator) simulateRiptide(state *MovementState, wasInWater, headInWate
 func stopRiptideOnBlockCollision(state *MovementState) {
 	if state.RiptideTicks > 0 && (state.CollideX || state.CollideZ) {
 		state.RiptideTicks = 0
+		state.RiptideLevel = 0
 		state.RiptideCollision = false
 	}
 }

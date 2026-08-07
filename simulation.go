@@ -2,7 +2,6 @@ package bedsim
 
 import (
 	"iter"
-	"sort"
 
 	"github.com/chewxy/math32"
 
@@ -35,6 +34,7 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 	if s.Options.SprintTiming == SprintTimingLegacy {
 		s.applyLegacySprint(state, input)
 	}
+	state.AirSpeed = effectiveAirSpeed(state)
 	s.tickState(state)
 	return s.resultFromState(state, reason)
 }
@@ -204,23 +204,18 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	if startFlag && stopFlag {
 		needsSpeedAdjusted = isModernSprint
 		state.Sprinting = false
-		state.AirSpeed = 0.02
 	} else if !startFlag && !stopFlag && !state.ServerSprintApplied && state.ServerSprint != state.Sprinting {
 		if state.ServerSprint {
 			state.Sprinting = true
-			state.AirSpeed = 0.026
 		} else {
 			state.Sprinting = false
-			state.AirSpeed = 0.02
 		}
 	} else if startFlag {
 		state.Sprinting = true
 		needsSpeedAdjusted = isModernSprint
-		state.AirSpeed = 0.026
 	} else if stopFlag {
 		state.Sprinting = false
 		needsSpeedAdjusted = isModernSprint && !state.ServerUpdatedSpeed
-		state.AirSpeed = 0.02
 	}
 	state.ServerSprintApplied = true
 
@@ -231,6 +226,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 			state.MovementSpeed *= 1.3
 		}
 	}
+	state.AirSpeed = effectiveAirSpeed(state)
 
 	wantSneak := input.SneakDown || input.StartSneaking
 	if input.StopSneaking {
@@ -393,6 +389,20 @@ func (s *Simulator) applyLegacySprint(state *MovementState, input InputState) {
 			state.MovementSpeed *= 1.3
 		}
 	}
+	state.AirSpeed = effectiveAirSpeed(state)
+}
+
+func effectiveAirSpeed(state *MovementState) float32 {
+	if state.MovementSpeed > 0 {
+		return state.MovementSpeed * AirMovementSpeedMultiplier
+	}
+	if state.AirSpeed > 0 {
+		return state.AirSpeed
+	}
+	if state.Sprinting {
+		return 0.026
+	}
+	return 0.02
 }
 
 func (s *Simulator) tickState(state *MovementState) {
@@ -536,7 +546,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	insideSemantics := s.blockMovementSemantics(s.blockAtPos(posFromVec3(state.Pos)))
 	if insideSemantics.Traversal == movementblock.TraversalNone && state.SupportingBlockPos != nil {
 		supportingSemantics := s.blockMovementSemantics(s.blockAtPos(*state.SupportingBlockPos))
-		if supportingSemantics.Traversal != movementblock.TraversalNone {
+		if supportingSemantics.Traversal == movementblock.TraversalScaffolding {
 			insideSemantics.Traversal = supportingSemantics.Traversal
 		}
 	}
@@ -681,7 +691,10 @@ func (s *Simulator) resetToClient(state *MovementState) {
 
 func (s *Simulator) attemptTeleport(state *MovementState) bool {
 	if state.PendingTeleports > 0 {
-		if state.TeleportPos == (mgl32.Vec3{}) || state.PendingTeleportPos != (mgl32.Vec3{}) {
+		// QueueTeleport marks TeleportPending before this path, which keeps an
+		// explicitly queued origin distinct from legacy callers that only set
+		// PendingTeleports and TeleportPos.
+		if state.TeleportPending || state.PendingTeleportPos != (mgl32.Vec3{}) {
 			state.TeleportPos = state.PendingTeleportPos
 		}
 		state.TeleportPending = true
@@ -698,25 +711,32 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 		if state.PendingTeleports > 0 {
 			state.PendingTeleports--
 		}
+		if state.PendingTeleports == 0 {
+			state.PendingTeleportPos = mgl32.Vec3{}
+		}
 		state.TicksSinceTeleport = teleportCompleteTick(state.TeleportCompletionTicks)
 		return true
 	}
 
 	posDelta := state.TeleportPos.Sub(state.Pos)
-	if remaining := state.RemainingTeleportTicks() + 1; remaining > 0 {
-		newPos := state.Pos.Add(posDelta.Mul(1.0 / float32(remaining)))
-		state.SetPos(newPos)
-		state.JumpDelay = 0
-		if remaining == 1 {
-			state.TeleportPending = false
-			if state.PendingTeleports > 0 {
-				state.PendingTeleports--
-			}
-			state.TicksSinceTeleport = teleportCompleteTick(state.TeleportCompletionTicks)
-		}
-		return true
+	remaining := state.RemainingTeleportTicks()
+	if remaining < int(^uint(0)>>1) {
+		remaining++
 	}
-	return false
+	newPos := state.Pos.Add(posDelta.Mul(1.0 / float32(remaining)))
+	state.SetPos(newPos)
+	state.JumpDelay = 0
+	if remaining == 1 {
+		state.TeleportPending = false
+		if state.PendingTeleports > 0 {
+			state.PendingTeleports--
+		}
+		if state.PendingTeleports == 0 {
+			state.PendingTeleportPos = mgl32.Vec3{}
+		}
+		state.TicksSinceTeleport = teleportCompleteTick(state.TeleportCompletionTicks)
+	}
+	return true
 }
 
 func teleportCompleteTick(completionTicks uint64) uint64 {
@@ -745,19 +765,19 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 
 	gravity := effectiveGravity(state, vel)
 	vel[1] += -gravity + sqrPitchCos*(gravity*0.75)
-	if vel[1] < 0 && lookHz > 0 {
+	if vel[1] < 0 && lookHz > GlideHorizontalLookEpsilon {
 		yAccel := vel[1] * -0.1 * sqrPitchCos
 		vel[1] += yAccel
 		vel[0] += lookX * yAccel / lookHz
 		vel[2] += lookZ * yAccel / lookHz
 	}
-	if pitch < 0 && lookHz > 0 {
+	if pitch < 0 && lookHz > GlideHorizontalLookEpsilon {
 		yAccel := velHz * -pitchSin * 0.04
 		vel[1] += yAccel * 3.2
 		vel[0] -= lookX * yAccel / lookHz
 		vel[2] -= lookZ * yAccel / lookHz
 	}
-	if lookHz > 0 {
+	if lookHz > GlideHorizontalLookEpsilon {
 		vel[0] += (lookX/lookHz*velHz - vel[0]) * 0.1
 		vel[2] += (lookZ/lookHz*velHz - vel[2]) * 0.1
 	}
@@ -1303,23 +1323,44 @@ func (s *Simulator) movementAreaLoaded(aabb cube.BBox32) bool {
 	if provider, ok := s.World.(MovementAreaProvider); ok {
 		return provider.IsMovementAreaLoaded(aabb)
 	}
-	min, max := aabb.Min(), aabb.Max()
-	minX, minZ := int32(math32.Floor(min.X()))>>4, int32(math32.Floor(min.Z()))>>4
-	maxX, maxZ := int32(math32.Ceil(max.X())-1)>>4, int32(math32.Ceil(max.Z())-1)>>4
-	if maxX < minX {
-		maxX = minX
+	minX, minZ, maxX, maxZ, ok := movementChunkRange(aabb)
+	if !ok {
+		return false
 	}
-	if maxZ < minZ {
-		maxZ = minZ
-	}
-	for chunkX := minX; chunkX <= maxX; chunkX++ {
-		for chunkZ := minZ; chunkZ <= maxZ; chunkZ++ {
-			if !s.World.IsChunkLoaded(chunkX, chunkZ) {
+	for chunkX := int64(minX); chunkX <= int64(maxX); chunkX++ {
+		for chunkZ := int64(minZ); chunkZ <= int64(maxZ); chunkZ++ {
+			if !s.World.IsChunkLoaded(int32(chunkX), int32(chunkZ)) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+const (
+	maxMovementChunkSpan  int64   = 256
+	minMovementBlockCoord float32 = -2147483648
+	maxMovementBlockCoord float32 = 2147483520
+)
+
+func movementChunkRange(aabb cube.BBox32) (minX, minZ, maxX, maxZ int32, ok bool) {
+	min, max := aabb.Min(), aabb.Max()
+	minBlockX, minBlockZ := math32.Floor(min.X()), math32.Floor(min.Z())
+	maxBlockX, maxBlockZ := math32.Ceil(max.X())-1, math32.Ceil(max.Z())-1
+	for _, value := range []float32{minBlockX, minBlockZ, maxBlockX, maxBlockZ} {
+		if !finiteFloat(value) || value < minMovementBlockCoord || value > maxMovementBlockCoord {
+			return 0, 0, 0, 0, false
+		}
+	}
+
+	minX, minZ = int32(minBlockX)>>4, int32(minBlockZ)>>4
+	maxX, maxZ = int32(maxBlockX)>>4, int32(maxBlockZ)>>4
+	spanX := int64(maxX) - int64(minX) + 1
+	spanZ := int64(maxZ) - int64(minZ) + 1
+	if spanX <= 0 || spanZ <= 0 || spanX > maxMovementChunkSpan || spanZ > maxMovementChunkSpan {
+		return 0, 0, 0, 0, false
+	}
+	return minX, minZ, maxX, maxZ, true
 }
 
 func (s *Simulator) checkSupportingBlockPos(state *MovementState, useSlideOffset bool, vel mgl32.Vec3) {
@@ -1347,10 +1388,6 @@ func (s *Simulator) findSupportingBlock(state *MovementState, bb cube.BBox32) {
 		} else {
 			state.SupportingBlockPos = nil
 		}
-		return
-	}
-	if _, dynamic := w.(MovementCollisionProvider); dynamic {
-		state.SupportingBlockPos = nil
 		return
 	}
 	var blockPos *cube.Pos
@@ -1395,9 +1432,9 @@ func (s *Simulator) nearbyBBoxes(state *MovementState, aabb cube.BBox32) []cube.
 		return nil
 	}
 	if provider, ok := s.World.(MovementCollisionProvider); ok {
-		return sortedCollisionBoxes(provider.GetMovementBBoxes(aabb, s.movementCollisionContext(state)))
+		return filteredCollisionBoxes(provider.GetMovementBBoxes(aabb, s.movementCollisionContext(state)))
 	}
-	return sortedCollisionBoxes(s.World.GetNearbyBBoxes(aabb))
+	return filteredCollisionBoxes(s.World.GetNearbyBBoxes(aabb))
 }
 
 func (s *Simulator) movementCollisionContext(state *MovementState) MovementCollisionContext {
@@ -1410,35 +1447,21 @@ func (s *Simulator) movementCollisionContext(state *MovementState) MovementColli
 	}
 }
 
-func sortedCollisionBoxes(boxes []cube.BBox32) []cube.BBox32 {
-	if len(boxes) < 2 {
-		if len(boxes) == 1 && BBHasZeroVolume(boxes[0]) {
-			return nil
-		}
-		return boxes
-	}
-	filtered := make([]cube.BBox32, 0, len(boxes))
-	for _, box := range boxes {
+func filteredCollisionBoxes(boxes []cube.BBox32) []cube.BBox32 {
+	for i, box := range boxes {
 		if !BBHasZeroVolume(box) {
-			filtered = append(filtered, box)
+			continue
 		}
+		filtered := make([]cube.BBox32, 0, len(boxes)-1)
+		filtered = append(filtered, boxes[:i]...)
+		for _, remaining := range boxes[i+1:] {
+			if !BBHasZeroVolume(remaining) {
+				filtered = append(filtered, remaining)
+			}
+		}
+		return filtered
 	}
-	sort.SliceStable(filtered, func(i, j int) bool {
-		leftMin, rightMin := filtered[i].Min(), filtered[j].Min()
-		for axis := range 3 {
-			if leftMin[axis] != rightMin[axis] {
-				return leftMin[axis] < rightMin[axis]
-			}
-		}
-		leftMax, rightMax := filtered[i].Max(), filtered[j].Max()
-		for axis := range 3 {
-			if leftMax[axis] != rightMax[axis] {
-				return leftMax[axis] < rightMax[axis]
-			}
-		}
-		return false
-	})
-	return filtered
+	return boxes
 }
 
 type nearbyBBoxProbe interface {

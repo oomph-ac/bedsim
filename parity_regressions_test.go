@@ -103,6 +103,18 @@ func TestActiveRiptideKeepsLaunchLevel(t *testing.T) {
 	}
 }
 
+func TestActiveRiptidePreservesAuthoritativeKnockback(t *testing.T) {
+	state := newBaseState()
+	state.RiptideTicks = 5
+	state.RiptideLevel = 2
+	state.QueueKnockback(mgl32.Vec3{4, 0, 0})
+
+	(&Simulator{World: mockWorld{}, Equipment: fixedEquipment{}}).SimulateState(state)
+	if math32.Abs(state.Vel.X()-4) > 1e-6 || math32.Abs(state.Vel.Z()-2.25) > 1e-6 {
+		t.Fatalf("riptide did not preserve knockback plus impulse: %v", state.Vel)
+	}
+}
+
 func TestActiveRiptideConsumesRetainedWaterGrace(t *testing.T) {
 	state := newBaseState()
 	state.RiptideTicks = 5
@@ -130,6 +142,20 @@ func TestMovementSpeedUsesEffectiveAttribute(t *testing.T) {
 	}
 }
 
+func TestSimulateDerivesAirSpeedFromEffectiveMovementSpeed(t *testing.T) {
+	state := newBaseState()
+	state.MovementSpeed = 0.2
+	state.DefaultMovementSpeed = 0.2
+
+	(&Simulator{World: mockWorld{}}).Simulate(state, InputState{StartSprinting: true})
+	if math32.Abs(state.MovementSpeed-0.26) > 1e-6 {
+		t.Fatalf("sprinting movement speed = %v, want 0.26", state.MovementSpeed)
+	}
+	if math32.Abs(state.AirSpeed-0.052) > 1e-6 {
+		t.Fatalf("sprinting air speed = %v, want 0.052", state.AirSpeed)
+	}
+}
+
 func TestTeleportDoesNotApplyJumpImpulse(t *testing.T) {
 	state := newBaseState()
 	state.OnGround = true
@@ -148,6 +174,28 @@ func TestTeleportDoesNotApplyJumpImpulse(t *testing.T) {
 	}
 }
 
+func TestQueueTeleportCanTargetOrigin(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{10, 20, 30}
+	state.QueueTeleport(mgl32.Vec3{}, false, 0)
+
+	result := (&Simulator{World: mockWorld{}}).SimulateState(state)
+	if result.Outcome != SimulationOutcomeTeleport || state.Pos != (mgl32.Vec3{}) {
+		t.Fatalf("origin teleport result=%+v pos=%v", result, state.Pos)
+	}
+}
+
+func TestLegacyPendingTeleportKeepsExplicitTarget(t *testing.T) {
+	state := newBaseState()
+	state.PendingTeleports = 1
+	state.TeleportPos = mgl32.Vec3{10, 20, 30}
+
+	result := (&Simulator{World: mockWorld{}}).SimulateState(state)
+	if result.Outcome != SimulationOutcomeTeleport || state.Pos != state.TeleportPos {
+		t.Fatalf("legacy teleport result=%+v pos=%v target=%v", result, state.Pos, state.TeleportPos)
+	}
+}
+
 func TestGlideAtVerticalPitchRemainsFinite(t *testing.T) {
 	state := newBaseState()
 	state.Gliding = true
@@ -159,6 +207,21 @@ func TestGlideAtVerticalPitchRemainsFinite(t *testing.T) {
 	for axis, value := range state.Vel {
 		if !finiteFloat(value) {
 			t.Fatalf("glide velocity axis %d is not finite: %v", axis, state.Vel)
+		}
+	}
+}
+
+func TestGlideNearVerticalPitchDoesNotExplode(t *testing.T) {
+	state := newBaseState()
+	state.Gliding = true
+	state.OnGround = false
+	state.Rotation = mgl32.Vec3{-89.999, 0, 0}
+	state.Vel = mgl32.Vec3{1, 0, 0}
+
+	(&Simulator{World: mockWorld{}, Inventory: mockInventory{hasElytra: true}}).SimulateState(state)
+	for axis, value := range state.Vel {
+		if !finiteFloat(value) || math32.Abs(value) > 10 {
+			t.Fatalf("near-vertical glide velocity axis %d = %v", axis, value)
 		}
 	}
 }
@@ -181,6 +244,16 @@ func TestMovementChecksSweptChunks(t *testing.T) {
 	result := (&Simulator{World: selectiveChunkWorld{}}).SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnloadedChunk {
 		t.Fatalf("outcome = %v, want unloaded chunk for swept movement", result.Outcome)
+	}
+}
+
+func TestMovementRejectsOutOfRangeSweep(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{math32.MaxFloat32, 0, 0}
+
+	result := (&Simulator{World: selectiveChunkWorld{}}).SimulateState(state)
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("out-of-range sweep outcome = %v, want unloaded chunk", result.Outcome)
 	}
 }
 
@@ -217,6 +290,22 @@ func TestAdjacentClimbableContactIsDetected(t *testing.T) {
 	}
 }
 
+func TestStandingOnClimbableBlockDoesNotEnableClimbing(t *testing.T) {
+	pos := cube.Pos{0, -1, 0}
+	w := environmentWorld{
+		solids: map[cube.Pos]bool{pos: true},
+		blocks: map[cube.Pos]world.Block{pos: semanticsNamedBlock{name: "minecraft:ladder"}},
+	}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.EffectiveJumping = true
+
+	(&Simulator{World: w}).SimulateState(state)
+	if math32.Abs(state.Vel.Y()-ClimbSpeed) < 1e-6 {
+		t.Fatalf("standing on a climbable block enabled climbing: %v", state.Vel)
+	}
+}
+
 func TestClimbableBlockBelowIsNotContact(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{0, -1, 0}: block.Ladder{Facing: cube.West},
@@ -230,6 +319,45 @@ func TestClimbableBlockBelowIsNotContact(t *testing.T) {
 	(&Simulator{World: w}).SimulateState(state)
 	if math32.Abs(state.Vel.Y()-ClimbSpeed) < 1e-6 {
 		t.Fatalf("ladder below the player was treated as climbable contact: %v", state.Vel)
+	}
+}
+
+func TestPowderSnowSupportDoesNotEnableTraversal(t *testing.T) {
+	pos := cube.Pos{0, 0, 0}
+	w := &dynamicCollisionWorld{environmentWorld: environmentWorld{
+		solids: map[cube.Pos]bool{pos: true},
+		blocks: map[cube.Pos]world.Block{pos: semanticsNamedBlock{name: "minecraft:powder_snow"}},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 1, 0.5}
+	state.OnGround = true
+	state.PressingAscend = true
+
+	(&Simulator{World: w, Equipment: leatherEquipment{}}).SimulateState(state)
+	if math32.Abs(state.Vel.Y()-0.2) < 1e-6 {
+		t.Fatalf("powder snow below the player enabled traversal: %v", state.Vel)
+	}
+}
+
+func TestDynamicCollisionProviderKeepsStaticSupportFallback(t *testing.T) {
+	pos := cube.Pos{0, 0, 0}
+	w := &dynamicCollisionWorld{environmentWorld: environmentWorld{solids: map[cube.Pos]bool{pos: true}}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 1, 0.5}
+	state.OnGround = true
+
+	(&Simulator{World: w}).checkSupportingBlockPos(state, false, mgl32.Vec3{})
+	if state.SupportingBlockPos == nil || *state.SupportingBlockPos != pos {
+		t.Fatalf("dynamic collision provider lost support block: %v", state.SupportingBlockPos)
+	}
+}
+
+func TestFilteredCollisionBoxesPreserveProviderOrder(t *testing.T) {
+	first := cube.Box32(2, 0, 0, 3, 1, 1)
+	second := cube.Box32(1, 0, 0, 2, 1, 1)
+	got := filteredCollisionBoxes([]cube.BBox32{first, cube.Box32(0, 0, 0, 0, 1, 1), second})
+	if len(got) != 2 || got[0] != first || got[1] != second {
+		t.Fatalf("collision order changed while filtering: %v", got)
 	}
 }
 

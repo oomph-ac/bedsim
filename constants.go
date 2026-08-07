@@ -23,6 +23,8 @@ const (
 	DefaultUnderwaterMovementSpeed = float32(0.02)
 	DefaultLavaMovementSpeed       = float32(0.02)
 	DefaultSwimSpeedMultiplier     = float32(1)
+	AirMovementSpeedMultiplier     = float32(0.2)
+	GlideHorizontalLookEpsilon     = float32(1e-4)
 
 	DefaultPlayerHeightOffset  = float32(1.62)
 	SneakingPlayerHeightOffset = float32(1.27)

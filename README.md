@@ -97,15 +97,19 @@ extension remains a fallback when the equipment provider reports no Depth
 Strider level. `EffectsProvider` also controls Weaving-aware web movement.
 
 Use `MovementState.QueueKnockback` and `MovementState.QueueTeleport` for
-authoritative events instead of setting their timer fields by hand. Set
-`MovementState.JumpStrength` for a custom base jump velocity; zero keeps the
-default.
+authoritative events instead of setting their timer fields by hand. `Simulate`
+consumes those events as part of its tick; callers using `SimulateState` must
+clear transient fields such as `KnockbackPending` and
+`StoppedSwimmingThisTick` themselves. Set `MovementState.JumpStrength` for a
+custom base jump velocity; zero keeps the default.
 
 `MovementState.MovementSpeed` and `DefaultMovementSpeed` are effective movement
 attribute values. Include active Speed or Slowness modifiers in those values;
 BedSim uses them directly and does not apply the same modifiers a second time.
-`JumpHeight` is derived during simulation; set `JumpStrength` when a custom
-base jump velocity is needed.
+`AirSpeed` is the effective air acceleration speed; `Simulate` derives it from
+`MovementSpeed`, while `SimulateState` callers provide it with the current state.
+`JumpHeight` is output-only and derived during simulation; set `JumpStrength`
+when a custom base jump velocity is needed.
 
 Riptide input flags are not trusted on their own. Set `MovementState.RiptideReady`
 for the simulation tick only after validating a charged Riptide-trident release.
