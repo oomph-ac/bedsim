@@ -75,50 +75,48 @@ func TestSimulateStateLeavesTransientInputForCaller(t *testing.T) {
 	}
 }
 
-func TestActiveRiptideAppliesImpulseWithoutOrdinaryPhysics(t *testing.T) {
+func TestActiveRiptideRunsOrdinaryPhysics(t *testing.T) {
 	state := newBaseState()
 	state.RiptideTicks = 5
 	state.Vel = mgl32.Vec3{0, 0.8, 0}
-	state.Impulse = mgl32.Vec2{0, 1}
 	state.Gravity = NormalGravity
+	state.HasGravity = true
 
 	(&Simulator{World: mockWorld{}, Equipment: fixedEquipment{EnchantmentRiptide: 2}}).SimulateState(state)
-	if math32.Abs(state.Pos.Z()-2.25) > 1e-6 {
-		t.Fatalf("riptide tick did not apply directional displacement: %v", state.Pos)
+	if math32.Abs(state.Vel.Y()-0.8) <= 1e-6 {
+		t.Fatalf("riptide tick skipped gravity: %v", state.Vel)
 	}
-	if math32.Abs(state.Vel.Y()-0.8) > 1e-6 || math32.Abs(state.Vel.Z()-2.25) > 1e-6 {
-		t.Fatalf("riptide tick applied ordinary acceleration: %v", state.Vel)
-	}
-}
-
-func TestActiveRiptideKeepsLaunchLevel(t *testing.T) {
-	state := newBaseState()
-	state.RiptideTicks = 5
-	state.RiptideLevel = 2
-
-	equipment := fixedEquipment{EnchantmentRiptide: 0}
-	(&Simulator{World: mockWorld{}, Equipment: equipment}).SimulateState(state)
-	if math32.Abs(state.Vel.Z()-2.25) > 1e-6 {
-		t.Fatalf("active Riptide did not keep its launch level: %v", state.Vel)
+	if state.Vel.Z() != 0 {
+		t.Fatalf("riptide tick re-applied its launch impulse: %v", state.Vel)
 	}
 }
 
-func TestActiveRiptidePreservesAuthoritativeKnockback(t *testing.T) {
+func TestRiptideLaunchAppliesImpulseOnce(t *testing.T) {
+	sim := &Simulator{World: mockWorld{}, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
 	state := newBaseState()
-	state.RiptideTicks = 5
-	state.RiptideLevel = 2
-	state.QueueKnockback(mgl32.Vec3{4, 0, 0})
+	state.RiptideInRain = true
+	state.RiptideReady = true
+	state.StartingSpinAttack = true
 
-	(&Simulator{World: mockWorld{}, Equipment: fixedEquipment{}}).SimulateState(state)
-	if math32.Abs(state.Vel.X()-4) > 1e-6 || math32.Abs(state.Vel.Z()-2.25) > 1e-6 {
-		t.Fatalf("riptide did not preserve knockback plus impulse: %v", state.Vel)
+	sim.SimulateState(state)
+	// The 2.25 impulse for level 2 decays through ordinary air friction the
+	// same tick, so the launch is observable but never the raw impulse.
+	launched := state.Vel.Z()
+	if math32.Abs(launched-2.25*DefaultAirFriction) > 1e-6 {
+		t.Fatalf("riptide launch velocity = %v, want %v", launched, 2.25*DefaultAirFriction)
+	}
+
+	state.RiptideReady = false
+	state.StartingSpinAttack = false
+	sim.SimulateState(state)
+	if state.Vel.Z() > launched {
+		t.Fatalf("riptide gained speed after its launch tick: %v", state.Vel.Z())
 	}
 }
 
 func TestActiveRiptideConsumesRetainedWaterGrace(t *testing.T) {
 	state := newBaseState()
 	state.RiptideTicks = 5
-	state.RiptideLevel = 2
 	state.SwimWaterGraceTicks = 2
 
 	(&Simulator{World: mockWorld{}, Equipment: fixedEquipment{}}).SimulateState(state)
@@ -142,7 +140,7 @@ func TestMovementSpeedUsesEffectiveAttribute(t *testing.T) {
 	}
 }
 
-func TestSimulateDerivesAirSpeedFromEffectiveMovementSpeed(t *testing.T) {
+func TestAirSpeedIgnoresTheMovementAttribute(t *testing.T) {
 	state := newBaseState()
 	state.MovementSpeed = 0.2
 	state.DefaultMovementSpeed = 0.2
@@ -151,8 +149,8 @@ func TestSimulateDerivesAirSpeedFromEffectiveMovementSpeed(t *testing.T) {
 	if math32.Abs(state.MovementSpeed-0.26) > 1e-6 {
 		t.Fatalf("sprinting movement speed = %v, want 0.26", state.MovementSpeed)
 	}
-	if math32.Abs(state.AirSpeed-0.052) > 1e-6 {
-		t.Fatalf("sprinting air speed = %v, want 0.052", state.AirSpeed)
+	if state.AirSpeed != SprintAirSpeed {
+		t.Fatalf("sprinting air speed = %v, want %v", state.AirSpeed, SprintAirSpeed)
 	}
 }
 
@@ -273,7 +271,7 @@ func TestUnloadedTickDoesNotCommitPoseChanges(t *testing.T) {
 	}
 }
 
-func TestAdjacentClimbableContactIsDetected(t *testing.T) {
+func TestAdjacentClimbableIsNotContact(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{1, 0, 0}: block.Ladder{Facing: cube.West},
 	}}
@@ -283,10 +281,9 @@ func TestAdjacentClimbableContactIsDetected(t *testing.T) {
 	state.EffectiveJumping = true
 	state.Gravity = NormalGravity
 
-	sim := &Simulator{World: w}
-	sim.SimulateState(state)
-	if state.Vel.Y() <= 0 {
-		t.Fatalf("adjacent ladder did not provide climb velocity: %v", state.Vel)
+	(&Simulator{World: w}).SimulateState(state)
+	if math32.Abs(state.Vel.Y()-ClimbSpeed) < 1e-6 {
+		t.Fatalf("a ladder the player only overlaps was treated as climbable contact: %v", state.Vel)
 	}
 }
 

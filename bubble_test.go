@@ -228,15 +228,14 @@ func TestRiptideStopsOnNormalMovementWallCollision(t *testing.T) {
 	}
 }
 
-func TestRiptideCollisionClearsLaunchLevel(t *testing.T) {
+func TestRiptideCollisionClearsActiveAttack(t *testing.T) {
 	state := newBaseState()
 	state.RiptideTicks = 10
-	state.RiptideLevel = 3
 	state.CollideX = true
 
 	stopRiptideOnBlockCollision(state)
-	if state.RiptideTicks != 0 || state.RiptideLevel != 0 {
-		t.Fatalf("riptide collision left active launch state: ticks=%d level=%d", state.RiptideTicks, state.RiptideLevel)
+	if state.RiptideTicks != 0 {
+		t.Fatalf("riptide collision left active attack: ticks=%d", state.RiptideTicks)
 	}
 }
 

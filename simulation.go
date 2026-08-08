@@ -362,7 +362,6 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	state.StartingSpinAttack = input.StartSpinAttack
 	if input.StopSpinAttack && state.RiptideTicks > 0 && state.RiptideCollision {
 		state.RiptideTicks = 0
-		state.RiptideLevel = 0
 		state.RiptideCollision = false
 		state.SetVel(state.Vel.Mul(-0.2))
 	}
@@ -392,17 +391,14 @@ func (s *Simulator) applyLegacySprint(state *MovementState, input InputState) {
 	state.AirSpeed = effectiveAirSpeed(state)
 }
 
+// effectiveAirSpeed returns the air acceleration for the current sprint state.
+// Vanilla picks from a fixed pair here, so movement effects must not reach it
+// the way they reach the ground and liquid speeds.
 func effectiveAirSpeed(state *MovementState) float32 {
-	if state.MovementSpeed > 0 {
-		return state.MovementSpeed * AirMovementSpeedMultiplier
-	}
-	if state.AirSpeed > 0 {
-		return state.AirSpeed
-	}
 	if state.Sprinting {
-		return 0.026
+		return SprintAirSpeed
 	}
-	return 0.02
+	return WalkAirSpeed
 }
 
 func (s *Simulator) tickState(state *MovementState) {
@@ -428,7 +424,6 @@ func (s *Simulator) tickState(state *MovementState) {
 		state.RiptideTicks--
 		if state.RiptideTicks == 0 {
 			state.RiptideCollision = false
-			state.RiptideLevel = 0
 		}
 	}
 	state.JustDisabledFlight = false
@@ -464,13 +459,10 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 			state.SwimWaterGraceTicks--
 		}
 	}()
-	riptideLaunched := !state.Flying && s.attemptRiptide(state, inWater, s.riptideHeadInWater(state))
-	if riptideLaunched {
+	// The launch is a one-shot impulse; the remaining Riptide ticks decay
+	// through ordinary travel rather than a dedicated movement mode.
+	if !state.Flying && s.attemptRiptide(state, inWater, s.riptideHeadInWater(state)) {
 		s.debugf("riptide launch applied: %v", state.Vel)
-	}
-	if !state.Flying && state.RiptideTicks > 0 && !riptideLaunched {
-		s.simulateRiptide(state, inWater, s.riptideHeadInWater(state))
-		return
 	}
 
 	// Observed lava takes precedence over retained water evidence.
@@ -553,7 +545,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	leatherBoots := s.Equipment != nil && s.Equipment.WearingLeatherBoots()
 	scaffoldDescend := applyAscendableMovement(state, insideSemantics.Traversal, leatherBoots)
 
-	nearClimbable := insideSemantics.Climbable || s.hasClimbableContact(state)
+	nearClimbable := s.climbableContact(state, insideSemantics.Climbable)
 	if nearClimbable {
 		newVel := state.Vel
 		negClimbSpeed := -ClimbSpeed
@@ -1297,23 +1289,17 @@ func nearbyBlocks(aabb cube.BBox32, w WorldProvider) iter.Seq2[cube.Pos, world.B
 	}
 }
 
-func (s *Simulator) hasClimbableContact(state *MovementState) bool {
+// climbableContact reports ladder/vine contact. Vanilla tests the single block
+// cell the player stands in, which insideClimbable already resolves; an adapter
+// overrides only when orientation lives outside the block registry.
+func (s *Simulator) climbableContact(state *MovementState, insideClimbable bool) bool {
 	if s.World == nil {
-		return false
+		return insideClimbable
 	}
-	box := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl32.Vec3{0.05, 0, 0.05})
 	if provider, ok := s.World.(ClimbableContactProvider); ok {
-		return provider.HasClimbableContact(box)
+		return provider.HasClimbableContact(state.BoundingBox(s.Options.UseSlideOffset))
 	}
-	for pos, blockAt := range nearbyBlocks(box, s.World) {
-		if !s.blockMovementSemantics(blockAt).Climbable {
-			continue
-		}
-		if box.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
-			return true
-		}
-	}
-	return false
+	return insideClimbable
 }
 
 func (s *Simulator) movementAreaLoaded(aabb cube.BBox32) bool {

@@ -88,8 +88,9 @@ For reliable streaming-world simulation, implement `MovementAreaProvider` so a
 swept movement volume can be checked precisely. Without it, BedSim checks every
 chunk touched by the current bounding box and velocity. Implement
 `ClimbableContactProvider` when ladder/vine orientation is resolved outside the
-block registry, and `MovementSupportProvider` when dynamic collision shapes
-need to identify their supporting block.
+block registry — it replaces the built-in single-cell check rather than adding
+to it — and `MovementSupportProvider` when dynamic collision shapes need to
+identify their supporting block.
 
 `MovementEquipmentProvider` supplies Depth Strider, Soul Speed, Swift Sneak,
 Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
@@ -106,8 +107,9 @@ custom base jump velocity; zero keeps the default.
 `MovementState.MovementSpeed` and `DefaultMovementSpeed` are effective movement
 attribute values. Include active Speed or Slowness modifiers in those values;
 BedSim uses them directly and does not apply the same modifiers a second time.
-`AirSpeed` is the effective air acceleration speed; `Simulate` derives it from
-`MovementSpeed`, while `SimulateState` callers provide it with the current state.
+`AirSpeed` is the air acceleration speed. It does not track the movement
+attribute: `Simulate` sets it to `WalkAirSpeed` or `SprintAirSpeed` from the
+sprint state, and `SimulateState` callers provide it with the current state.
 `JumpHeight` is output-only and derived during simulation; set `JumpStrength`
 when a custom base jump velocity is needed.
 

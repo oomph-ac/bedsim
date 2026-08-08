@@ -121,10 +121,7 @@ type MovementState struct {
 	Crawling              bool
 	TicksSinceCanSlowdown int
 	RiptideTicks          int
-	// RiptideLevel is captured when the spin attack starts. A non-zero value
-	// preserves the active attack's force if equipment changes mid-attack.
-	RiptideLevel       int
-	StartingSpinAttack bool
+	StartingSpinAttack    bool
 	// RiptideReady is a one-tick trusted latch set after validating a charged
 	// Riptide trident release. RiptideCollision is set after a server-observed
 	// entity collision and authorizes the matching stop/reversal.

@@ -23,8 +23,14 @@ const (
 	DefaultUnderwaterMovementSpeed = float32(0.02)
 	DefaultLavaMovementSpeed       = float32(0.02)
 	DefaultSwimSpeedMultiplier     = float32(1)
-	AirMovementSpeedMultiplier     = float32(0.2)
 	GlideHorizontalLookEpsilon     = float32(1e-4)
+	// WalkAirSpeed and SprintAirSpeed are the air acceleration pair vanilla
+	// selects on the sprint flag alone; neither scales with the movement
+	// attribute.
+	WalkAirSpeed   = float32(0.02)
+	SprintAirSpeed = float32(0.026)
+	// WaterDrag is the ordinary horizontal water drag; sprinting uses 0.9.
+	WaterDrag = float32(0.8)
 
 	DefaultPlayerHeightOffset  = float32(1.62)
 	SneakingPlayerHeightOffset = float32(1.27)

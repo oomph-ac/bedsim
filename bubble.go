@@ -3,7 +3,6 @@ package bedsim
 import (
 	"github.com/chewxy/math32"
 
-	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/go-gl/mathgl/mgl32"
 )
@@ -88,12 +87,14 @@ func (s *Simulator) attemptRiptide(state *MovementState, touchingWater, headInWa
 	}
 	state.SetVel(state.Vel.Add(s.riptideImpulse(state, level, touchingWater, headInWater)))
 	state.RiptideTicks = 20
-	state.RiptideLevel = level
 	state.RiptideCollision = false
 	state.StartingSpinAttack = false
 	return true
 }
 
+// riptideImpulse returns the one-shot launch velocity for a spin attack. The
+// grounded adjustment compensates for the drag and gravity the same tick will
+// apply afterwards, so it is skipped entirely while airborne.
 func (s *Simulator) riptideImpulse(state *MovementState, level int, wasInWater, headInWater bool) mgl32.Vec3 {
 	force := 0.75 * float32(level+1)
 	pitch := state.Rotation.X() * math32.Pi / 180
@@ -102,11 +103,11 @@ func (s *Simulator) riptideImpulse(state *MovementState, level int, wasInWater, 
 	if length := direction.Len(); length > 0 {
 		direction = direction.Mul(force / length)
 	}
-	if wasInWater {
-		if headInWater {
-			direction[1] = direction[1] / 0.8 * NormalGravityMultiplier
+	if state.OnGround {
+		if wasInWater && !headInWater {
+			direction[1] = direction[1] / WaterDrag * NormalGravityMultiplier
 		} else {
-			direction[1] += 0.08
+			direction[1] += NormalGravity
 		}
 	}
 	return direction
@@ -119,32 +120,9 @@ func (s *Simulator) riptideHeadInWater(state *MovementState) bool {
 	return ok && liquidWater.matches(liquid) && position.Y() < float32(pos.Y())+liquidHeight(liquid)
 }
 
-func (s *Simulator) simulateRiptide(state *MovementState, wasInWater, headInWater bool) {
-	s.debugfIf(attemptKnockback(state), "knockback applied during riptide: %v", state.Vel)
-	level := state.RiptideLevel
-	if level <= 0 && s.Equipment != nil {
-		level = s.Equipment.EnchantmentLevel(EnchantmentRiptide)
-	}
-	if level > 0 {
-		state.SetVel(state.Vel.Add(s.riptideImpulse(state, level, wasInWater, headInWater)))
-	}
-	oldVel := state.Vel
-	oldOnGround := state.OnGround
-	oldY := state.Pos.Y()
-	state.OnGround = false
-	s.tryCollisions(state, false)
-	stopRiptideOnBlockCollision(state)
-	updateFallDistance(state, oldY)
-	state.SetMov(state.Vel)
-	s.setPostCollisionMotion(state, oldVel, oldOnGround, block.Air{})
-	s.applyInsideBlockEffects(state)
-	s.applyBubbleColumns(state)
-}
-
 func stopRiptideOnBlockCollision(state *MovementState) {
 	if state.RiptideTicks > 0 && (state.CollideX || state.CollideZ) {
 		state.RiptideTicks = 0
-		state.RiptideLevel = 0
 		state.RiptideCollision = false
 	}
 }
