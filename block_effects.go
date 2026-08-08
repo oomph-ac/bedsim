@@ -91,10 +91,10 @@ func (s *Simulator) applyInsideBlockEffects(state *MovementState) {
 	s.applyHoneyWallSlide(state)
 }
 
+// applyHoneyWallSlide slows the entity once per overlapped honey block. Contact
+// with the block volume is enough; a horizontal collision is not required, and
+// overlapping two blocks compounds the horizontal factor.
 func (s *Simulator) applyHoneyWallSlide(state *MovementState) {
-	if !state.CollideX && !state.CollideZ {
-		return
-	}
 	bb := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl32.Vec3{1e-3, 0, 1e-3})
 	min, maxPoint := bb.Min(), bb.Max()
 	for x := int(math32.Floor(min.X())); x < int(math32.Ceil(maxPoint.X())); x++ {
@@ -110,7 +110,6 @@ func (s *Simulator) applyHoneyWallSlide(state *MovementState) {
 					velocity[1] = max(-0.12, velocity[1])
 					velocity[2] *= 0.4
 					state.SetVel(velocity)
-					return
 				}
 			}
 		}

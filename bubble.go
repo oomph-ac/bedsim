@@ -40,6 +40,10 @@ func applyBubbleColumn(state *MovementState, direction BubbleColumnDirection, su
 	state.SetVel(velocity)
 }
 
+// applyBubbleColumns applies at most one column impulse per tick. An entity
+// carries a single resolved column contact regardless of how many column cells
+// its hitbox overlaps, and the topmost overlapped cell decides the contact:
+// only that cell can have the open air above it that selects the surface form.
 func (s *Simulator) applyBubbleColumns(state *MovementState) {
 	provider, ok := s.World.(BubbleColumnProvider)
 	if !ok {
@@ -47,20 +51,27 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 	}
 	bb := state.BoundingBox(s.Options.UseSlideOffset)
 	min, max := bb.Min(), bb.Max()
+	contact, found := cube.Pos{}, false
+	var direction BubbleColumnDirection
 	for x := int(math32.Floor(min.X())); x < int(math32.Ceil(max.X())); x++ {
 		for y := int(math32.Floor(min.Y())); y < int(math32.Ceil(max.Y())); y++ {
 			for z := int(math32.Floor(min.Z())); z < int(math32.Ceil(max.Z())); z++ {
 				pos := cube.Pos{x, y, z}
-				direction, found := provider.BubbleColumn(pos)
-				if !found {
+				cellDirection, ok := provider.BubbleColumn(pos)
+				if !ok || (found && pos.Y() <= contact.Y()) {
 					continue
 				}
-				above := pos.Side(cube.FaceUp)
-				_, liquidAbove := s.liquidAt(above)
-				applyBubbleColumn(state, direction, !liquidAbove && s.blockAir(s.blockAtPos(above)))
+				contact, direction, found = pos, cellDirection, true
 			}
 		}
 	}
+	if !found {
+		return
+	}
+	above := contact.Side(cube.FaceUp)
+	_, liquidAbove := s.liquidAt(above)
+	applyBubbleColumn(state, direction, !liquidAbove && s.blockAir(s.blockAtPos(above)))
+	state.FallDistance = 0
 }
 
 func (s *Simulator) attemptRiptide(state *MovementState, touchingWater bool) bool {

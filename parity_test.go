@@ -61,15 +61,22 @@ func TestBedrockStepHeight(t *testing.T) {
 	}
 }
 
-func TestBedBounceUsesBedrockRestitutionAndCap(t *testing.T) {
+func TestBedBounceUsesCorroboratedRestitutionAndCap(t *testing.T) {
 	sim := &Simulator{BlockSemantics: overrideBlockSemantics{semantics: movementblock.MovementSemantics{Bounce: movementblock.BounceBed}}}
 	state := newBaseState()
 	state.Vel = mgl32.Vec3{0, -2}
 
 	sim.landOnBlock(state, state.Vel, block.Air{})
 
-	if want := float32(0.75); state.Vel.Y() != want {
-		t.Fatalf("expected bed bounce %v, got %v", want, state.Vel.Y())
+	// -0.66 * -2 = 1.32, above the cap.
+	if want := BedBounceCap; math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("expected capped bed bounce %v, got %v", want, state.Vel.Y())
+	}
+
+	state.Vel = mgl32.Vec3{0, -1}
+	sim.landOnBlock(state, state.Vel, block.Air{})
+	if want := -BedBounceMultiplier; math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("expected uncapped bed bounce %v, got %v", want, state.Vel.Y())
 	}
 }
 
@@ -101,7 +108,7 @@ func TestSlowFallingChangesGlideGravity(t *testing.T) {
 	}
 }
 
-func TestSneakEdgeProtectionWhileSlightlyAboveGround(t *testing.T) {
+func TestSneakEdgeProtectionRequiresGround(t *testing.T) {
 	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
 		cube.Box32(-1, -1, -1, 0, 0, 1),
 	}}}
@@ -113,7 +120,7 @@ func TestSneakEdgeProtectionWhileSlightlyAboveGround(t *testing.T) {
 
 	sim.avoidEdge(state)
 
-	if state.Vel.X() >= 0.5 {
-		t.Fatalf("expected edge protection above nearby ground, got velocity %v", state.Vel)
+	if state.Vel.X() != 0.5 {
+		t.Fatalf("edge protection ran while airborne: %v", state.Vel)
 	}
 }

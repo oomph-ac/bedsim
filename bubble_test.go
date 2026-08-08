@@ -55,7 +55,7 @@ func TestBubbleColumnSurfaceAcceptsRegistryBackedAir(t *testing.T) {
 	}
 }
 
-func TestBubbleColumnAppliesForEachOccupiedCell(t *testing.T) {
+func TestBubbleColumnAppliesOnceForOverlappedCells(t *testing.T) {
 	w := environmentWorld{
 		bubbles: map[cube.Pos]BubbleColumnDirection{
 			{0, 0, 0}: BubbleColumnUp,
@@ -68,11 +68,17 @@ func TestBubbleColumnAppliesForEachOccupiedCell(t *testing.T) {
 	}
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.FallDistance = 4
 
 	(&Simulator{World: w}).applyBubbleColumns(state)
 
-	if want := float32(0.16); math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("bubble-column velocity = %v, want per-cell impulses totaling %v", state.Vel.Y(), want)
+	// The topmost overlapped cell has open air above it, so this resolves to the
+	// surface form and applies once: 0.1, not 0.06+0.1 for the two cells.
+	if want := float32(0.1); math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("bubble-column velocity = %v, want a single impulse of %v", state.Vel.Y(), want)
+	}
+	if state.FallDistance != 0 {
+		t.Fatalf("bubble-column contact left fall distance = %v", state.FallDistance)
 	}
 }
 

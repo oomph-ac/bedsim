@@ -725,7 +725,7 @@ func (s *Simulator) landOnBlock(state *MovementState, old mgl32.Vec3, blockUnder
 			newVel[1] = 0.0
 		}
 	case movementblock.BounceBed:
-		newVel[1] = math32.Min(0.75, BedBounceMultiplier*old.Y())
+		newVel[1] = math32.Min(BedBounceCap, BedBounceMultiplier*old.Y())
 	default:
 		newVel[1] = 0
 	}
@@ -1051,7 +1051,7 @@ func (s *Simulator) avoidEdge(state *MovementState) {
 	if w == nil {
 		return
 	}
-	if !state.Sneaking || !s.isAboveGround(state) || state.Vel.Y() > 0 {
+	if !state.Sneaking || !state.OnGround || state.Vel.Y() > 0 {
 		s.debugf(
 			"avoidEdge: conditions not met (sneaking=%v onGround=%v yVel=%v)",
 			state.Sneaking,
@@ -1126,18 +1126,6 @@ func (s *Simulator) avoidEdge(state *MovementState) {
 	newVel[2] = zMov
 	state.SetVel(newVel)
 	s.debugf("(avoidEdge): oldVel=%v newVel=%v", oldVel, newVel)
-}
-
-func (s *Simulator) isAboveGround(state *MovementState) bool {
-	if state.OnGround {
-		return true
-	}
-	if state.FallDistance >= 0.6 || s.World == nil {
-		return false
-	}
-	distance := 0.6 - state.FallDistance
-	bb := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl32.Vec3{-0.025, 0, -0.025})
-	return s.hasNearbyBBoxes(state, bb.Translate(mgl32.Vec3{0, -distance}))
 }
 
 func (s *Simulator) isInsideCobweb(state *MovementState) bool {
