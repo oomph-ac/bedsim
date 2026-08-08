@@ -56,9 +56,9 @@ type MovementState struct {
 	// DefaultMovementSpeed is the effective non-sprinting movement attribute
 	// used when sprinting is toggled.
 	DefaultMovementSpeed float32
-	// AirSpeed is the effective air acceleration speed. Simulate derives it
-	// from MovementSpeed when the latter is set; SimulateState callers provide
-	// it as part of the current state.
+	// AirSpeed is the air acceleration speed, which does not track the movement
+	// attribute. Simulate sets it from the sprint state; SimulateState callers
+	// provide it as part of the current state.
 	AirSpeed                float32
 	UnderwaterMovementSpeed float32
 	LavaMovementSpeed       float32
