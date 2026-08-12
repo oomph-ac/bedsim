@@ -14,12 +14,13 @@ func (slime) Matches(b world.Block, name string) bool {
 	return name == "minecraft:slime"
 }
 
-func (slime) Apply(s *resolution) {
+func (slime) Apply(s resolution) resolution {
 	if !s.groundFrictionSet {
 		s.GroundFriction = 0.8
 		s.groundFrictionSet = true
 	}
 	s.Bounce = BounceSlime
+	return s
 }
 
 type bed struct{}
@@ -31,6 +32,7 @@ func (bed) Matches(b world.Block, name string) bool {
 	return name == "minecraft:bed"
 }
 
-func (bed) Apply(s *resolution) {
+func (bed) Apply(s resolution) resolution {
 	s.Bounce = BounceBed
+	return s
 }

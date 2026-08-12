@@ -21,6 +21,7 @@ func (climbableBlock) Matches(b world.Block, name string) bool {
 	}
 }
 
-func (climbableBlock) Apply(s *resolution) {
+func (climbableBlock) Apply(s resolution) resolution {
 	s.Climbable = true
+	return s
 }
