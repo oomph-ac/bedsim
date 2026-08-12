@@ -149,7 +149,9 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		raisedBox := state.BoundingBox(s.Options.UseSlideOffset).Translate(raised)
 		hasCollision := s.hasNearbyBBoxes(state, raisedBox)
 		hasLiquid := s.containsAnyLiquid(raisedBox)
-		s.debugf("liquid exit probe collision=%t liquid=%t box=%v", hasCollision, hasLiquid, raisedBox)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("liquid exit probe collision=%t liquid=%t box=%v", hasCollision, hasLiquid, raisedBox)
+		}
 		if !hasCollision && !hasLiquid {
 			vel[1] = 0.3
 		}
@@ -217,10 +219,10 @@ func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) 
 				if !ok || !kind.matches(liquid) {
 					continue
 				}
-				if s.Options.Debugf != nil {
+				if debugf := s.Options.Debugf; debugf != nil {
 					height := liquidHeight(liquid)
 					surface := float32(pos[1]) + height
-					s.debugf(
+					debugf(
 						"liquid block type=%s pos=%v depth=%d falling=%t height=%.6f surface=%.6f boxY=[%.6f %.6f] immersion=%.6f",
 						liquid.LiquidType(), pos, liquid.LiquidDepth(), liquid.LiquidFalling(), height, surface,
 						box.Min().Y(), box.Max().Y(), surface-box.Min().Y(),
@@ -331,7 +333,9 @@ func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, 
 			strength = 0.0035
 		}
 		state.SetVel(state.Vel.Add(flow.Mul(strength / length)))
-		s.debugf("%s flow applied strength=%.6f flow=%v vel=%v", kind.typeName(), strength, flow, state.Vel)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("%s flow applied strength=%.6f flow=%v vel=%v", kind.typeName(), strength, flow, state.Vel)
+		}
 	}
 }
 
