@@ -1,6 +1,8 @@
 package bedsim
 
 import (
+	"math"
+
 	"github.com/chewxy/math32"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -12,7 +14,7 @@ var mcSinTable []float32
 func init() {
 	mcSinTable = make([]float32, 65536)
 	for i := range 65536 {
-		mcSinTable[i] = math32.Sin(float32(i) * math32.Pi * 2 / 65536)
+		mcSinTable[i] = float32(math.Sin(float64(i) * math.Pi * 2 / 65536))
 	}
 }
 
