@@ -38,18 +38,6 @@ func (s *Simulator) SimulateState(state *MovementState) SimulationResult {
 	return s.resultFromState(state, reason)
 }
 
-func (s *Simulator) debugf(format string, args ...any) {
-	if s != nil && s.Options.Debugf != nil {
-		s.Options.Debugf(format, args...)
-	}
-}
-
-func (s *Simulator) debugfIf(cond bool, format string, args ...any) {
-	if cond {
-		s.debugf(format, args...)
-	}
-}
-
 func (s *Simulator) simulateCore(state *MovementState) SimulationOutcome {
 	state.ensurePoseHeights()
 	defer func() {
@@ -70,7 +58,9 @@ func (s *Simulator) simulateCore(state *MovementState) SimulationOutcome {
 		return SimulationOutcomeUnreliable
 	}
 	if s.Options.RequireLiquidLayer && !s.HasLiquidLayer() {
-		s.debugf("no liquid layer available and RequireLiquidLayer is set")
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("no liquid layer available and RequireLiquidLayer is set")
+		}
 		s.resetToClient(state)
 		return SimulationOutcomeUnreliable
 	}
@@ -396,7 +386,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		setSwimmingPoseFlags(state)
 	}
 	if !state.Flying && s.attemptRiptide(state, inWater) {
-		s.debugf("riptide launch applied: %v", state.Vel)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("riptide launch applied: %v", state.Vel)
+		}
 	}
 
 	defer func() {
@@ -412,7 +404,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		(state.Swimming && state.SwimWaterGraceTicks > 0 && len(lavaBlocks) == 0)
 
 	if !state.Flying && (waterTravel || len(lavaBlocks) != 0) {
-		s.debugfIf(attemptKnockback(state), "knockback applied in liquid: %v", state.Vel)
+		if applied := attemptKnockback(state); applied && s.Options.Debugf != nil {
+			s.Options.Debugf("knockback applied in liquid: %v", state.Vel)
+		}
 		if waterTravel {
 			if state.Gliding {
 				state.Gliding = false
@@ -458,7 +452,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 			s.tryCollisions(state, false)
 			stopRiptideOnBlockCollision(state)
 			updateFallDistance(state, oldY)
-			s.debugf("(glide) oldVel=%v, collisions=%v diff=%v", oldVel, state.Vel, state.Vel.Sub(state.Client.Vel))
+			if debugf := s.Options.Debugf; debugf != nil {
+				debugf("(glide) oldVel=%v, collisions=%v diff=%v", oldVel, state.Vel, state.Vel.Sub(state.Client.Vel))
+			}
 			state.SetMov(state.Vel)
 			if stuckMovement {
 				state.SetVel(mgl32.Vec3{})
@@ -468,15 +464,25 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		}
 
 		state.Gliding = false
-		s.debugf("cannot allow glide (onGround=%v hasElytra=%v)", state.OnGround, hasElytra)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("cannot allow glide (onGround=%v hasElytra=%v)", state.OnGround, hasElytra)
+		}
 	}
 
 	var clientJumpPrevented bool
-	s.debugfIf(attemptKnockback(state), "knockback applied: %v", state.Vel)
-	s.debugf("blockUnder=%s, blockFriction=%v, speed=%v", BlockName(blockUnder), blockFriction, moveRelativeSpeed)
+	if applied := attemptKnockback(state); applied && s.Options.Debugf != nil {
+		s.Options.Debugf("knockback applied: %v", state.Vel)
+	}
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("blockUnder=%s, blockFriction=%v, speed=%v", BlockName(blockUnder), blockFriction, moveRelativeSpeed)
+	}
 	moveRelative(state, moveRelativeSpeed)
-	s.debugf("moveRelative force applied (vel=%v)", state.Vel)
-	s.debugfIf(s.attemptJump(state, &clientJumpPrevented), "jump force applied (sprint=%v): %v", state.Sprinting, state.Vel)
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("moveRelative force applied (vel=%v)", state.Vel)
+	}
+	if jumped := s.attemptJump(state, &clientJumpPrevented); jumped && s.Options.Debugf != nil {
+		s.Options.Debugf("jump force applied (sprint=%v): %v", state.Sprinting, state.Vel)
+	}
 	insideSemantics := s.blockMovementSemantics(s.blockAtPos(posFromVec3(state.Pos)))
 	leatherBoots := s.Equipment != nil && s.Equipment.WearingLeatherBoots()
 	applyAscendableMovement(state, insideSemantics.Traversal, leatherBoots)
@@ -495,7 +501,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 			newVel[1] = 0
 		}
 		state.SetVel(newVel)
-		s.debugf("added climb velocity: %v (collided=%v effectiveJumping=%v)", newVel, state.CollideX || state.CollideZ, state.EffectiveJumping)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("added climb velocity: %v (collided=%v effectiveJumping=%v)", newVel, state.CollideX || state.CollideZ, state.EffectiveJumping)
+		}
 	}
 
 	inCobweb := s.isInsideCobweb(state)
@@ -512,7 +520,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 		newVel[1] *= y
 		newVel[2] *= xz
 		state.SetVel(newVel)
-		s.debugf("web force applied (vel=%v)", newVel)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("web force applied (vel=%v)", newVel)
+		}
 	}
 
 	stuckMovement := applyStuckSpeedMultiplier(state)
@@ -540,7 +550,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	if oldY == state.Pos.Y() {
 		s.walkOnBlock(state, blockUnder)
 	} else {
-		s.debugf("walkOnBlock: y changed, skipping block walk effects")
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("walkOnBlock: y changed, skipping block walk effects")
+		}
 	}
 
 	state.SetMov(state.Vel)
@@ -551,7 +563,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	s.setPostCollisionMotion(state, oldVel, oldOnGround, blockUnder)
 
 	if inCobweb {
-		s.debugf("post-move cobweb force applied (0 vel)")
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("post-move cobweb force applied (0 vel)")
+		}
 		state.SetVel(mgl32.Vec3{})
 	}
 
@@ -678,8 +692,12 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 		vel[0] += (lookX * 0.1) + (((lookX * 1.5) - vel[0]) * 0.5)
 		vel[1] += (lookY * 0.1) + (((lookY * 1.5) - vel[1]) * 0.5)
 		vel[2] += (lookZ * 0.1) + (((lookZ * 1.5) - vel[2]) * 0.5)
-		s.debugf("applied glide boost (old=%v new=%v)", oldVel, vel)
-		s.debugf("glide boost dirVec=[%f %f %f]", lookX, lookY, lookZ)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("applied glide boost (old=%v new=%v)", oldVel, vel)
+		}
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("glide boost dirVec=[%f %f %f]", lookX, lookY, lookZ)
+		}
 	}
 
 	vel[0] *= 0.99
@@ -691,7 +709,9 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 
 func (s *Simulator) walkOnBlock(state *MovementState, blockUnder world.Block) {
 	if !state.OnGround || state.Sneaking {
-		s.debugf("walkOnBlock: conditions not met (onGround=%v sneaking=%v)", state.OnGround, state.Sneaking)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("walkOnBlock: conditions not met (onGround=%v sneaking=%v)", state.OnGround, state.Sneaking)
+		}
 		return
 	}
 
@@ -707,7 +727,9 @@ func (s *Simulator) walkOnBlock(state *MovementState, blockUnder world.Block) {
 		}
 	}
 	state.SetVel(newVel)
-	s.debugf("walkOnBlock: oldVel=%v newVel=%v", oldVel, newVel)
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("walkOnBlock: oldVel=%v newVel=%v", oldVel, newVel)
+	}
 }
 
 func (s *Simulator) landOnBlock(state *MovementState, old mgl32.Vec3, blockUnder world.Block) {
@@ -798,7 +820,9 @@ func attemptKnockback(state *MovementState) bool {
 
 func (s *Simulator) attemptJump(state *MovementState, clientJumpPrevented *bool) bool {
 	if !state.Jumping || !state.OnGround || state.JumpDelay > 0 {
-		s.debugfIf(state.Jumping, "rejected jump from client (onGround=%v jumpDelay=%d)", state.OnGround, state.JumpDelay)
+		if state.Jumping && s.Options.Debugf != nil {
+			s.Options.Debugf("rejected jump from client (onGround=%v jumpDelay=%d)", state.OnGround, state.JumpDelay)
+		}
 		return false
 	}
 
@@ -821,7 +845,9 @@ func (s *Simulator) attemptJump(state *MovementState, clientJumpPrevented *bool)
 	if clientJumpPrevented != nil && !state.HasKnockback() && !state.HasTeleport() {
 		if s.isJumpBlocked(state, newVel) {
 			*clientJumpPrevented = true
-			s.debugf("jump determined to be blocked")
+			if debugf := s.Options.Debugf; debugf != nil {
+				debugf("jump determined to be blocked")
+			}
 		}
 	}
 
@@ -908,19 +934,25 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 		yVel = BBClipCollide(bbList[i], collisionBB, yVel, useOneWayCollisions, &penetration)
 	}
 	collisionBB = collisionBB.Translate(yVel)
-	s.debugf("Y-collision non-step=%v /w penetration=%v (oneWay=%v)", yVel, penetration, useOneWayCollisions)
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("Y-collision non-step=%v /w penetration=%v (oneWay=%v)", yVel, penetration, useOneWayCollisions)
+	}
 
 	for i := len(bbList) - 1; i >= 0; i-- {
 		xVel = BBClipCollide(bbList[i], collisionBB, xVel, useOneWayCollisions, &penetration)
 	}
 	collisionBB = collisionBB.Translate(xVel)
-	s.debugf("(X) hz-collision non-step=%v /w penetration=%v (oneWay=%v)", xVel, penetration, useOneWayCollisions)
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("(X) hz-collision non-step=%v /w penetration=%v (oneWay=%v)", xVel, penetration, useOneWayCollisions)
+	}
 
 	for i := len(bbList) - 1; i >= 0; i-- {
 		zVel = BBClipCollide(bbList[i], collisionBB, zVel, useOneWayCollisions, &penetration)
 	}
 	collisionBB = collisionBB.Translate(zVel)
-	s.debugf("(Z) hz-collision non-step=%v /w penetration=%v (oneWay=%v)", zVel, penetration, useOneWayCollisions)
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("(Z) hz-collision non-step=%v /w penetration=%v (oneWay=%v)", zVel, penetration, useOneWayCollisions)
+	}
 
 	collisionVel := yVel.Add(xVel).Add(zVel)
 	collisionPos := mgl32.Vec3{
@@ -928,7 +960,9 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 		collisionBB.Min().Y(),
 		(collisionBB.Min().Z() + collisionBB.Max().Z()) * 0.5,
 	}
-	s.debugf("endCollisionVel=%v endCollisionPos=%v", collisionVel, collisionPos)
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("endCollisionVel=%v endCollisionPos=%v", collisionVel, collisionPos)
+	}
 
 	hasPenetration := penetration.LenSqr() >= 9.999999999999999e-12
 	state.StuckInCollider = state.PenetratedLastFrame && hasPenetration
@@ -949,19 +983,25 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 			stepYVel = BBClipCollide(blockBox, stepBB, stepYVel, useOneWayCollisions, nil)
 		}
 		stepBB = stepBB.Translate(stepYVel)
-		s.debugf("stepYVel=%v", stepYVel)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("stepYVel=%v", stepYVel)
+		}
 
 		for _, blockBox := range bbList {
 			stepXVel = BBClipCollide(blockBox, stepBB, stepXVel, useOneWayCollisions, nil)
 		}
 		stepBB = stepBB.Translate(stepXVel)
-		s.debugf("stepXVel=%v", stepXVel)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("stepXVel=%v", stepXVel)
+		}
 
 		for _, blockBox := range bbList {
 			stepZVel = BBClipCollide(blockBox, stepBB, stepZVel, useOneWayCollisions, nil)
 		}
 		stepBB = stepBB.Translate(stepZVel)
-		s.debugf("stepZVel=%v", stepZVel)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("stepZVel=%v", stepZVel)
+		}
 
 		inverseYStepVel := stepYVel.Mul(-1)
 		for _, blockBox := range bbList {
@@ -969,7 +1009,9 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 		}
 		stepBB = stepBB.Translate(inverseYStepVel)
 		stepYVel = stepYVel.Add(inverseYStepVel)
-		s.debugf("inverseYStepVel=%v", inverseYStepVel)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("inverseYStepVel=%v", inverseYStepVel)
+		}
 
 		stepVel := stepYVel.Add(stepXVel).Add(stepZVel)
 		newBBListCount := 0
@@ -985,8 +1027,12 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 			stepBB.Min().Y(),
 			(stepBB.Min().Z() + stepBB.Max().Z()) * 0.5,
 		}
-		s.debugf("endStepVel=%v endStepPos=%v", stepVel, stepPos)
-		s.debugf("newBBList count: %d", newBBListCount)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("endStepVel=%v endStepPos=%v", stepVel, stepPos)
+		}
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("newBBList count: %d", newBBListCount)
+		}
 
 		if !hasStepCollisions && Vec3HzDistSqr(collisionVel) < Vec3HzDistSqr(stepVel) {
 			// Match vanilla's step-vs-collision tie-breaker using client alignment to avoid false
@@ -1005,12 +1051,18 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 					slideOffset[1] += stepVel.Y()
 					state.SlideOffset = slideOffset
 				}
-				s.debugf("step successful")
+				if debugf := s.Options.Debugf; debugf != nil {
+					debugf("step successful")
+				}
 			} else {
-				s.debugf("step failed (client rejection) [clientPos=%v collisionPos=%v stepPos=%v]", state.Client.Pos, collisionPos, stepPos)
+				if debugf := s.Options.Debugf; debugf != nil {
+					debugf("step failed (client rejection) [clientPos=%v collisionPos=%v stepPos=%v]", state.Client.Pos, collisionPos, stepPos)
+				}
 			}
 		} else {
-			s.debugf("step failed")
+			if debugf := s.Options.Debugf; debugf != nil {
+				debugf("step failed")
+			}
 		}
 	}
 
@@ -1024,9 +1076,13 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 		if completedStep {
 			// Older clients keep a slide offset accumulator that gets applied to the final Y.
 			endPos[1] -= state.SlideOffset.Y()
-			s.debugf("applying slideOffset, able to subtract endPos.y this frame by %f", state.SlideOffset.Y())
+			if debugf := s.Options.Debugf; debugf != nil {
+				debugf("applying slideOffset, able to subtract endPos.y this frame by %f", state.SlideOffset.Y())
+			}
 		} else {
-			s.debugf("using slide offset, RESETTING slide offset vector")
+			if debugf := s.Options.Debugf; debugf != nil {
+				debugf("using slide offset, RESETTING slide offset vector")
+			}
 			state.SlideOffset = mgl32.Vec2{}
 		}
 	}
@@ -1040,10 +1096,18 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 	state.OnGround = (yCollision && currVel.Y() < 0) || (state.OnGround && !yCollision && math32.Abs(currVel.Y()) <= 1e-5)
 	checkSupportingBlockPos(state, w, useSlideOffset, currVel)
 	state.SetVel(collisionVel)
-	s.debugf("clientVel=%v clientPos=%v", state.Client.Mov, state.Client.Pos)
-	s.debugf("finalVel=%v finalPos=%v", collisionVel, state.Pos)
-	s.debugf("(client) hzCollision=%v yCollision=%v", state.Client.HorizontalCollision, state.Client.VerticalCollision)
-	s.debugf("(server) xCollision=%v yCollision=%v zCollision=%v", state.CollideX, state.CollideY, state.CollideZ)
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("clientVel=%v clientPos=%v", state.Client.Mov, state.Client.Pos)
+	}
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("finalVel=%v finalPos=%v", collisionVel, state.Pos)
+	}
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("(client) hzCollision=%v yCollision=%v", state.Client.HorizontalCollision, state.Client.VerticalCollision)
+	}
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("(server) xCollision=%v yCollision=%v zCollision=%v", state.CollideX, state.CollideY, state.CollideZ)
+	}
 }
 
 func (s *Simulator) avoidEdge(state *MovementState) {
@@ -1052,12 +1116,14 @@ func (s *Simulator) avoidEdge(state *MovementState) {
 		return
 	}
 	if !state.Sneaking || !state.OnGround || state.Vel.Y() > 0 {
-		s.debugf(
-			"avoidEdge: conditions not met (sneaking=%v onGround=%v yVel=%v)",
-			state.Sneaking,
-			state.OnGround,
-			state.Vel.Y(),
-		)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf(
+				"avoidEdge: conditions not met (sneaking=%v onGround=%v yVel=%v)",
+				state.Sneaking,
+				state.OnGround,
+				state.Vel.Y(),
+			)
+		}
 		return
 	}
 
@@ -1125,7 +1191,9 @@ func (s *Simulator) avoidEdge(state *MovementState) {
 	newVel[0] = xMov
 	newVel[2] = zMov
 	state.SetVel(newVel)
-	s.debugf("(avoidEdge): oldVel=%v newVel=%v", oldVel, newVel)
+	if debugf := s.Options.Debugf; debugf != nil {
+		debugf("(avoidEdge): oldVel=%v newVel=%v", oldVel, newVel)
+	}
 }
 
 func (s *Simulator) isInsideCobweb(state *MovementState) bool {
