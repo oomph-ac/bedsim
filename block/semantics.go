@@ -56,7 +56,7 @@ type MovementSemantics struct {
 // rule contributes movement behavior for a block family.
 type rule interface {
 	Matches(world.Block, string) bool
-	Apply(*resolution)
+	Apply(resolution) resolution
 }
 
 type resolution struct {
@@ -92,7 +92,7 @@ func Resolve(b world.Block, name string) MovementSemantics {
 	}
 	for _, rule := range rules {
 		if rule.Matches(b, name) {
-			rule.Apply(&result)
+			result = rule.Apply(result)
 		}
 	}
 	if !result.groundFrictionSet {

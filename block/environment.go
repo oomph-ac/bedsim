@@ -13,8 +13,9 @@ func (r environmentRule) Matches(_ world.Block, name string) bool {
 	return name == r.name
 }
 
-func (r environmentRule) Apply(s *resolution) {
+func (r environmentRule) Apply(s resolution) resolution {
 	s.InsideMovement = r.inside
 	s.Traversal = r.traversal
 	s.Honey = r.honey
+	return s
 }

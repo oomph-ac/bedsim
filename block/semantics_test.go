@@ -15,9 +15,10 @@ func (r *countingRule) Matches(world.Block, string) bool {
 	return true
 }
 
-func (*countingRule) Apply(s *resolution) {
+func (*countingRule) Apply(s resolution) resolution {
 	s.GroundFriction = 0.7
 	s.groundFrictionSet = true
+	return s
 }
 
 func TestResolveVisitsEachRuleOnce(t *testing.T) {
