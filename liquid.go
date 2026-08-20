@@ -44,7 +44,7 @@ var liquidFaces = [...]struct {
 	{cube.Pos{0, 0, 1}, mgl32.Vec3{0, 0, 1}},
 }
 
-func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, touchingLiquid bool) {
+func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, touchingLiquid bool) bool {
 	initialY := state.Pos.Y()
 	water := kind == liquidWater
 	// Captured before updateSwimTravel, matching the upstream ordering.
@@ -102,6 +102,9 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	}
 	moveRelative(state, moveRelativeSpeed)
 	stuckMovement := applyStuckSpeedMultiplier(state)
+	if !s.movementSweepLoaded(state) {
+		return false
+	}
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
 	s.tryCollisions(state, false)
@@ -159,6 +162,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	s.applyBubbleColumns(state)
 	s.applyInsideBlockEffects(state)
 	state.FallDistance = 0
+	return true
 }
 
 func liquidGravity(swimming, water bool) float32 {

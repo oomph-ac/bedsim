@@ -40,6 +40,22 @@ func TestSimulationRejectsNonFiniteInputAndState(t *testing.T) {
 	}
 }
 
+func TestInvalidInputResultPreservesAuthoritativeState(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{12, 64, 9}
+	state.Vel = mgl32.Vec3{0.1, 0.2, 0.3}
+	state.Mov = mgl32.Vec3{0.2, 0, 0}
+
+	result := (&Simulator{}).Simulate(state, InputState{Pitch: math32.NaN()})
+
+	if result.Outcome != SimulationOutcomeInvalidInput {
+		t.Fatalf("outcome = %v, want invalid input", result.Outcome)
+	}
+	if result.Position != state.Pos || result.Velocity != state.Vel || result.Movement != state.Mov {
+		t.Fatalf("invalid input dropped authoritative state: result=%+v state=%+v", result, state)
+	}
+}
+
 func TestPassiveModeDoesNotRequestCorrectionForInvalidInput(t *testing.T) {
 	result := (&Simulator{Options: SimulationOptions{Mode: SimulationModePassive}}).SimulateState(&MovementState{
 		Vel: mgl32.Vec3{math32.NaN(), 0, 0},
@@ -261,6 +277,36 @@ func TestQueuedKnockbackChecksSweptChunks(t *testing.T) {
 	}
 }
 
+func TestInputAccelerationChecksSweptChunks(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{15.69, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.HasGravity = false
+
+	result := (&Simulator{World: selectiveChunkWorld{}}).Simulate(state, InputState{MoveVector: mgl32.Vec2{1, 0}})
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for same-tick acceleration", result.Outcome)
+	}
+}
+
+func TestRiptideLaunchChecksSweptChunks(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 15.5}
+	state.Client.Pos = state.Pos
+	state.RiptideInRain = true
+	state.RiptideReady = true
+
+	result := (&Simulator{
+		World:     selectiveChunkWorld{},
+		Equipment: fixedEquipment{EnchantmentRiptide: 2},
+	}).Simulate(state, InputState{StartSpinAttack: true})
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for Riptide launch", result.Outcome)
+	}
+}
+
 func TestCompletedTeleportCounterAdvancesOnce(t *testing.T) {
 	state := newBaseState()
 	state.QueueTeleport(mgl32.Vec3{10, 20, 30}, false, 0)
@@ -404,6 +450,21 @@ func TestFilteredCollisionBoxesPreserveProviderOrder(t *testing.T) {
 	if len(got) != 2 || got[0] != first || got[1] != second {
 		t.Fatalf("collision order changed while filtering: %v", got)
 	}
+}
+
+func TestCollisionPresenceFiltersInvalidBoxes(t *testing.T) {
+	state := newBaseState()
+	sim := &Simulator{World: invalidCollisionWorld{}}
+
+	if sim.hasNearbyBBoxes(state, state.BoundingBox(false)) {
+		t.Fatal("zero-volume collision box was reported as present")
+	}
+}
+
+type invalidCollisionWorld struct{ mockWorld }
+
+func (invalidCollisionWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 {
+	return []cube.BBox32{cube.Box32(0, 0, 0, 0, 1, 1)}
 }
 
 type selectiveChunkWorld struct{}

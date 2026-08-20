@@ -15,8 +15,11 @@ import (
 
 // Simulate runs a movement simulation tick and returns the resulting state.
 func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationResult {
-	if state == nil || !finiteMovementState(state) || !finiteInput(input) {
-		return s.invalidSimulationResult()
+	if state == nil || !finiteMovementState(state) {
+		return s.invalidSimulationResult(nil)
+	}
+	if !finiteInput(input) {
+		return s.invalidSimulationResult(state)
 	}
 
 	pose := movementPoseSnapshot{
@@ -64,18 +67,32 @@ func (p movementPoseSnapshot) restore(state *MovementState) {
 // StoppedSwimmingThisTick themselves.
 func (s *Simulator) SimulateState(state *MovementState) SimulationResult {
 	if state == nil || !finiteMovementState(state) {
-		return s.invalidSimulationResult()
+		return s.invalidSimulationResult(nil)
 	}
 	reason := s.simulateCore(state, false)
 	return s.resultFromState(state, reason)
 }
 
-// invalidSimulationResult returns the mode-aware result for invalid state.
-func (s *Simulator) invalidSimulationResult() SimulationResult {
-	return SimulationResult{
+// invalidSimulationResult returns the mode-aware result for invalid data and
+// preserves state when its numeric fields are safe to expose.
+func (s *Simulator) invalidSimulationResult(state *MovementState) SimulationResult {
+	result := SimulationResult{
 		Outcome:         SimulationOutcomeInvalidInput,
 		NeedsCorrection: s == nil || s.Options.Mode != SimulationModePassive,
 	}
+	if state == nil || !finiteMovementState(state) {
+		return result
+	}
+	result.Position = state.Pos
+	result.Velocity = state.Vel
+	result.Movement = state.Mov
+	result.OnGround = state.OnGround
+	result.CollideX = state.CollideX
+	result.CollideY = state.CollideY
+	result.CollideZ = state.CollideZ
+	result.PositionDelta = state.Pos.Sub(state.Client.Pos)
+	result.VelocityDelta = state.Vel.Sub(state.Client.Vel)
+	return result
 }
 
 func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) SimulationOutcome {
@@ -129,7 +146,12 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		return SimulationOutcomeImmobileOrNotReady
 	}
 
-	s.simulateMovement(state)
+	if !s.simulateMovement(state) {
+		state.SetVel(mgl32.Vec3{})
+		state.SwimWaterGraceTicks = 0
+		state.StuckSpeedMultiplier = mgl32.Vec3{}
+		return SimulationOutcomeUnloadedChunk
+	}
 	return SimulationOutcomeNormal
 }
 
@@ -280,7 +302,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	}
 
 	wasSwimming := state.Swimming
-	state.StoppedSwimmingThisTick = input.StopSwimming
+	state.StoppedSwimmingThisTick = wasSwimming && input.StopSwimming
 	if input.StopSwimming {
 		state.Swimming = false
 		s.restorePoseAfterSwimming(state, poseCollisionsAvailable)
@@ -428,7 +450,7 @@ func (s *Simulator) tickState(state *MovementState, advanceTeleport bool) {
 	state.StoppedSwimmingThisTick = false
 }
 
-func (s *Simulator) simulateMovement(state *MovementState) {
+func (s *Simulator) simulateMovement(state *MovementState) bool {
 	vel := state.Vel
 	for axis := range 3 {
 		if math32.Abs(vel[axis]) < 1e-8 {
@@ -479,12 +501,16 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 				state.GlideBoostTicks = 0
 			}
 			s.applyLiquidFlow(state, waterBlocks, liquidWater)
-			s.simulateLiquidTravel(state, liquidWater, inWater)
+			if !s.simulateLiquidTravel(state, liquidWater, inWater) {
+				return false
+			}
 		} else {
 			s.applyLiquidFlow(state, lavaBlocks, liquidLava)
-			s.simulateLiquidTravel(state, liquidLava, true)
+			if !s.simulateLiquidTravel(state, liquidLava, true) {
+				return false
+			}
 		}
-		return
+		return true
 	}
 
 	blockUnder := s.blockAtPos(posFromVec3(state.Pos.Sub(mgl32.Vec3{0, 0.5})))
@@ -512,6 +538,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 			state.OnGround = false
 			s.simulateGlide(state)
 			stuckMovement := applyStuckSpeedMultiplier(state)
+			if !s.movementSweepLoaded(state) {
+				return false
+			}
 			oldVel := state.Vel
 			oldY := state.Pos.Y()
 			s.tryCollisions(state, false)
@@ -526,7 +555,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 			}
 			s.applyInsideBlockEffects(state)
 			s.applyBubbleColumns(state)
-			return
+			return true
 		}
 
 		state.Gliding = false
@@ -598,6 +627,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	}
 
 	stuckMovement := applyStuckSpeedMultiplier(state)
+	if !s.movementSweepLoaded(state) {
+		return false
+	}
 	s.avoidEdge(state)
 
 	oldVel := state.Vel
@@ -664,6 +696,7 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	state.SetVel(newVel)
 	s.applyInsideBlockEffects(state)
 	s.applyBubbleColumns(state)
+	return true
 }
 
 func (s *Simulator) simulationIsReliable(state *MovementState) bool {
@@ -976,6 +1009,9 @@ func (s *Simulator) isJumpBlocked(state *MovementState, jumpVel mgl32.Vec3) bool
 	}
 	useSlideOffset := s.Options.UseSlideOffset
 	collisionBB := state.BoundingBox(useSlideOffset)
+	if !s.movementAreaLoaded(collisionBB.Extend(jumpVel)) {
+		return false
+	}
 	bbList := s.nearbyBBoxes(state, collisionBB.Extend(jumpVel))
 
 	yVel := mgl32.Vec3{0, jumpVel.Y()}
@@ -1393,6 +1429,12 @@ func (s *Simulator) movementAreaLoaded(aabb cube.BBox32) bool {
 	return true
 }
 
+// movementSweepLoaded reports whether the world contains the displacement
+// produced after all same-tick acceleration has been applied.
+func (s *Simulator) movementSweepLoaded(state *MovementState) bool {
+	return s.World == nil || s.movementAreaLoaded(state.BoundingBox(s.Options.UseSlideOffset).Extend(state.Vel))
+}
+
 const (
 	maxMovementChunkSpan  int64   = 256
 	minMovementBlockCoord float32 = -2147483648
@@ -1537,7 +1579,7 @@ func (s *Simulator) hasNearbyBBoxes(state *MovementState, aabb cube.BBox32) bool
 	if probe, ok := s.World.(nearbyBBoxProbe); ok {
 		return probe.HasNearbyBBoxes(aabb)
 	}
-	return len(s.World.GetNearbyBBoxes(aabb)) > 0
+	return len(filteredCollisionBoxes(s.World.GetNearbyBBoxes(aabb))) > 0
 }
 
 func (s *Simulator) canFitHeight(state *MovementState, height float32) bool {
