@@ -245,6 +245,36 @@ func TestMovementChecksSweptChunks(t *testing.T) {
 	}
 }
 
+func TestQueuedKnockbackChecksSweptChunks(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{15.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.QueueKnockback(mgl32.Vec3{1, 0, 0})
+
+	result := (&Simulator{World: selectiveChunkWorld{}}).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for queued knockback", result.Outcome)
+	}
+	if state.Pos != state.Client.Pos {
+		t.Fatalf("queued knockback moved into unloaded area: %v", state.Pos)
+	}
+}
+
+func TestCompletedTeleportCounterAdvancesOnce(t *testing.T) {
+	state := newBaseState()
+	state.QueueTeleport(mgl32.Vec3{10, 20, 30}, false, 0)
+
+	result := (&Simulator{World: mockWorld{}}).Simulate(state, InputState{})
+
+	if result.Outcome != SimulationOutcomeTeleport {
+		t.Fatalf("outcome = %v, want teleport", result.Outcome)
+	}
+	if state.TicksSinceTeleport != 1 {
+		t.Fatalf("completed teleport tick counter = %d, want 1", state.TicksSinceTeleport)
+	}
+}
+
 func TestMovementRejectsOutOfRangeSweep(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{math32.MaxFloat32, 0, 0}

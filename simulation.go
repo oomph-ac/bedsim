@@ -35,7 +35,8 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 		s.applyLegacySprint(state, input)
 	}
 	state.AirSpeed = effectiveAirSpeed(state)
-	s.tickState(state)
+	advanceTeleport := reason != SimulationOutcomeTeleport || state.HasTeleport()
+	s.tickState(state, advanceTeleport)
 	return s.resultFromState(state, reason)
 }
 
@@ -109,7 +110,11 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		s.resetToClient(state)
 		return SimulationOutcomeUnreliable
 	}
-	if s.World != nil && !s.movementAreaLoaded(state.BoundingBox(s.Options.UseSlideOffset).Extend(state.Vel)) {
+	sweepVelocity := state.Vel
+	if state.HasKnockback() {
+		sweepVelocity = state.Knockback
+	}
+	if s.World != nil && !s.movementAreaLoaded(state.BoundingBox(s.Options.UseSlideOffset).Extend(sweepVelocity)) {
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
@@ -394,7 +399,7 @@ func effectiveAirSpeed(state *MovementState) float32 {
 	return WalkAirSpeed
 }
 
-func (s *Simulator) tickState(state *MovementState) {
+func (s *Simulator) tickState(state *MovementState, advanceTeleport bool) {
 	if state.GlideBoostTicks > 0 {
 		state.GlideBoostTicks--
 	}
@@ -407,7 +412,7 @@ func (s *Simulator) tickState(state *MovementState) {
 	}
 	state.TicksSinceKnockback++
 	state.KnockbackPending = false
-	if state.TicksSinceTeleport < math32.MaxUint64 {
+	if advanceTeleport && state.TicksSinceTeleport < math32.MaxUint64 {
 		state.TicksSinceTeleport++
 	}
 	if state.JumpDelay > 0 {
