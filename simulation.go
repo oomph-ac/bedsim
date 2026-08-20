@@ -557,7 +557,9 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 			}
 			oldVel := state.Vel
 			oldY := state.Pos.Y()
-			s.tryCollisions(state, false)
+			if !s.tryCollisions(state, false) {
+				return false
+			}
 			stopRiptideOnBlockCollision(state)
 			updateFallDistance(state, oldY)
 			if debugf := s.Options.Debugf; debugf != nil {
@@ -649,7 +651,9 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
 	oldY := state.Pos.Y()
-	s.tryCollisions(state, clientJumpPrevented)
+	if !s.tryCollisions(state, clientJumpPrevented) {
+		return false
+	}
 	stopRiptideOnBlockCollision(state)
 	updateFallDistance(state, oldY)
 	if scaffoldDescend || nearClimbable {
@@ -762,6 +766,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 			state.TeleportPos = state.PendingTeleportPos
 		}
 		state.TeleportPending = true
+		state.TeleportCompleted = false
 	}
 	if !state.HasTeleport() {
 		return false
@@ -779,6 +784,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 			state.PendingTeleportPos = mgl32.Vec3{}
 		}
 		state.TicksSinceTeleport = teleportCompleteTick(state.TeleportCompletionTicks)
+		state.TeleportCompleted = true
 		return true
 	}
 
@@ -799,6 +805,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 			state.PendingTeleportPos = mgl32.Vec3{}
 		}
 		state.TicksSinceTeleport = teleportCompleteTick(state.TeleportCompletionTicks)
+		state.TeleportCompleted = true
 	}
 	return true
 }
@@ -1071,10 +1078,10 @@ func (s *Simulator) isJumpBlocked(state *MovementState, jumpVel mgl32.Vec3) bool
 	return yVel[1] != jumpVel[1] && xVel[0] == jumpVel[0] && zVel[2] == jumpVel[2]
 }
 
-func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool) {
+func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool) bool {
 	w := s.World
 	if w == nil {
-		return
+		return true
 	}
 	useSlideOffset := s.Options.UseSlideOffset
 	correctionThreshold := s.Options.PositionCorrectionThreshold
@@ -1138,6 +1145,10 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 	onGround := state.OnGround || (yCollision && currVel.Y() < 0.0)
 
 	if onGround && (xCollision || zCollision) {
+		stepProbeBB := state.BoundingBox(useSlideOffset).Extend(currVel).ExtendTowards(cube.FaceUp, StepHeight)
+		if !s.movementAreaLoaded(stepProbeBB) {
+			return false
+		}
 		stepYVel := mgl32.Vec3{0, StepHeight}
 		stepXVel := mgl32.Vec3{currVel.X()}
 		stepZVel := mgl32.Vec3{0, 0, currVel.Z()}
@@ -1274,6 +1285,7 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 	if debugf := s.Options.Debugf; debugf != nil {
 		debugf("(server) xCollision=%v yCollision=%v zCollision=%v", state.CollideX, state.CollideY, state.CollideZ)
 	}
+	return true
 }
 
 func (s *Simulator) avoidEdge(state *MovementState) {

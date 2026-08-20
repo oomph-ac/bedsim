@@ -199,6 +199,22 @@ func TestQueueTeleportCanTargetOrigin(t *testing.T) {
 	}
 }
 
+func TestHardTeleportAtMaximumCompletionTickFinishes(t *testing.T) {
+	state := newBaseState()
+	state.QueueTeleport(mgl32.Vec3{10, 20, 30}, false, math32.MaxUint64)
+	sim := &Simulator{World: mockWorld{}}
+
+	first := sim.SimulateState(state)
+	second := sim.SimulateState(state)
+
+	if first.Outcome != SimulationOutcomeTeleport {
+		t.Fatalf("first outcome = %v, want teleport", first.Outcome)
+	}
+	if state.HasTeleport() || second.Outcome == SimulationOutcomeTeleport {
+		t.Fatalf("completed maximum-window teleport remained active: active=%v second=%v", state.HasTeleport(), second.Outcome)
+	}
+}
+
 func TestLegacyPendingTeleportKeepsExplicitTarget(t *testing.T) {
 	state := newBaseState()
 	state.PendingTeleports = 1
@@ -258,6 +274,31 @@ func TestMovementChecksSweptChunks(t *testing.T) {
 	result := (&Simulator{World: selectiveChunkWorld{}}).SimulateState(state)
 	if result.Outcome != SimulationOutcomeUnloadedChunk {
 		t.Fatalf("outcome = %v, want unloaded chunk for swept movement", result.Outcome)
+	}
+}
+
+func TestMovementChecksStepProbeArea(t *testing.T) {
+	w := stepProbeWorld{staticWorld: staticWorld{
+		chunkLoaded: true,
+		boxes:       []cube.BBox32{cube.Box32(1, 0, 0, 2, 0.5, 1)},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.Vel = mgl32.Vec3{1, 0, 0}
+	state.OnGround = true
+	state.HasGravity = false
+
+	result := (&Simulator{
+		World:   w,
+		Options: SimulationOptions{IgnoreClientStepTiebreaker: true},
+	}).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for unknown step probe", result.Outcome)
+	}
+	if state.Pos != (mgl32.Vec3{0.5, 0, 0.5}) {
+		t.Fatalf("unknown step probe moved state to %v", state.Pos)
 	}
 }
 
@@ -525,4 +566,13 @@ func (selectiveChunkWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 { return n
 
 func (selectiveChunkWorld) IsChunkLoaded(chunkX, chunkZ int32) bool {
 	return chunkX == 0 && chunkZ == 0
+}
+
+type stepProbeWorld struct {
+	staticWorld
+}
+
+// IsMovementAreaLoaded rejects collision probes above the ordinary movement sweep.
+func (stepProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	return aabb.Max().Y() <= 1.81
 }
