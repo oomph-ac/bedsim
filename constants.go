@@ -11,15 +11,13 @@ const (
 	StepHeight                  = float32(0.5625)
 	SlideOffsetMultiplier       = float32(0.4)
 	SlimeBounceMultiplier       = float32(-1)
-	BedBounceMultiplier         = float32(-0.75)
+	BedBounceMultiplier         = float32(-0.66)
+	// BedBounceCap bounds the upward bounce velocity.
+	BedBounceCap = float32(1)
 	// This can be validated in Mob::ascendLadder().
 	ClimbSpeed          = float32(0.2)
 	MaxConsumingImpulse = float32(0.1225)
 	MaxSneakImpulse     = float32(0.3)
-	// Deprecated: MaxNormalizedImpulse is unused by the simulator. The
-	// diagonal-impulse normalization it was intended for is disabled upstream
-	// as well. It is retained only for API compatibility.
-	MaxNormalizedImpulse           = float32(0.70710678118) // 1/sqrt(2)
 	DefaultUnderwaterMovementSpeed = float32(0.02)
 	DefaultLavaMovementSpeed       = float32(0.02)
 	DefaultSwimSpeedMultiplier     = float32(1)

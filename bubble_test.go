@@ -60,6 +60,7 @@ type exactBubbleSurfaceWorld struct {
 	surface bool
 }
 
+// BubbleColumnSurface returns the configured exact surface classification.
 func (w exactBubbleSurfaceWorld) BubbleColumnSurface(cube.Pos) (bool, bool) {
 	return w.surface, true
 }
@@ -95,11 +96,17 @@ func TestBubbleColumnAppliesForEachOccupiedCell(t *testing.T) {
 	}
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.FallDistance = 4
 
 	(&Simulator{World: w}).applyBubbleColumns(state)
 
+	// The lower cell applies its submerged impulse and the top cell applies its
+	// surface impulse: 0.06 + 0.1.
 	if want := float32(0.16); math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("bubble-column velocity = %v, want per-cell impulses totaling %v", state.Vel.Y(), want)
+		t.Fatalf("bubble-column velocity = %v, want per-cell impulses totalling %v", state.Vel.Y(), want)
+	}
+	if state.FallDistance != 0 {
+		t.Fatalf("bubble-column contact left fall distance = %v", state.FallDistance)
 	}
 }
 

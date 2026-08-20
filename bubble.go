@@ -54,14 +54,16 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 	}
 	bb := state.BoundingBox(s.Options.UseSlideOffset)
 	min, max := bb.Min(), bb.Max()
+	found := false
 	for x := int(math32.Floor(min.X())); x < int(math32.Ceil(max.X())); x++ {
 		for y := int(math32.Floor(min.Y())); y < int(math32.Ceil(max.Y())); y++ {
 			for z := int(math32.Floor(min.Z())); z < int(math32.Ceil(max.Z())); z++ {
 				pos := cube.Pos{x, y, z}
-				direction, found := provider.BubbleColumn(pos)
-				if !found {
+				direction, ok := provider.BubbleColumn(pos)
+				if !ok {
 					continue
 				}
+				found = true
 				surface, known := false, false
 				if surfaceProvider, ok := s.World.(BubbleColumnSurfaceProvider); ok {
 					surface, known = surfaceProvider.BubbleColumnSurface(pos)
@@ -75,6 +77,10 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 			}
 		}
 	}
+	if !found {
+		return
+	}
+	state.FallDistance = 0
 }
 
 func (s *Simulator) attemptRiptide(state *MovementState, touchingWater, headInWater bool) bool {
