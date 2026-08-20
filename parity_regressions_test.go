@@ -82,6 +82,45 @@ func TestMountedStateSkipsMovement(t *testing.T) {
 	}
 }
 
+func TestMountedStateIgnoresUnknownOriginArea(t *testing.T) {
+	state := newBaseState()
+	state.InVehicle = true
+	state.Pos = mgl32.Vec3{16.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+
+	result := (&Simulator{World: selectiveChunkWorld{}}).Simulate(state, InputState{ClientPos: state.Client.Pos})
+
+	if result.Outcome != SimulationOutcomeMounted {
+		t.Fatalf("outcome = %v, want mounted despite unknown origin area", result.Outcome)
+	}
+}
+
+func TestMountedResetClearsStaleSupport(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
+	}}
+	support := cube.Pos{0, 0, 0}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 1, 0.5}
+	state.Client.Pos = mgl32.Vec3{100.5, 1, 0.5}
+	state.SupportingBlockPos = &support
+	state.InVehicle = true
+	state.HasGravity = false
+	sim := &Simulator{World: w}
+
+	sim.SimulateState(state)
+	if state.SupportingBlockPos != nil {
+		t.Fatalf("mounted reset retained stale support %v", *state.SupportingBlockPos)
+	}
+
+	state.InVehicle = false
+	state.PressingDescend = true
+	sim.SimulateState(state)
+	if state.Vel.Y() != 0 {
+		t.Fatalf("stale support affected later movement: %v", state.Vel)
+	}
+}
+
 func TestSimulateStateLeavesTransientInputForCaller(t *testing.T) {
 	state := newBaseState()
 	state.RiptideReady = true

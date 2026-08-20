@@ -33,7 +33,7 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 	reason := SimulationOutcomeUnloadedChunk
 	// Teleports are authoritative and run before world-dependent simulation, so
 	// an unknown origin pose must not prevent one from reaching its destination.
-	if inputWorldKnown || state.HasTeleport() {
+	if inputWorldKnown || state.HasTeleport() || state.InVehicle {
 		reason = s.simulateCore(state, true)
 	} else {
 		state.SetVel(mgl32.Vec3{})
@@ -776,6 +776,7 @@ func (s *Simulator) resetToClient(state *MovementState) {
 	state.Vel = state.Client.Vel
 	state.LastMov = state.Client.LastMov
 	state.Mov = state.Client.Mov
+	state.SupportingBlockPos = nil
 	if state.Flying || state.NoClip {
 		state.OnGround = false
 	}
