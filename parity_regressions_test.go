@@ -305,6 +305,12 @@ func TestRiptideLaunchChecksSweptChunks(t *testing.T) {
 	if result.Outcome != SimulationOutcomeUnloadedChunk {
 		t.Fatalf("outcome = %v, want unloaded chunk for Riptide launch", result.Outcome)
 	}
+	if state.RiptideTicks != 0 || !state.RiptideReady || !state.StartingSpinAttack {
+		t.Fatalf("unloaded Riptide consumed launch state: ticks=%d ready=%v starting=%v", state.RiptideTicks, state.RiptideReady, state.StartingSpinAttack)
+	}
+	if state.TicksSinceKnockback != 1 {
+		t.Fatalf("unloaded Riptide advanced tick counters: knockback=%d", state.TicksSinceKnockback)
+	}
 }
 
 func TestCompletedTeleportCounterAdvancesOnce(t *testing.T) {

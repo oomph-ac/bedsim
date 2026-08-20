@@ -33,13 +33,14 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 	reason := s.simulateCore(state, true)
 	if reason == SimulationOutcomeUnloadedChunk {
 		pose.restore(state)
+	} else {
+		if s.Options.SprintTiming == SprintTimingLegacy {
+			s.applyLegacySprint(state, input)
+		}
+		state.AirSpeed = effectiveAirSpeed(state)
+		advanceTeleport := reason != SimulationOutcomeTeleport || state.HasTeleport()
+		s.tickState(state, advanceTeleport)
 	}
-	if s.Options.SprintTiming == SprintTimingLegacy {
-		s.applyLegacySprint(state, input)
-	}
-	state.AirSpeed = effectiveAirSpeed(state)
-	advanceTeleport := reason != SimulationOutcomeTeleport || state.HasTeleport()
-	s.tickState(state, advanceTeleport)
 	return s.resultFromState(state, reason)
 }
 
@@ -97,11 +98,12 @@ func (s *Simulator) invalidSimulationResult(state *MovementState) SimulationResu
 
 func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) SimulationOutcome {
 	state.ensurePoseHeights()
-	if consumeTransient {
-		defer func() {
+	clearRiptideReady := consumeTransient
+	defer func() {
+		if clearRiptideReady {
 			state.RiptideReady = false
-		}()
-	}
+		}
+	}()
 	teleported := s.attemptTeleport(state)
 	if teleported {
 		// A teleport relocates the player without observing the destination,
@@ -132,6 +134,7 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		sweepVelocity = state.Knockback
 	}
 	if s.World != nil && !s.movementAreaLoaded(state.BoundingBox(s.Options.UseSlideOffset).Extend(sweepVelocity)) {
+		clearRiptideReady = false
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
@@ -146,7 +149,10 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		return SimulationOutcomeImmobileOrNotReady
 	}
 
+	prePhysics := *state
 	if !s.simulateMovement(state) {
+		*state = prePhysics
+		clearRiptideReady = false
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
