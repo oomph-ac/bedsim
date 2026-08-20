@@ -12,6 +12,9 @@ const (
 	SlideOffsetMultiplier       = float32(0.4)
 	SlimeBounceMultiplier       = float32(-1)
 	BedBounceMultiplier         = float32(-0.75)
+	// Deprecated: BedBounceCap is retained for source compatibility. Bed
+	// bounces are not capped.
+	BedBounceCap = float32(1)
 	// This can be validated in Mob::ascendLadder().
 	ClimbSpeed                     = float32(0.2)
 	MaxConsumingImpulse            = float32(0.1225)

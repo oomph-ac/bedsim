@@ -123,7 +123,11 @@ func (s *Simulator) riptideImpulse(state *MovementState, level int, wasInWater, 
 // riptideHeadInWater reports whether the player's head is below the local
 // water surface.
 func (s *Simulator) riptideHeadInWater(state *MovementState) bool {
-	position := state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset, 0})
+	heightOffset := DefaultPlayerHeightOffset
+	if state.Sneaking {
+		heightOffset = SneakingPlayerHeightOffset
+	}
+	position := state.Pos.Add(mgl32.Vec3{0, heightOffset, 0})
 	pos := posFromVec3(position)
 	liquid, ok := s.liquidAt(pos)
 	return ok && liquidWater.matches(liquid) && position.Y() < float32(pos.Y())+liquidHeight(liquid)

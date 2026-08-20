@@ -144,6 +144,19 @@ func TestRiptideLaunchesInWaterAndStartsSpinAttack(t *testing.T) {
 	}
 }
 
+func TestRiptideHeadWaterUsesSneakingOffset(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 1, 0}: block.Water{Depth: 2},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Sneaking = true
+
+	if !(&Simulator{World: w}).riptideHeadInWater(state) {
+		t.Fatal("sneaking head below the partial water surface was reported dry")
+	}
+}
+
 func TestRiptideDoesNotLaunchInLava(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Lava{Still: true, Depth: 8}}}
 	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}
