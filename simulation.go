@@ -123,6 +123,10 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 	}
 	if state.InVehicle {
 		s.resetToClient(state)
+		state.OnGround = false
+		state.CollideX = false
+		state.CollideY = false
+		state.CollideZ = false
 		return SimulationOutcomeMounted
 	}
 
@@ -1305,7 +1309,9 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 	state.OnGround = (yCollision && currVel.Y() < 0) ||
 		(onGround && !yCollision && math32.Abs(currVel.Y()) <= 1e-5) ||
 		(clientJumpPrevented && onGround) || completedStep
-	s.checkSupportingBlockPos(state, useSlideOffset, currVel)
+	if !s.checkSupportingBlockPos(state, useSlideOffset, currVel) {
+		return false
+	}
 	state.SetVel(collisionVel)
 	if debugf := s.Options.Debugf; debugf != nil {
 		debugf("clientVel=%v clientPos=%v", state.Client.Mov, state.Client.Pos)
@@ -1546,17 +1552,27 @@ func movementChunkRange(aabb cube.BBox32) (minX, minZ, maxX, maxZ int32, ok bool
 	return minX, minZ, maxX, maxZ, true
 }
 
-func (s *Simulator) checkSupportingBlockPos(state *MovementState, useSlideOffset bool, vel mgl32.Vec3) {
+// checkSupportingBlockPos refreshes the support block and reports whether both
+// possible support probes are in known world data.
+func (s *Simulator) checkSupportingBlockPos(state *MovementState, useSlideOffset bool, vel mgl32.Vec3) bool {
 	if !state.OnGround {
 		state.SupportingBlockPos = nil
-		return
+		return true
 	}
 	decBB := state.BoundingBox(useSlideOffset).ExtendTowards(cube.FaceDown, 1e-3)
+	if !s.movementAreaLoaded(decBB) {
+		state.SupportingBlockPos = nil
+		return false
+	}
 	s.findSupportingBlock(state, decBB)
 	if state.SupportingBlockPos == nil {
 		decBB = decBB.Translate(mgl32.Vec3{-vel[0], 0, -vel[2]})
+		if !s.movementAreaLoaded(decBB) {
+			return false
+		}
 		s.findSupportingBlock(state, decBB)
 	}
+	return true
 }
 
 func (s *Simulator) findSupportingBlock(state *MovementState, bb cube.BBox32) {

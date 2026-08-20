@@ -72,6 +72,10 @@ func TestMountedStateSkipsMovement(t *testing.T) {
 	state.Vel = mgl32.Vec3{1, 2, 3}
 	state.Client.Pos = mgl32.Vec3{4, 5, 6}
 	state.Client.Vel = mgl32.Vec3{0.1, 0.2, 0.3}
+	state.OnGround = true
+	state.CollideX = true
+	state.CollideY = true
+	state.CollideZ = true
 
 	result := (&Simulator{World: mockWorld{}}).SimulateState(state)
 	if result.Outcome != SimulationOutcomeMounted {
@@ -79,6 +83,9 @@ func TestMountedStateSkipsMovement(t *testing.T) {
 	}
 	if state.Pos != state.Client.Pos || state.Vel != state.Client.Vel {
 		t.Fatalf("mounted state was simulated: pos=%v vel=%v", state.Pos, state.Vel)
+	}
+	if state.OnGround || state.CollideX || state.CollideY || state.CollideZ {
+		t.Fatalf("mounted reset retained contact flags: ground=%v collisions=%v/%v/%v", state.OnGround, state.CollideX, state.CollideY, state.CollideZ)
 	}
 }
 
@@ -393,6 +400,28 @@ func TestMovementPreflightsAuxiliaryWorldProbes(t *testing.T) {
 	}
 	if w.blockReads != 0 {
 		t.Fatalf("unknown auxiliary area was read %d times", w.blockReads)
+	}
+}
+
+func TestMovementPreflightsTranslatedSupportFallback(t *testing.T) {
+	w := &supportFallbackProbeWorld{staticWorld: staticWorld{
+		chunkLoaded: true,
+		boxes:       []cube.BBox32{cube.Box32(1, -1, -1, 2, 2, 1)},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.Vel = mgl32.Vec3{20, 0, 0}
+	state.OnGround = true
+	state.HasGravity = false
+
+	result := (&Simulator{World: w}).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for unknown support fallback", result.Outcome)
+	}
+	if w.unknownReads != 0 {
+		t.Fatalf("translated support fallback made %d unknown reads", w.unknownReads)
 	}
 }
 
@@ -850,6 +879,24 @@ func (selectiveChunkWorld) IsChunkLoaded(chunkX, chunkZ int32) bool {
 
 type auxiliaryProbeWorld struct {
 	blockReads int
+}
+
+type supportFallbackProbeWorld struct {
+	staticWorld
+	unknownReads int
+}
+
+// BlockCollisions records reads behind the approved support-probe boundary.
+func (w *supportFallbackProbeWorld) BlockCollisions(pos cube.Pos) []cube.BBox32 {
+	if pos.X() < -2 {
+		w.unknownReads++
+	}
+	return nil
+}
+
+// IsMovementAreaLoaded rejects the translated high-velocity support fallback.
+func (*supportFallbackProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	return aabb.Min().X() >= -2
 }
 
 func (w *auxiliaryProbeWorld) Block(cube.Pos) world.Block {
