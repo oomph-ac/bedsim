@@ -471,6 +471,20 @@ func TestMovementRejectsOutOfRangeSweep(t *testing.T) {
 	}
 }
 
+func TestMovementAreaProviderCannotApproveUnsafeVolume(t *testing.T) {
+	sim := &Simulator{World: approvingAreaWorld{}}
+	for name, aabb := range map[string]cube.BBox32{
+		"coordinate": cube.Box32(0, 0, 0, math32.MaxFloat32, 1, 1),
+		"height":     cube.Box32(0, 0, 0, 1, math32.MaxFloat32, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if sim.movementAreaLoaded(aabb) {
+				t.Fatalf("provider approved unsafe %s volume: %v", name, aabb)
+			}
+		})
+	}
+}
+
 func TestUnloadedTickDoesNotCommitPoseChanges(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{16.5, 0, 0.5}
@@ -644,4 +658,13 @@ type liquidExitProbeWorld struct {
 // IsMovementAreaLoaded rejects the raised liquid-exit probe.
 func (liquidExitProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
 	return aabb.Max().Y() <= 2.5
+}
+
+type approvingAreaWorld struct {
+	mockWorld
+}
+
+// IsMovementAreaLoaded approves every volume so BedSim's own bounds are tested.
+func (approvingAreaWorld) IsMovementAreaLoaded(cube.BBox32) bool {
+	return true
 }

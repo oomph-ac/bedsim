@@ -110,7 +110,7 @@ func (s *Simulator) riptideImpulse(state *MovementState, level int, wasInWater, 
 	if length := direction.Len(); length > 0 {
 		direction = direction.Mul(force / length)
 	}
-	if state.OnGround {
+	if state.OnGround && state.HasGravity {
 		if wasInWater && !headInWater {
 			direction[1] = direction[1] / WaterDrag * NormalGravityMultiplier
 		} else {

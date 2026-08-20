@@ -157,6 +157,17 @@ func TestRiptideHeadWaterUsesSneakingOffset(t *testing.T) {
 	}
 }
 
+func TestRiptideDoesNotCompensateDisabledGravity(t *testing.T) {
+	state := newBaseState()
+	state.OnGround = true
+	state.HasGravity = false
+
+	impulse := (&Simulator{}).riptideImpulse(state, 2, false, false)
+	if impulse.Y() != 0 {
+		t.Fatalf("gravity-disabled Riptide impulse gained vertical motion: %v", impulse)
+	}
+}
+
 func TestRiptideDoesNotLaunchInLava(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Lava{Still: true, Depth: 8}}}
 	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}

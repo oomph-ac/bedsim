@@ -1445,12 +1445,12 @@ func (s *Simulator) movementAreaLoaded(aabb cube.BBox32) bool {
 	if s.World == nil {
 		return true
 	}
-	if provider, ok := s.World.(MovementAreaProvider); ok {
-		return provider.IsMovementAreaLoaded(aabb)
-	}
 	minX, minZ, maxX, maxZ, ok := movementChunkRange(aabb)
 	if !ok {
 		return false
+	}
+	if provider, ok := s.World.(MovementAreaProvider); ok {
+		return provider.IsMovementAreaLoaded(aabb)
 	}
 	for chunkX := int64(minX); chunkX <= int64(maxX); chunkX++ {
 		for chunkZ := int64(minZ); chunkZ <= int64(maxZ); chunkZ++ {
@@ -1470,6 +1470,7 @@ func (s *Simulator) movementSweepLoaded(state *MovementState) bool {
 
 const (
 	maxMovementChunkSpan  int64   = 256
+	maxMovementBlockSpan          = maxMovementChunkSpan << 4
 	minMovementBlockCoord float32 = -2147483648
 	maxMovementBlockCoord float32 = 2147483520
 )
@@ -1477,9 +1478,9 @@ const (
 // movementChunkRange returns a bounded chunk range for a movement volume.
 func movementChunkRange(aabb cube.BBox32) (minX, minZ, maxX, maxZ int32, ok bool) {
 	min, max := aabb.Min(), aabb.Max()
-	minBlockX, minBlockZ := math32.Floor(min.X()), math32.Floor(min.Z())
-	maxBlockX, maxBlockZ := math32.Ceil(max.X())-1, math32.Ceil(max.Z())-1
-	for _, value := range []float32{minBlockX, minBlockZ, maxBlockX, maxBlockZ} {
+	minBlockX, minBlockY, minBlockZ := math32.Floor(min.X()), math32.Floor(min.Y()), math32.Floor(min.Z())
+	maxBlockX, maxBlockY, maxBlockZ := math32.Ceil(max.X())-1, math32.Ceil(max.Y())-1, math32.Ceil(max.Z())-1
+	for _, value := range []float32{minBlockX, minBlockY, minBlockZ, maxBlockX, maxBlockY, maxBlockZ} {
 		if !finiteFloat(value) || value < minMovementBlockCoord || value > maxMovementBlockCoord {
 			return 0, 0, 0, 0, false
 		}
@@ -1489,7 +1490,8 @@ func movementChunkRange(aabb cube.BBox32) (minX, minZ, maxX, maxZ int32, ok bool
 	maxX, maxZ = int32(maxBlockX)>>4, int32(maxBlockZ)>>4
 	spanX := int64(maxX) - int64(minX) + 1
 	spanZ := int64(maxZ) - int64(minZ) + 1
-	if spanX <= 0 || spanZ <= 0 || spanX > maxMovementChunkSpan || spanZ > maxMovementChunkSpan {
+	spanY := int64(int32(maxBlockY)) - int64(int32(minBlockY)) + 1
+	if spanX <= 0 || spanZ <= 0 || spanY <= 0 || spanX > maxMovementChunkSpan || spanZ > maxMovementChunkSpan || spanY > maxMovementBlockSpan {
 		return 0, 0, 0, 0, false
 	}
 	return minX, minZ, maxX, maxZ, true
