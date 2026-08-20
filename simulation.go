@@ -31,12 +31,12 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 	}
 	s.applyInput(state, input)
 	reason := s.simulateCore(state, true)
+	if s.Options.SprintTiming == SprintTimingLegacy {
+		s.applyLegacySprint(state, input)
+	}
 	if reason == SimulationOutcomeUnloadedChunk {
 		pose.restore(state)
 	} else {
-		if s.Options.SprintTiming == SprintTimingLegacy {
-			s.applyLegacySprint(state, input)
-		}
 		state.AirSpeed = effectiveAirSpeed(state)
 		advanceTeleport := reason != SimulationOutcomeTeleport || state.HasTeleport()
 		s.tickState(state, advanceTeleport)
@@ -129,11 +129,8 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		s.resetToClient(state)
 		return SimulationOutcomeUnreliable
 	}
-	sweepVelocity := state.Vel
-	if state.HasKnockback() {
-		sweepVelocity = state.Knockback
-	}
-	if s.World != nil && !s.movementAreaLoaded(state.BoundingBox(s.Options.UseSlideOffset).Extend(sweepVelocity)) {
+	currentArea := state.BoundingBox(s.Options.UseSlideOffset)
+	if s.World != nil && !s.movementAreaLoaded(currentArea) {
 		clearRiptideReady = false
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
@@ -147,6 +144,17 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		state.SwimWaterGraceTicks = 0
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
 		return SimulationOutcomeImmobileOrNotReady
+	}
+	sweepVelocity := state.Vel
+	if state.HasKnockback() {
+		sweepVelocity = state.Knockback
+	}
+	if s.World != nil && !s.movementAreaLoaded(currentArea.Extend(sweepVelocity)) {
+		clearRiptideReady = false
+		state.SetVel(mgl32.Vec3{})
+		state.SwimWaterGraceTicks = 0
+		state.StuckSpeedMultiplier = mgl32.Vec3{}
+		return SimulationOutcomeUnloadedChunk
 	}
 
 	prePhysics := *state

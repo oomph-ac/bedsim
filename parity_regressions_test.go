@@ -261,6 +261,48 @@ func TestMovementChecksSweptChunks(t *testing.T) {
 	}
 }
 
+func TestImmobileMovementDoesNotCheckUnappliedSweep(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{15.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.Vel = mgl32.Vec3{1, 0, 0}
+	state.Immobile = true
+	state.RiptideReady = true
+
+	result := (&Simulator{World: selectiveChunkWorld{}}).Simulate(state, InputState{ClientPos: state.Pos})
+
+	if result.Outcome != SimulationOutcomeImmobileOrNotReady {
+		t.Fatalf("outcome = %v, want immobile/not ready", result.Outcome)
+	}
+	if state.Vel != (mgl32.Vec3{}) {
+		t.Fatalf("immobile state retained stale velocity: %v", state.Vel)
+	}
+	if state.RiptideReady || state.TicksSinceKnockback != 2 {
+		t.Fatalf("immobile tick did not advance transient state: ready=%v knockback=%d", state.RiptideReady, state.TicksSinceKnockback)
+	}
+}
+
+func TestLegacySprintTransitionUpdatesSpeedOnUnloadedTick(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{16.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	sim := &Simulator{
+		World: selectiveChunkWorld{},
+		Options: SimulationOptions{
+			SprintTiming: SprintTimingLegacy,
+		},
+	}
+
+	result := sim.Simulate(state, InputState{StartSprinting: true, ClientPos: state.Pos})
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk", result.Outcome)
+	}
+	if !state.Sprinting || math32.Abs(state.MovementSpeed-0.13) > 1e-6 {
+		t.Fatalf("legacy sprint transition desynchronized state: sprinting=%v speed=%v", state.Sprinting, state.MovementSpeed)
+	}
+}
+
 func TestQueuedKnockbackChecksSweptChunks(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{15.5, 0, 0.5}
