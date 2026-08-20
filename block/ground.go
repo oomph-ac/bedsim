@@ -14,7 +14,8 @@ func (soulSand) Matches(b world.Block, name string) bool {
 	return name == "minecraft:soul_sand"
 }
 
-func (soulSand) Apply(s *resolution) {
+func (soulSand) Apply(s resolution) resolution {
 	s.GroundAccelerationFrictionMultiplier *= SoulSandAccelerationFrictionMultiplier
 	s.SoulSpeedNeutralizesAccelerationFriction = true
+	return s
 }
