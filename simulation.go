@@ -799,7 +799,6 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 		if state.TeleportPending || state.PendingTeleportPos != (mgl32.Vec3{}) {
 			state.TeleportPos = state.PendingTeleportPos
 		}
-		state.TeleportPending = true
 	}
 	if !state.HasTeleport() {
 		return false

@@ -267,6 +267,30 @@ func TestLegacyPendingTeleportKeepsExplicitTarget(t *testing.T) {
 	}
 }
 
+func TestLegacySmoothedPendingTeleportKeepsExplicitTarget(t *testing.T) {
+	state := newBaseState()
+	state.PendingTeleports = 1
+	state.TeleportPos = mgl32.Vec3{8, 0, 0}
+	state.TeleportCompletionTicks = 2
+	state.TicksSinceTeleport = 0
+	state.TeleportIsSmoothed = true
+	target := state.TeleportPos
+	sim := &Simulator{World: mockWorld{}}
+
+	for tick := range 3 {
+		result := sim.Simulate(state, InputState{})
+		if result.Outcome != SimulationOutcomeTeleport {
+			t.Fatalf("tick %d outcome = %v, want teleport", tick, result.Outcome)
+		}
+		if state.TeleportPos != target {
+			t.Fatalf("tick %d changed target to %v, want %v", tick, state.TeleportPos, target)
+		}
+	}
+	if state.Pos != target || state.HasTeleport() {
+		t.Fatalf("smoothed teleport did not complete: pos=%v target=%v pending=%v", state.Pos, target, state.HasTeleport())
+	}
+}
+
 func TestGlideAtVerticalPitchRemainsFinite(t *testing.T) {
 	state := newBaseState()
 	state.Gliding = true
