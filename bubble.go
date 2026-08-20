@@ -83,6 +83,7 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 	state.FallDistance = 0
 }
 
+// attemptRiptide applies a validated one-shot Riptide launch.
 func (s *Simulator) attemptRiptide(state *MovementState, touchingWater, headInWater bool) bool {
 	if s.Equipment == nil || state.InVehicle || state.RiptideTicks > 0 || !state.RiptideReady || (!touchingWater && !state.RiptideInRain) {
 		return false
@@ -119,6 +120,8 @@ func (s *Simulator) riptideImpulse(state *MovementState, level int, wasInWater, 
 	return direction
 }
 
+// riptideHeadInWater reports whether the player's head is below the local
+// water surface.
 func (s *Simulator) riptideHeadInWater(state *MovementState) bool {
 	position := state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset, 0})
 	pos := posFromVec3(position)

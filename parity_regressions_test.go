@@ -287,6 +287,24 @@ func TestAdjacentClimbableIsNotContact(t *testing.T) {
 	}
 }
 
+func TestClimbableContactResetsFallDistance(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: block.Ladder{Facing: cube.West},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.Vel = mgl32.Vec3{0, -0.1, 0}
+	state.FallDistance = 4
+	state.HasGravity = false
+
+	(&Simulator{World: w}).SimulateState(state)
+
+	if state.FallDistance != 0 {
+		t.Fatalf("climbable contact left fall distance = %v", state.FallDistance)
+	}
+}
+
 func TestStandingOnClimbableBlockDoesNotEnableClimbing(t *testing.T) {
 	pos := cube.Pos{0, -1, 0}
 	w := environmentWorld{

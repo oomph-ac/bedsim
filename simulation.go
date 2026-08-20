@@ -39,6 +39,7 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 	return s.resultFromState(state, reason)
 }
 
+// movementPoseSnapshot preserves pose fields across an unloaded simulation.
 type movementPoseSnapshot struct {
 	size     mgl32.Vec3
 	sneaking bool
@@ -47,6 +48,7 @@ type movementPoseSnapshot struct {
 	swimAmt  float32
 }
 
+// restore replaces the state's pose fields with the snapshot.
 func (p movementPoseSnapshot) restore(state *MovementState) {
 	state.Size = p.size
 	state.Sneaking = p.sneaking
@@ -79,6 +81,7 @@ func (s *Simulator) debugfIf(cond bool, format string, args ...any) {
 	}
 }
 
+// invalidSimulationResult returns the mode-aware result for invalid state.
 func (s *Simulator) invalidSimulationResult() SimulationResult {
 	return SimulationResult{
 		Outcome:         SimulationOutcomeInvalidInput,
@@ -588,6 +591,9 @@ func (s *Simulator) simulateMovement(state *MovementState) {
 	s.tryCollisions(state, clientJumpPrevented)
 	stopRiptideOnBlockCollision(state)
 	updateFallDistance(state, oldY)
+	if scaffoldDescend || nearClimbable {
+		state.FallDistance = 0
+	}
 
 	if state.SupportingBlockPos != nil {
 		blockUnder = s.blockAtPos(*state.SupportingBlockPos)
@@ -731,6 +737,8 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 	return true
 }
 
+// teleportCompleteTick returns the first tick after a teleport's completion
+// window without overflowing the counter.
 func teleportCompleteTick(completionTicks uint64) uint64 {
 	if completionTicks == math32.MaxUint64 {
 		return completionTicks
@@ -826,7 +834,7 @@ func (s *Simulator) landOnBlock(state *MovementState, old mgl32.Vec3, blockUnder
 			newVel[1] = 0.0
 		}
 	case movementblock.BounceBed:
-		newVel[1] = math32.Min(BedBounceCap, BedBounceMultiplier*old.Y())
+		newVel[1] = BedBounceMultiplier * old.Y()
 	default:
 		newVel[1] = 0
 	}
@@ -1290,6 +1298,7 @@ func (s *Simulator) climbableContact(state *MovementState, insideClimbable bool)
 	return insideClimbable
 }
 
+// movementAreaLoaded reports whether the complete movement volume is known.
 func (s *Simulator) movementAreaLoaded(aabb cube.BBox32) bool {
 	if s.World == nil {
 		return true
@@ -1317,6 +1326,7 @@ const (
 	maxMovementBlockCoord float32 = 2147483520
 )
 
+// movementChunkRange returns a bounded chunk range for a movement volume.
 func movementChunkRange(aabb cube.BBox32) (minX, minZ, maxX, maxZ int32, ok bool) {
 	min, max := aabb.Min(), aabb.Max()
 	minBlockX, minBlockZ := math32.Floor(min.X()), math32.Floor(min.Z())
@@ -1411,6 +1421,7 @@ func (s *Simulator) nearbyBBoxes(state *MovementState, aabb cube.BBox32) []cube.
 	return filteredCollisionBoxes(s.World.GetNearbyBBoxes(aabb))
 }
 
+// movementCollisionContext builds the dynamic collision context for state.
 func (s *Simulator) movementCollisionContext(state *MovementState) MovementCollisionContext {
 	return MovementCollisionContext{
 		Position:     [3]float32(state.Pos),
@@ -1421,6 +1432,7 @@ func (s *Simulator) movementCollisionContext(state *MovementState) MovementColli
 	}
 }
 
+// filteredCollisionBoxes removes invalid boxes without reordering valid ones.
 func filteredCollisionBoxes(boxes []cube.BBox32) []cube.BBox32 {
 	for i, box := range boxes {
 		if !BBHasZeroVolume(box) {

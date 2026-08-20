@@ -5,10 +5,12 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 )
 
+// finiteFloat reports whether value is neither NaN nor infinite.
 func finiteFloat(value float32) bool {
 	return !math32.IsNaN(value) && !math32.IsInf(value, 0)
 }
 
+// finiteVec2 reports whether every component is finite.
 func finiteVec2(value mgl32.Vec2) bool {
 	for axis := range 2 {
 		if !finiteFloat(value[axis]) {
@@ -18,6 +20,7 @@ func finiteVec2(value mgl32.Vec2) bool {
 	return true
 }
 
+// finiteVec3 reports whether every component is finite.
 func finiteVec3(value mgl32.Vec3) bool {
 	for axis := range 3 {
 		if !finiteFloat(value[axis]) {
@@ -27,6 +30,7 @@ func finiteVec3(value mgl32.Vec3) bool {
 	return true
 }
 
+// finiteInput reports whether all numeric input fields are finite.
 func finiteInput(input InputState) bool {
 	return finiteVec2(input.MoveVector) &&
 		finiteVec3(input.ClientPos) &&
@@ -34,6 +38,7 @@ func finiteInput(input InputState) bool {
 		finiteFloat(input.Pitch) && finiteFloat(input.Yaw) && finiteFloat(input.HeadYaw)
 }
 
+// finiteMovementState reports whether all simulated numeric state is finite.
 func finiteMovementState(state *MovementState) bool {
 	if state == nil {
 		return false

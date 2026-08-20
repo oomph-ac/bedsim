@@ -302,6 +302,7 @@ func liquidHeight(liquid world.Liquid) float32 {
 	return float32(liquid.LiquidDepth()+1) / 9
 }
 
+// liquidIntersects reports whether box reaches the liquid surface in pos.
 func liquidIntersects(box cube.BBox32, pos cube.Pos, liquid world.Liquid) bool {
 	surface := float32(pos[1]) + liquidHeight(liquid)
 	return box.Max().Y() > float32(pos[1]) && box.Min().Y() < surface
@@ -384,8 +385,7 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
 }
 
 func (s *Simulator) liquidFlowSideClosed(pos, side cube.Pos) bool {
-	stairs, ok := s.blockAtPos(pos).(block.Stairs)
-	return ok && stairs.Model().FaceSolid(pos, pos.Face(side), s.World)
+	return s.blockAtPos(pos).Model().FaceSolid(pos, pos.Face(side), s.World)
 }
 
 func liquidDecay(liquid world.Liquid) int {

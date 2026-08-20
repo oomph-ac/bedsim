@@ -47,6 +47,8 @@ func applyStuckSpeedMultiplier(state *MovementState) bool {
 	return true
 }
 
+// applyAscendableMovement applies input-driven vertical block traversal and
+// reports whether ordinary vertical travel should be skipped.
 func applyAscendableMovement(state *MovementState, traversal movementblock.Traversal, leatherBoots bool) bool {
 	velocity := state.Vel
 	switch traversal {
@@ -113,8 +115,22 @@ func (s *Simulator) applyHoneyWallSlide(state *MovementState) {
 					velocity[1] = max(-0.12, velocity[1])
 					velocity[2] *= 0.4
 					state.SetVel(velocity)
+					if honeySlideResetsFallDistance(state, pos) {
+						state.FallDistance = 0
+					}
 				}
 			}
 		}
 	}
+}
+
+// honeySlideResetsFallDistance reports whether contact is with a honey side
+// rather than the top surface.
+func honeySlideResetsFallDistance(state *MovementState, pos cube.Pos) bool {
+	if state.Vel.Y() >= 0 || state.Pos.Y() > float32(pos.Y())+0.9375 {
+		return false
+	}
+	radius := state.Size.X()*state.Size.Z()*0.5 + 0.43125
+	centerX, centerZ := float32(pos.X())+0.5, float32(pos.Z())+0.5
+	return math32.Abs(centerX-state.Pos.X()) > radius || math32.Abs(centerZ-state.Pos.Z()) > radius
 }

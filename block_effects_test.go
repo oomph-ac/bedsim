@@ -145,6 +145,38 @@ func TestHoneyWallSlideAppliesOnSolidSideContact(t *testing.T) {
 	}
 }
 
+func TestHoneySideSlideResetsFallDistance(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:honey_block"},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{1.25, 0, 0.5}
+	state.Vel = mgl32.Vec3{0, -0.2, 0}
+	state.FallDistance = 4
+
+	(&Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}).applyHoneyWallSlide(state)
+
+	if state.FallDistance != 0 {
+		t.Fatalf("honey side slide left fall distance = %v", state.FallDistance)
+	}
+}
+
+func TestHoneyTopContactPreservesFallDistance(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:honey_block"},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Vel = mgl32.Vec3{0, -0.2, 0}
+	state.FallDistance = 4
+
+	(&Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}).applyHoneyWallSlide(state)
+
+	if state.FallDistance != 4 {
+		t.Fatalf("honey top contact changed fall distance to %v", state.FallDistance)
+	}
+}
+
 func TestScaffoldingAscendAndDescendSpeeds(t *testing.T) {
 	state := newBaseState()
 	state.PressingAscend = true
@@ -214,9 +246,13 @@ func TestScaffoldingDescendSkipsAirGravity(t *testing.T) {
 	state.Gravity = NormalGravity
 	state.HasGravity = true
 	state.PressingDescend = true
+	state.FallDistance = 4
 	sim.SimulateState(state)
 	if math32.Abs(state.Vel.Y()-(-0.15)) > 1e-6 {
 		t.Fatalf("scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15)
+	}
+	if state.FallDistance != 0 {
+		t.Fatalf("scaffolding descent left fall distance = %v", state.FallDistance)
 	}
 }
 
