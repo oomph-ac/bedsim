@@ -151,6 +151,9 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	if state.CollideX || state.CollideZ {
 		raised := mgl32.Vec3{vel.X(), vel.Y() + 0.6 + initialY - state.Pos.Y(), vel.Z()}
 		raisedBox := state.BoundingBox(s.Options.UseSlideOffset).Translate(raised)
+		if !s.movementAreaLoaded(raisedBox) {
+			return false
+		}
 		hasCollision := s.hasNearbyBBoxes(state, raisedBox)
 		hasLiquid := s.containsAnyLiquid(raisedBox)
 		if debugf := s.Options.Debugf; debugf != nil {

@@ -322,6 +322,37 @@ func TestMovementChecksStepProbeArea(t *testing.T) {
 	}
 }
 
+func TestMovementChecksSneakEdgeProbeArea(t *testing.T) {
+	state := newBaseState()
+	state.Sneaking = true
+	state.OnGround = true
+	state.HasGravity = false
+	state.Vel = mgl32.Vec3{0.2, 0, 0}
+
+	result := (&Simulator{World: edgeProbeWorld{}}).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for unknown sneak-edge probe", result.Outcome)
+	}
+}
+
+func TestMovementChecksLiquidExitProbeArea(t *testing.T) {
+	base := newLiquidWorld().fill(cube.Pos{-1, 0, -1}, cube.Pos{0, 2, 1}, waterSource)
+	for y := range 3 {
+		base.set(cube.Pos{1, y, 0}, block.Stone{})
+	}
+	w := liquidExitProbeWorld{liquidWorld: base}
+	state := submergedState()
+	state.HasGravity = false
+	state.Vel = mgl32.Vec3{1, 0, 0}
+
+	result := newLiquidSim(w).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for unknown liquid-exit probe", result.Outcome)
+	}
+}
+
 func TestImmobileMovementDoesNotCheckUnappliedSweep(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{15.5, 0, 0.5}
@@ -595,4 +626,22 @@ type stepProbeWorld struct {
 // IsMovementAreaLoaded rejects collision probes above the ordinary movement sweep.
 func (stepProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
 	return aabb.Max().Y() <= 1.81
+}
+
+type edgeProbeWorld struct {
+	mockWorld
+}
+
+// IsMovementAreaLoaded rejects the downward sneak-edge support probe.
+func (edgeProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	return aabb.Min().Y() >= -0.1
+}
+
+type liquidExitProbeWorld struct {
+	*liquidWorld
+}
+
+// IsMovementAreaLoaded rejects the raised liquid-exit probe.
+func (liquidExitProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	return aabb.Max().Y() <= 2.5
 }

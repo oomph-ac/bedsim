@@ -646,7 +646,9 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	if !s.movementSweepLoaded(state) {
 		return false
 	}
-	s.avoidEdge(state)
+	if !s.avoidEdge(state) {
+		return false
+	}
 
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
@@ -1286,10 +1288,12 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 	return true
 }
 
-func (s *Simulator) avoidEdge(state *MovementState) {
+// avoidEdge limits sneaking movement to supported ground and reports whether
+// the complete support-probe volume is loaded.
+func (s *Simulator) avoidEdge(state *MovementState) bool {
 	w := s.World
 	if w == nil {
-		return
+		return true
 	}
 	if !state.Sneaking || !state.OnGround || state.Vel.Y() > 0 {
 		if debugf := s.Options.Debugf; debugf != nil {
@@ -1300,7 +1304,7 @@ func (s *Simulator) avoidEdge(state *MovementState) {
 				state.Vel.Y(),
 			)
 		}
-		return
+		return true
 	}
 
 	edgeBoundry := float32(0.025)
@@ -1314,6 +1318,10 @@ func (s *Simulator) avoidEdge(state *MovementState) {
 	useSlideOffset := s.Options.UseSlideOffset
 	bb := state.BoundingBox(useSlideOffset).GrowVec3(mgl32.Vec3{-edgeBoundry, 0, -edgeBoundry})
 	xMov, zMov := newVel.X(), newVel.Z()
+	probeVolume := bb.Extend(mgl32.Vec3{xMov, -StepHeight * 1.01, zMov})
+	if !s.movementAreaLoaded(probeVolume) {
+		return false
+	}
 
 	i := 0
 	for i = 0; i < maxIter && xMov != 0.0 && !s.hasNearbyBBoxes(state, bb.Translate(mgl32.Vec3{xMov, -StepHeight * 1.01, 0})); i++ {
@@ -1370,6 +1378,7 @@ func (s *Simulator) avoidEdge(state *MovementState) {
 	if debugf := s.Options.Debugf; debugf != nil {
 		debugf("(avoidEdge): oldVel=%v newVel=%v", oldVel, newVel)
 	}
+	return true
 }
 
 func (s *Simulator) isInsideCobweb(state *MovementState) bool {
