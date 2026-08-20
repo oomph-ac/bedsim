@@ -507,6 +507,20 @@ func TestStairsSolidFaceBlocksFlow(t *testing.T) {
 	}
 }
 
+func TestWaterloggedTrapdoorSolidFaceBlocksFlow(t *testing.T) {
+	pos := cube.Pos{0, 0, 0}
+	neighbour := cube.Pos{1, 0, 0}
+	w := newLayeredLiquidWorld()
+	w.waterlog(pos, block.WoodTrapdoor{Facing: cube.West, Open: true}, block.Water{Depth: 8})
+	w.set(neighbour, block.Water{Depth: 4})
+
+	flow := newLiquidSim(w).liquidFlow(pos, block.Water{Depth: 8})
+
+	if !approxEqual(flow.X(), 0) {
+		t.Fatalf("waterlogged trapdoor solid face allowed flow X = %v", flow.X())
+	}
+}
+
 // A simulator with no world must not panic on any liquid path.
 func TestNilWorldIsSafe(t *testing.T) {
 	sim := &Simulator{Options: SimulationOptions{PositionCorrectionThreshold: 0.3}}

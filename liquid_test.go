@@ -464,6 +464,32 @@ func TestSwimmingCancelsWaterGravity(t *testing.T) {
 	}
 }
 
+func TestStopSwimmingUsesFastWaterDragForOneTick(t *testing.T) {
+	sim := newLiquidSim(filledColumn(waterSource))
+	state := submergedState()
+	state.Swimming = false
+	state.StoppedSwimmingThisTick = true
+	state.Vel = mgl32.Vec3{0.5, 0, 0}
+
+	sim.SimulateState(state)
+	if !approxEqual(state.Vel.X(), 0.45) {
+		t.Fatalf("stop-swimming drag = %v, want 0.45", state.Vel.X())
+	}
+}
+
+func TestStopSwimmingFlagWithoutTransitionUsesNormalDrag(t *testing.T) {
+	sim := newLiquidSim(filledColumn(waterSource))
+	state := submergedState()
+	state.Swimming = false
+	state.Vel = mgl32.Vec3{0.5, 0, 0}
+
+	sim.Simulate(state, InputState{StopSwimming: true})
+
+	if !approxEqual(state.Vel.X(), 0.4) {
+		t.Fatalf("false stop-swimming drag = %v, want 0.4", state.Vel.X())
+	}
+}
+
 // Gravity is skipped entirely when the state has no gravity.
 func TestNoGravityInLiquid(t *testing.T) {
 	sim := newLiquidSim(filledColumn(waterSource))

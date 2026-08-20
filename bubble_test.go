@@ -55,7 +55,35 @@ func TestBubbleColumnSurfaceAcceptsRegistryBackedAir(t *testing.T) {
 	}
 }
 
-func TestBubbleColumnAppliesOnceForOverlappedCells(t *testing.T) {
+type exactBubbleSurfaceWorld struct {
+	environmentWorld
+	surface bool
+}
+
+// BubbleColumnSurface returns the configured exact surface classification.
+func (w exactBubbleSurfaceWorld) BubbleColumnSurface(cube.Pos) (bool, bool) {
+	return w.surface, true
+}
+
+func TestBubbleColumnUsesExactSurfaceProvider(t *testing.T) {
+	w := exactBubbleSurfaceWorld{
+		environmentWorld: environmentWorld{
+			bubbles: map[cube.Pos]BubbleColumnDirection{{0, 0, 0}: BubbleColumnUp},
+			blocks:  map[cube.Pos]world.Block{{0, 1, 0}: block.Water{Still: true, Depth: 8}},
+		},
+		surface: true,
+	}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+
+	(&Simulator{World: w}).applyBubbleColumns(state)
+
+	if state.Vel.Y() != 0.1 {
+		t.Fatalf("exact surface provider was ignored: %v", state.Vel.Y())
+	}
+}
+
+func TestBubbleColumnAppliesForEachOccupiedCell(t *testing.T) {
 	w := environmentWorld{
 		bubbles: map[cube.Pos]BubbleColumnDirection{
 			{0, 0, 0}: BubbleColumnUp,
@@ -72,13 +100,29 @@ func TestBubbleColumnAppliesOnceForOverlappedCells(t *testing.T) {
 
 	(&Simulator{World: w}).applyBubbleColumns(state)
 
-	// The topmost overlapped cell has open air above it, so this resolves to the
-	// surface form and applies once: 0.1, not 0.06+0.1 for the two cells.
-	if want := float32(0.1); math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("bubble-column velocity = %v, want a single impulse of %v", state.Vel.Y(), want)
+	// The lower cell applies its submerged impulse and the top cell applies its
+	// surface impulse: 0.06 + 0.1.
+	if want := float32(0.16); math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("bubble-column velocity = %v, want per-cell impulses totalling %v", state.Vel.Y(), want)
 	}
 	if state.FallDistance != 0 {
 		t.Fatalf("bubble-column contact left fall distance = %v", state.FallDistance)
+	}
+}
+
+func TestBubbleColumnAppliesOutsideLiquidTravel(t *testing.T) {
+	w := environmentWorld{
+		bubbles: map[cube.Pos]BubbleColumnDirection{{0, 0, 0}: BubbleColumnUp},
+		blocks:  map[cube.Pos]world.Block{},
+	}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.HasGravity = false
+
+	(&Simulator{World: w}).SimulateState(state)
+
+	if state.Vel.Y() != 0.1 {
+		t.Fatalf("normal movement missed surface bubble impulse: %v", state.Vel.Y())
 	}
 }
 
@@ -97,6 +141,42 @@ func TestRiptideLaunchesInWaterAndStartsSpinAttack(t *testing.T) {
 	}
 	if state.RiptideTicks != 19 {
 		t.Fatalf("expected 19 riptide ticks after the launch tick, got %d", state.RiptideTicks)
+	}
+}
+
+func TestRiptideHeadWaterUsesSneakingOffset(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 1, 0}: block.Water{Depth: 2},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Sneaking = true
+
+	if !(&Simulator{World: w}).riptideHeadInWater(state) {
+		t.Fatal("sneaking head below the partial water surface was reported dry")
+	}
+}
+
+func TestRiptideDoesNotCompensateDisabledGravity(t *testing.T) {
+	state := newBaseState()
+	state.OnGround = true
+	state.HasGravity = false
+
+	impulse := (&Simulator{}).riptideImpulse(state, 2, false, false)
+	if impulse.Y() != 0 {
+		t.Fatalf("gravity-disabled Riptide impulse gained vertical motion: %v", impulse)
+	}
+}
+
+func TestRiptideUsesConfiguredGravityForDryCompensation(t *testing.T) {
+	state := newBaseState()
+	state.OnGround = true
+	state.HasGravity = true
+	state.Gravity = 0.04
+
+	impulse := (&Simulator{}).riptideImpulse(state, 2, false, false)
+	if math32.Abs(impulse.Y()-state.Gravity) > 1e-6 {
+		t.Fatalf("Riptide vertical compensation = %v, want configured gravity %v", impulse.Y(), state.Gravity)
 	}
 }
 
@@ -188,6 +268,17 @@ func TestRiptideStopsOnNormalMovementWallCollision(t *testing.T) {
 
 	if state.RiptideTicks != 0 {
 		t.Fatalf("expected wall collision to stop riptide, got %d ticks", state.RiptideTicks)
+	}
+}
+
+func TestRiptideCollisionClearsActiveAttack(t *testing.T) {
+	state := newBaseState()
+	state.RiptideTicks = 10
+	state.CollideX = true
+
+	stopRiptideOnBlockCollision(state)
+	if state.RiptideTicks != 0 {
+		t.Fatalf("riptide collision left active attack: ticks=%d", state.RiptideTicks)
 	}
 }
 

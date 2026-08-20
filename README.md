@@ -79,14 +79,39 @@ should affect water movement.
 
 `WorldProvider` is the only required world interface. A world may additionally
 implement `BubbleColumnProvider` for upward/downward columns and
-`MovementCollisionProvider` for player-dependent collision shapes such as
+`BubbleColumnSurfaceProvider` when it can classify the exact surface variant,
+and `MovementCollisionProvider` for player-dependent collision shapes such as
 scaffolding and powder snow. Dynamic collision resolution receives sneak and
 descend intent plus leather-boots state.
+
+For reliable streaming-world simulation, implement `MovementAreaProvider` so a
+swept movement volume can be checked precisely. Without it, BedSim checks every
+chunk touched by the current bounding box and velocity. Implement
+`ClimbableContactProvider` when ladder/vine orientation is resolved outside the
+block registry — it replaces the built-in single-cell check rather than adding
+to it — and `MovementSupportProvider` when dynamic collision shapes need to
+identify their supporting block.
 
 `MovementEquipmentProvider` supplies Depth Strider, Soul Speed, Swift Sneak,
 Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
 extension remains a fallback when the equipment provider reports no Depth
 Strider level. `EffectsProvider` also controls Weaving-aware web movement.
+
+Use `MovementState.QueueKnockback` and `MovementState.QueueTeleport` for
+authoritative events instead of setting their timer fields by hand. `Simulate`
+consumes those events as part of its tick; callers using `SimulateState` must
+clear transient fields such as `KnockbackPending` and
+`StoppedSwimmingThisTick` themselves. Set `MovementState.JumpStrength` for a
+custom base jump velocity; zero keeps the default.
+
+`MovementState.MovementSpeed` and `DefaultMovementSpeed` are effective movement
+attribute values. Include active Speed or Slowness modifiers in those values;
+BedSim uses them directly and does not apply the same modifiers a second time.
+`AirSpeed` is the air acceleration speed. It does not track the movement
+attribute: `Simulate` sets it to `WalkAirSpeed` or `SprintAirSpeed` from the
+sprint state, and `SimulateState` callers provide it with the current state.
+`JumpHeight` is output-only and derived during simulation; set `JumpStrength`
+when a custom base jump velocity is needed.
 
 Riptide input flags are not trusted on their own. Set `MovementState.RiptideReady`
 for the simulation tick only after validating a charged Riptide-trident release.
@@ -191,6 +216,11 @@ would be a breaking change outside liquid scope. Set
 - `Simulate` — applies client input, runs physics, advances tick counters, and returns the result. Use this when bedsim owns the full tick lifecycle.
 - `SimulateState` — runs physics on the current state without applying input or ticking counters. Use this when your caller handles input parsing and tick management externally.
 
+Both entry points reject NaN and infinite state/input values with
+`SimulationOutcomeInvalidInput`. Mounted players return
+`SimulationOutcomeMounted` after being aligned to their client-reported state;
+vehicle physics belongs in the caller's vehicle simulation.
+
 ### Correction modes
 
 - `SimulationModeAuthoritative` — `NeedsCorrection` becomes true if position or velocity drift exceeds thresholds.
@@ -205,4 +235,4 @@ Each tick returns a `SimulationResult` containing:
 - Collision flags (`CollideX`, `CollideY`, `CollideZ`, `OnGround`)
 - `PositionDelta` / `VelocityDelta` — difference from client-reported values
 - `NeedsCorrection` — whether deltas exceed configured thresholds
-- `Outcome` — which simulation path was taken (normal, teleport, unreliable, unloaded chunk, immobile)
+- `Outcome` — which simulation path was taken (normal, teleport, unreliable, unloaded chunk, immobile, mounted, or invalid input)

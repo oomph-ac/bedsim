@@ -42,12 +42,23 @@ type MovementState struct {
 
 	SupportingBlockPos *cube.Pos
 
-	Gravity      float32
-	JumpHeight   float32
+	Gravity float32
+	// JumpHeight is an output derived by Simulate from JumpStrength and active
+	// effects; set JumpStrength to customize the base jump velocity.
+	JumpHeight float32
+	// JumpStrength is the base jump velocity. Zero uses DefaultJumpHeight.
+	JumpStrength float32
 	FallDistance float32
 
-	MovementSpeed           float32
-	DefaultMovementSpeed    float32
+	// MovementSpeed is the effective movement attribute used by travel. Include
+	// movement effects in this value before passing the state to BedSim.
+	MovementSpeed float32
+	// DefaultMovementSpeed is the effective non-sprinting movement attribute
+	// used when sprinting is toggled.
+	DefaultMovementSpeed float32
+	// AirSpeed is the air acceleration speed, which does not track the movement
+	// attribute. Simulate sets it from the sprint state; SimulateState callers
+	// provide it as part of the current state.
 	AirSpeed                float32
 	UnderwaterMovementSpeed float32
 	LavaMovementSpeed       float32
@@ -59,6 +70,7 @@ type MovementState struct {
 
 	Knockback           mgl32.Vec3
 	TicksSinceKnockback uint64
+	KnockbackPending    bool
 
 	PendingTeleportPos mgl32.Vec3
 	PendingTeleports   int
@@ -67,6 +79,7 @@ type MovementState struct {
 	TicksSinceTeleport      uint64
 	TeleportCompletionTicks uint64
 	TeleportIsSmoothed      bool
+	TeleportPending         bool
 
 	Sprinting, PressingSprint         bool
 	ServerSprint, ServerSprintApplied bool
@@ -81,6 +94,9 @@ type MovementState struct {
 
 	Swimming   bool
 	SwimAmount float32
+	// StoppedSwimmingThisTick selects the client's fast water drag on the
+	// transition out of swimming.
+	StoppedSwimmingThisTick bool
 	// SwimWaterGraceTicks retains recent server-observed water contact.
 	SwimWaterGraceTicks    int64
 	AutoJumpingInWater     bool
@@ -170,13 +186,44 @@ func (s *MovementState) SetRotation(newRot mgl32.Vec3) {
 }
 
 func (s *MovementState) HasKnockback() bool {
-	return s.TicksSinceKnockback == 0
+	return s.KnockbackPending || (s.TicksSinceKnockback == 0 && s.Knockback != (mgl32.Vec3{}))
 }
 
 func (s *MovementState) HasTeleport() bool {
+	if s.TeleportPending || s.PendingTeleports > 0 {
+		return true
+	}
+	if s.TeleportCompletionTicks == 0 {
+		return s.TicksSinceTeleport == 0 && s.TeleportPos != (mgl32.Vec3{})
+	}
 	return s.TicksSinceTeleport <= s.TeleportCompletionTicks
 }
 
 func (s *MovementState) RemainingTeleportTicks() int {
-	return int(s.TeleportCompletionTicks) - int(s.TicksSinceTeleport)
+	if !s.HasTeleport() || s.TicksSinceTeleport >= s.TeleportCompletionTicks {
+		return 0
+	}
+	remaining := s.TeleportCompletionTicks - s.TicksSinceTeleport
+	maxInt := uint64(^uint(0) >> 1)
+	if remaining > maxInt {
+		return int(maxInt)
+	}
+	return int(remaining)
+}
+
+// QueueKnockback schedules one authoritative velocity replacement.
+func (s *MovementState) QueueKnockback(velocity mgl32.Vec3) {
+	s.Knockback = velocity
+	s.KnockbackPending = true
+	s.TicksSinceKnockback = 0
+}
+
+// QueueTeleport schedules one authoritative teleport.
+func (s *MovementState) QueueTeleport(pos mgl32.Vec3, smoothed bool, completionTicks uint64) {
+	s.PendingTeleportPos = pos
+	s.TeleportPos = pos
+	s.TeleportIsSmoothed = smoothed
+	s.TeleportCompletionTicks = completionTicks
+	s.TicksSinceTeleport = 0
+	s.TeleportPending = true
 }

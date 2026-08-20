@@ -17,5 +17,9 @@ func (r environmentRule) Apply(s resolution) resolution {
 	s.InsideMovement = r.inside
 	s.Traversal = r.traversal
 	s.Honey = r.honey
+	if r.honey {
+		s.GroundFriction = 0.8
+		s.groundFrictionSet = true
+	}
 	return s
 }

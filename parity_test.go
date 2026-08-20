@@ -61,22 +61,21 @@ func TestBedrockStepHeight(t *testing.T) {
 	}
 }
 
-func TestBedBounceUsesCorroboratedRestitutionAndCap(t *testing.T) {
+func TestBedBounceUsesVanillaRestitutionWithoutCap(t *testing.T) {
 	sim := &Simulator{BlockSemantics: overrideBlockSemantics{semantics: movementblock.MovementSemantics{Bounce: movementblock.BounceBed}}}
 	state := newBaseState()
 	state.Vel = mgl32.Vec3{0, -2}
 
 	sim.landOnBlock(state, state.Vel, block.Air{})
 
-	// -0.66 * -2 = 1.32, above the cap.
-	if want := BedBounceCap; math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("expected capped bed bounce %v, got %v", want, state.Vel.Y())
+	if want := float32(1.5); math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("expected bed bounce %v, got %v", want, state.Vel.Y())
 	}
 
 	state.Vel = mgl32.Vec3{0, -1}
 	sim.landOnBlock(state, state.Vel, block.Air{})
-	if want := -BedBounceMultiplier; math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("expected uncapped bed bounce %v, got %v", want, state.Vel.Y())
+	if want := float32(0.75); math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("expected bed bounce %v, got %v", want, state.Vel.Y())
 	}
 }
 
