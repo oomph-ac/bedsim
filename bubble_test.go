@@ -168,6 +168,18 @@ func TestRiptideDoesNotCompensateDisabledGravity(t *testing.T) {
 	}
 }
 
+func TestRiptideUsesConfiguredGravityForDryCompensation(t *testing.T) {
+	state := newBaseState()
+	state.OnGround = true
+	state.HasGravity = true
+	state.Gravity = 0.04
+
+	impulse := (&Simulator{}).riptideImpulse(state, 2, false, false)
+	if math32.Abs(impulse.Y()-state.Gravity) > 1e-6 {
+		t.Fatalf("Riptide vertical compensation = %v, want configured gravity %v", impulse.Y(), state.Gravity)
+	}
+}
+
 func TestRiptideDoesNotLaunchInLava(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Lava{Still: true, Depth: 8}}}
 	sim := &Simulator{World: w, Equipment: fixedEquipment{EnchantmentRiptide: 2}}

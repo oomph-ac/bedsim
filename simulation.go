@@ -31,7 +31,9 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 	}
 	inputWorldKnown := s.applyInput(state, input)
 	reason := SimulationOutcomeUnloadedChunk
-	if inputWorldKnown {
+	// Teleports are authoritative and run before world-dependent simulation, so
+	// an unknown origin pose must not prevent one from reaching its destination.
+	if inputWorldKnown || state.HasTeleport() {
 		reason = s.simulateCore(state, true)
 	} else {
 		state.SetVel(mgl32.Vec3{})
@@ -513,9 +515,15 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	}()
 	// The launch is a one-shot impulse; the remaining Riptide ticks decay
 	// through ordinary travel rather than a dedicated movement mode.
-	if !state.Flying && s.attemptRiptide(state, inWater, s.riptideHeadInWater(state)) {
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("riptide launch applied: %v", state.Vel)
+	if !state.Flying {
+		launched, known := s.attemptRiptide(state, inWater)
+		if !known {
+			return false
+		}
+		if launched {
+			if debugf := s.Options.Debugf; debugf != nil {
+				debugf("riptide launch applied: %v", state.Vel)
+			}
 		}
 	}
 

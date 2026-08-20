@@ -193,6 +193,22 @@ func TestTeleportDoesNotApplyJumpImpulse(t *testing.T) {
 	}
 }
 
+func TestQueuedTeleportEscapesUnloadedOrigin(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{16.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.QueueTeleport(mgl32.Vec3{0.5, 0, 0.5}, false, 0)
+
+	result := (&Simulator{World: selectiveChunkWorld{}}).Simulate(state, InputState{ClientPos: state.Client.Pos})
+
+	if result.Outcome != SimulationOutcomeTeleport {
+		t.Fatalf("outcome = %v, want teleport from unloaded origin", result.Outcome)
+	}
+	if state.Pos != state.TeleportPos || state.HasTeleport() {
+		t.Fatalf("queued teleport was not completed: pos=%v target=%v pending=%v", state.Pos, state.TeleportPos, state.HasTeleport())
+	}
+}
+
 func TestQueueTeleportCanTargetOrigin(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{10, 20, 30}
@@ -487,6 +503,54 @@ func TestRiptideLaunchChecksSweptChunks(t *testing.T) {
 	}
 }
 
+func TestRiptideHeadProbeRequiresLoadedArea(t *testing.T) {
+	base := newLiquidWorld().set(cube.Pos{0, 0, 0}, waterSource)
+	w := &riptideHeadProbeWorld{liquidWorld: base}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Client.Pos = state.Pos
+	state.CrawlingHeight = 0.6
+	state.Crawling = true
+	state.Size[1] = state.CrawlingHeight
+	state.OnGround = true
+	state.HasGravity = true
+	state.RiptideReady = true
+	state.StartingSpinAttack = true
+
+	result := (&Simulator{
+		World:     w,
+		Equipment: fixedEquipment{EnchantmentRiptide: 2},
+	}).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for unknown Riptide head probe", result.Outcome)
+	}
+	if w.headProbes != 1 {
+		t.Fatalf("Riptide head probe checks = %d, want 1", w.headProbes)
+	}
+	if state.RiptideTicks != 0 || !state.RiptideReady || !state.StartingSpinAttack {
+		t.Fatalf("unknown head probe consumed launch state: ticks=%d ready=%v starting=%v", state.RiptideTicks, state.RiptideReady, state.StartingSpinAttack)
+	}
+}
+
+func TestIneligibleRiptideSkipsHeadProbe(t *testing.T) {
+	w := &riptideHeadProbeWorld{liquidWorld: newLiquidWorld()}
+	state := newBaseState()
+	state.CrawlingHeight = 0.6
+	state.Crawling = true
+	state.Size[1] = state.CrawlingHeight
+	state.HasGravity = false
+
+	result := (&Simulator{World: w}).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeNormal {
+		t.Fatalf("outcome = %v, want normal movement without Riptide", result.Outcome)
+	}
+	if w.headProbes != 0 {
+		t.Fatalf("ineligible Riptide performed %d head probes", w.headProbes)
+	}
+}
+
 func TestCompletedTeleportCounterAdvancesOnce(t *testing.T) {
 	state := newBaseState()
 	state.QueueTeleport(mgl32.Vec3{10, 20, 30}, false, 0)
@@ -716,6 +780,20 @@ func (liquidFlowProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
 
 type poseProbeWorld struct {
 	staticWorld
+}
+
+type riptideHeadProbeWorld struct {
+	*liquidWorld
+	headProbes int
+}
+
+// IsMovementAreaLoaded rejects the block containing a crawling player's head.
+func (w *riptideHeadProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	if aabb.Min().Y() == 1 && aabb.Max().Y() == 2 && aabb.Min().X() == 0 && aabb.Max().X() == 1 && aabb.Min().Z() == 0 && aabb.Max().Z() == 1 {
+		w.headProbes++
+		return false
+	}
+	return true
 }
 
 // IsMovementAreaLoaded accepts the current crawl pose but rejects standing.

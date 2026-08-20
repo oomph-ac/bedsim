@@ -83,20 +83,28 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 	state.FallDistance = 0
 }
 
-// attemptRiptide applies a validated one-shot Riptide launch.
-func (s *Simulator) attemptRiptide(state *MovementState, touchingWater, headInWater bool) bool {
+// attemptRiptide applies a validated one-shot Riptide launch and reports
+// whether every world probe needed for the decision was known.
+func (s *Simulator) attemptRiptide(state *MovementState, touchingWater bool) (launched, known bool) {
 	if s.Equipment == nil || state.InVehicle || state.RiptideTicks > 0 || !state.RiptideReady || (!touchingWater && !state.RiptideInRain) {
-		return false
+		return false, true
 	}
 	level := s.Equipment.EnchantmentLevel(EnchantmentRiptide)
 	if level <= 0 || !state.StartingSpinAttack {
-		return false
+		return false, true
+	}
+	headInWater := false
+	if state.OnGround && state.HasGravity && touchingWater {
+		headInWater, known = s.riptideHeadInWaterKnown(state)
+		if !known {
+			return false, false
+		}
 	}
 	state.SetVel(state.Vel.Add(s.riptideImpulse(state, level, touchingWater, headInWater)))
 	state.RiptideTicks = 20
 	state.RiptideCollision = false
 	state.StartingSpinAttack = false
-	return true
+	return true, true
 }
 
 // riptideImpulse returns the one-shot launch velocity for a spin attack. The
@@ -114,7 +122,7 @@ func (s *Simulator) riptideImpulse(state *MovementState, level int, wasInWater, 
 		if wasInWater && !headInWater {
 			direction[1] = direction[1] / WaterDrag * NormalGravityMultiplier
 		} else {
-			direction[1] += NormalGravity
+			direction[1] += state.Gravity
 		}
 	}
 	return direction
@@ -123,14 +131,28 @@ func (s *Simulator) riptideImpulse(state *MovementState, level int, wasInWater, 
 // riptideHeadInWater reports whether the player's head is below the local
 // water surface.
 func (s *Simulator) riptideHeadInWater(state *MovementState) bool {
+	inWater, _ := s.riptideHeadInWaterKnown(state)
+	return inWater
+}
+
+// riptideHeadInWaterKnown reports whether the head is submerged and whether
+// the block containing it is loaded.
+func (s *Simulator) riptideHeadInWaterKnown(state *MovementState) (inWater, known bool) {
 	heightOffset := DefaultPlayerHeightOffset
 	if state.Sneaking {
 		heightOffset = SneakingPlayerHeightOffset
 	}
 	position := state.Pos.Add(mgl32.Vec3{0, heightOffset, 0})
 	pos := posFromVec3(position)
+	probe := cube.Box32(
+		float32(pos.X()), float32(pos.Y()), float32(pos.Z()),
+		float32(pos.X()+1), float32(pos.Y()+1), float32(pos.Z()+1),
+	)
+	if !s.movementAreaLoaded(probe) {
+		return false, false
+	}
 	liquid, ok := s.liquidAt(pos)
-	return ok && liquidWater.matches(liquid) && position.Y() < float32(pos.Y())+liquidHeight(liquid)
+	return ok && liquidWater.matches(liquid) && position.Y() < float32(pos.Y())+liquidHeight(liquid), true
 }
 
 func stopRiptideOnBlockCollision(state *MovementState) {
