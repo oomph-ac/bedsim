@@ -215,6 +215,26 @@ func TestHardTeleportAtMaximumCompletionTickFinishes(t *testing.T) {
 	}
 }
 
+func TestLegacyTeleportFieldsCanBeRearmed(t *testing.T) {
+	state := newBaseState()
+	sim := &Simulator{World: mockWorld{}}
+	state.TeleportPos = mgl32.Vec3{1, 2, 3}
+	state.TicksSinceTeleport = 0
+	state.TeleportCompletionTicks = 0
+
+	if result := sim.SimulateState(state); result.Outcome != SimulationOutcomeTeleport {
+		t.Fatalf("first outcome = %v, want teleport", result.Outcome)
+	}
+
+	state.TeleportPos = mgl32.Vec3{4, 5, 6}
+	state.TicksSinceTeleport = 0
+	state.TeleportCompletionTicks = 0
+	result := sim.SimulateState(state)
+	if result.Outcome != SimulationOutcomeTeleport || state.Pos != state.TeleportPos {
+		t.Fatalf("rearmed teleport result=%+v pos=%v target=%v", result, state.Pos, state.TeleportPos)
+	}
+}
+
 func TestLegacyPendingTeleportKeepsExplicitTarget(t *testing.T) {
 	state := newBaseState()
 	state.PendingTeleports = 1

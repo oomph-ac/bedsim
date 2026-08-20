@@ -766,7 +766,6 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 			state.TeleportPos = state.PendingTeleportPos
 		}
 		state.TeleportPending = true
-		state.TeleportCompleted = false
 	}
 	if !state.HasTeleport() {
 		return false
@@ -783,8 +782,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 		if state.PendingTeleports == 0 {
 			state.PendingTeleportPos = mgl32.Vec3{}
 		}
-		state.TicksSinceTeleport = teleportCompleteTick(state.TeleportCompletionTicks)
-		state.TeleportCompleted = true
+		completeTeleport(state)
 		return true
 	}
 
@@ -804,19 +802,19 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 		if state.PendingTeleports == 0 {
 			state.PendingTeleportPos = mgl32.Vec3{}
 		}
-		state.TicksSinceTeleport = teleportCompleteTick(state.TeleportCompletionTicks)
-		state.TeleportCompleted = true
+		completeTeleport(state)
 	}
 	return true
 }
 
-// teleportCompleteTick returns the first tick after a teleport's completion
-// window without overflowing the counter.
-func teleportCompleteTick(completionTicks uint64) uint64 {
-	if completionTicks == math32.MaxUint64 {
-		return completionTicks
+// completeTeleport moves the timer beyond its active window without overflow.
+func completeTeleport(state *MovementState) {
+	if state.TeleportCompletionTicks == math32.MaxUint64 {
+		state.TeleportCompletionTicks = 0
+		state.TicksSinceTeleport = 1
+		return
 	}
-	return completionTicks + 1
+	state.TicksSinceTeleport = state.TeleportCompletionTicks + 1
 }
 
 func (s *Simulator) simulateGlide(state *MovementState) {

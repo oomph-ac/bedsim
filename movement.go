@@ -80,9 +80,6 @@ type MovementState struct {
 	TeleportCompletionTicks uint64
 	TeleportIsSmoothed      bool
 	TeleportPending         bool
-	// TeleportCompleted distinguishes a finished teleport from legacy timer
-	// state that still falls within its numeric completion window.
-	TeleportCompleted bool
 
 	Sprinting, PressingSprint         bool
 	ServerSprint, ServerSprintApplied bool
@@ -196,9 +193,6 @@ func (s *MovementState) HasTeleport() bool {
 	if s.TeleportPending || s.PendingTeleports > 0 {
 		return true
 	}
-	if s.TeleportCompleted {
-		return false
-	}
 	if s.TeleportCompletionTicks == 0 {
 		return s.TicksSinceTeleport == 0 && s.TeleportPos != (mgl32.Vec3{})
 	}
@@ -232,5 +226,4 @@ func (s *MovementState) QueueTeleport(pos mgl32.Vec3, smoothed bool, completionT
 	s.TeleportCompletionTicks = completionTicks
 	s.TicksSinceTeleport = 0
 	s.TeleportPending = true
-	s.TeleportCompleted = false
 }
