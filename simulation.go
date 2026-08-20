@@ -158,7 +158,7 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 	if state.HasKnockback() {
 		sweepVelocity = state.Knockback
 	}
-	if s.World != nil && !s.movementAreaLoaded(currentArea.Extend(sweepVelocity)) {
+	if s.World != nil && !s.movementAreaLoaded(movementProbeArea(currentArea.Extend(sweepVelocity))) {
 		clearRiptideReady = false
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
@@ -412,7 +412,9 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) bool {
 		state.Gliding = true
 	}
 
-	state.StartingSpinAttack = input.StartSpinAttack
+	// Keep a validated launch edge pending when an unloaded tick could not
+	// consume it. A fresh validated event or successful simulation clears it.
+	state.StartingSpinAttack = input.StartSpinAttack || state.RiptideReady && state.StartingSpinAttack
 	if input.StopSpinAttack && state.RiptideTicks > 0 && state.RiptideCollision {
 		state.RiptideTicks = 0
 		state.RiptideCollision = false
@@ -1497,7 +1499,22 @@ func (s *Simulator) movementAreaLoaded(aabb cube.BBox32) bool {
 // movementSweepLoaded reports whether the world contains the displacement
 // produced after all same-tick acceleration has been applied.
 func (s *Simulator) movementSweepLoaded(state *MovementState) bool {
-	return s.World == nil || s.movementAreaLoaded(state.BoundingBox(s.Options.UseSlideOffset).Extend(state.Vel))
+	if s.World == nil {
+		return true
+	}
+	sweep := state.BoundingBox(s.Options.UseSlideOffset).Extend(state.Vel)
+	return s.movementAreaLoaded(movementProbeArea(sweep))
+}
+
+// movementProbeArea returns the block-aligned volume containing normal
+// movement's surrounding block, support, web, and bubble-column lookups.
+func movementProbeArea(aabb cube.BBox32) cube.BBox32 {
+	grown := aabb.Grow(1)
+	min, max := grown.Min(), grown.Max()
+	return cube.Box32(
+		math32.Floor(min.X()), math32.Floor(min.Y()), math32.Floor(min.Z()),
+		math32.Ceil(max.X())+1, math32.Ceil(max.Y())+1, math32.Ceil(max.Z())+1,
+	)
 }
 
 const (

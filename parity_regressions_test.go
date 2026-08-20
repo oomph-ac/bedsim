@@ -318,6 +318,21 @@ func TestMovementChecksSweptChunks(t *testing.T) {
 	}
 }
 
+func TestMovementPreflightsAuxiliaryWorldProbes(t *testing.T) {
+	w := &auxiliaryProbeWorld{}
+	state := newBaseState()
+	state.HasGravity = false
+
+	result := (&Simulator{World: w}).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for unknown auxiliary probes", result.Outcome)
+	}
+	if w.blockReads != 0 {
+		t.Fatalf("unknown auxiliary area was read %d times", w.blockReads)
+	}
+}
+
 func TestMovementChecksStepProbeArea(t *testing.T) {
 	w := stepProbeWorld{staticWorld: staticWorld{
 		chunkLoaded: true,
@@ -500,6 +515,34 @@ func TestRiptideLaunchChecksSweptChunks(t *testing.T) {
 	}
 	if state.TicksSinceKnockback != 1 {
 		t.Fatalf("unloaded Riptide advanced tick counters: knockback=%d", state.TicksSinceKnockback)
+	}
+}
+
+func TestRiptideLaunchRetriesAfterUnloadedTick(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 15.5}
+	state.Client.Pos = state.Pos
+	state.RiptideInRain = true
+	state.RiptideReady = true
+	equipment := fixedEquipment{EnchantmentRiptide: 2}
+
+	first := (&Simulator{
+		World:     selectiveChunkWorld{},
+		Equipment: equipment,
+	}).Simulate(state, InputState{ClientPos: state.Client.Pos, StartSpinAttack: true})
+	if first.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("first outcome = %v, want unloaded chunk", first.Outcome)
+	}
+
+	second := (&Simulator{
+		World:     mockWorld{},
+		Equipment: equipment,
+	}).Simulate(state, InputState{ClientPos: state.Client.Pos})
+	if second.Outcome != SimulationOutcomeNormal || state.RiptideTicks == 0 {
+		t.Fatalf("retried launch outcome=%v ticks=%d", second.Outcome, state.RiptideTicks)
+	}
+	if state.RiptideReady || state.StartingSpinAttack {
+		t.Fatalf("successful retry left launch pending: ready=%v starting=%v", state.RiptideReady, state.StartingSpinAttack)
 	}
 }
 
@@ -740,6 +783,27 @@ func (selectiveChunkWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 { return n
 
 func (selectiveChunkWorld) IsChunkLoaded(chunkX, chunkZ int32) bool {
 	return chunkX == 0 && chunkZ == 0
+}
+
+type auxiliaryProbeWorld struct {
+	blockReads int
+}
+
+func (w *auxiliaryProbeWorld) Block(cube.Pos) world.Block {
+	w.blockReads++
+	return block.Air{}
+}
+
+func (*auxiliaryProbeWorld) BlockCollisions(cube.Pos) []cube.BBox32 { return nil }
+
+func (*auxiliaryProbeWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 { return nil }
+
+func (*auxiliaryProbeWorld) IsChunkLoaded(int32, int32) bool { return true }
+
+// IsMovementAreaLoaded accepts the actor box but rejects surrounding probes.
+func (*auxiliaryProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	return aabb.Min().X() >= -0.3 && aabb.Min().Y() >= 0 && aabb.Min().Z() >= -0.3 &&
+		aabb.Max().X() <= 0.3 && aabb.Max().Y() <= 1.8 && aabb.Max().Z() <= 0.3
 }
 
 type stepProbeWorld struct {
