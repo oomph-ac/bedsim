@@ -29,8 +29,15 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 		swimming: state.Swimming,
 		swimAmt:  state.SwimAmount,
 	}
-	s.applyInput(state, input)
-	reason := s.simulateCore(state, true)
+	inputWorldKnown := s.applyInput(state, input)
+	reason := SimulationOutcomeUnloadedChunk
+	if inputWorldKnown {
+		reason = s.simulateCore(state, true)
+	} else {
+		state.SetVel(mgl32.Vec3{})
+		state.SwimWaterGraceTicks = 0
+		state.StuckSpeedMultiplier = mgl32.Vec3{}
+	}
 	if s.Options.SprintTiming == SprintTimingLegacy {
 		s.applyLegacySprint(state, input)
 	}
@@ -199,9 +206,17 @@ func (s *Simulator) resultFromState(state *MovementState, outcome SimulationOutc
 	return result
 }
 
-func (s *Simulator) applyInput(state *MovementState, input InputState) {
+func (s *Simulator) applyInput(state *MovementState, input InputState) bool {
 	state.ensurePoseHeights()
 	poseCollisionsAvailable := s.poseCollisionsAvailable(state)
+	poseWorldKnown := poseCollisionsAvailable
+	canFitHeight := func(height float32) bool {
+		fits, known := s.canFitHeightKnown(state, height)
+		if !known {
+			poseWorldKnown = false
+		}
+		return known && fits
+	}
 	state.Client.HorizontalCollision = input.HorizontalCollision
 	state.Client.VerticalCollision = input.VerticalCollision
 
@@ -274,7 +289,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	} else if input.StopSneaking {
 		if state.Crawling {
 			state.Sneaking = false
-		} else if poseCollisionsAvailable && s.canFitHeight(state, state.StandingHeight) {
+		} else if poseCollisionsAvailable && canFitHeight(state.StandingHeight) {
 			state.Sneaking = false
 			state.Size[1] = state.StandingHeight
 		} else {
@@ -287,7 +302,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 		} else if input.SneakDown {
 			state.Sneaking = true
 			state.Size[1] = state.SneakingHeight
-		} else if state.Sneaking && (!poseCollisionsAvailable || !s.canFitHeight(state, state.StandingHeight)) {
+		} else if state.Sneaking && (!poseCollisionsAvailable || !canFitHeight(state.StandingHeight)) {
 			state.Size[1] = state.SneakingHeight
 		} else {
 			state.Sneaking = false
@@ -295,7 +310,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 		}
 	}
 	if input.StartCrawling {
-		if poseCollisionsAvailable && !s.canFitHeight(state, state.StandingHeight) {
+		if poseCollisionsAvailable && !canFitHeight(state.StandingHeight) {
 			state.Crawling = true
 			state.Sneaking = false
 			state.Size[1] = state.CrawlingHeight
@@ -305,7 +320,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 		if wantSneak {
 			targetHeight = state.SneakingHeight
 		}
-		if poseCollisionsAvailable && s.canFitHeight(state, targetHeight) {
+		if poseCollisionsAvailable && canFitHeight(targetHeight) {
 			state.Crawling = false
 			state.Sneaking = wantSneak
 			state.Size[1] = targetHeight
@@ -319,10 +334,12 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	state.StoppedSwimmingThisTick = wasSwimming && input.StopSwimming
 	if input.StopSwimming {
 		state.Swimming = false
-		s.restorePoseAfterSwimming(state, poseCollisionsAvailable)
+		if !s.restorePoseAfterSwimming(state, poseCollisionsAvailable) {
+			poseWorldKnown = false
+		}
 	} else if input.StartSwimming {
 		state.Swimming = true
-		if state.SwimPose() || poseCollisionsAvailable && s.canFitHeight(state, state.StandingHeight) {
+		if state.SwimPose() || poseCollisionsAvailable && canFitHeight(state.StandingHeight) {
 			setSwimmingPoseFlags(state)
 		}
 	}
@@ -401,6 +418,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) {
 	}
 
 	state.Impulse = moveVector.Mul(0.98)
+	return poseWorldKnown
 }
 
 func (s *Simulator) applyLegacySprint(state *MovementState, input InputState) {
@@ -514,12 +532,16 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 				state.Gliding = false
 				state.GlideBoostTicks = 0
 			}
-			s.applyLiquidFlow(state, waterBlocks, liquidWater)
+			if !s.applyLiquidFlow(state, waterBlocks, liquidWater) {
+				return false
+			}
 			if !s.simulateLiquidTravel(state, liquidWater, inWater) {
 				return false
 			}
 		} else {
-			s.applyLiquidFlow(state, lavaBlocks, liquidLava)
+			if !s.applyLiquidFlow(state, lavaBlocks, liquidLava) {
+				return false
+			}
 			if !s.simulateLiquidTravel(state, liquidLava, true) {
 				return false
 			}
@@ -775,6 +797,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 
 	if !state.TeleportIsSmoothed {
 		state.SetPos(state.TeleportPos)
+		state.SupportingBlockPos = nil
 		state.SetVel(mgl32.Vec3{})
 		state.JumpDelay = 0
 		state.TeleportPending = false
@@ -795,6 +818,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 	}
 	newPos := state.Pos.Add(posDelta.Mul(1.0 / float32(remaining)))
 	state.SetPos(newPos)
+	state.SupportingBlockPos = nil
 	state.JumpDelay = 0
 	if remaining == 1 {
 		state.TeleportPending = false
@@ -1600,10 +1624,6 @@ func filteredCollisionBoxes(boxes []cube.BBox32) []cube.BBox32 {
 	return boxes
 }
 
-type nearbyBBoxProbe interface {
-	HasNearbyBBoxes(aabb cube.BBox32) bool
-}
-
 func (s *Simulator) hasNearbyBBoxes(state *MovementState, aabb cube.BBox32) bool {
 	if s.World == nil {
 		return false
@@ -1611,15 +1631,18 @@ func (s *Simulator) hasNearbyBBoxes(state *MovementState, aabb cube.BBox32) bool
 	if _, dynamic := s.World.(MovementCollisionProvider); dynamic {
 		return len(s.nearbyBBoxes(state, aabb)) > 0
 	}
-	if probe, ok := s.World.(nearbyBBoxProbe); ok {
-		return probe.HasNearbyBBoxes(aabb)
-	}
 	return len(filteredCollisionBoxes(s.World.GetNearbyBBoxes(aabb))) > 0
 }
 
 func (s *Simulator) canFitHeight(state *MovementState, height float32) bool {
+	fits, known := s.canFitHeightKnown(state, height)
+	return known && fits
+}
+
+// canFitHeightKnown reports whether the target pose is known and collision-free.
+func (s *Simulator) canFitHeightKnown(state *MovementState, height float32) (fits, known bool) {
 	if s.World == nil {
-		return true
+		return true, true
 	}
 	standing := *state
 	standing.Size[1] = height
@@ -1628,7 +1651,11 @@ func (s *Simulator) canFitHeight(state *MovementState, height float32) bool {
 	standing.SwimWaterGraceTicks = 0
 	standing.PressingDescend = false
 	standing.WantDown = false
-	return len(s.nearbyBBoxes(&standing, standing.BoundingBox(s.Options.UseSlideOffset))) == 0
+	aabb := standing.BoundingBox(s.Options.UseSlideOffset)
+	if !s.movementAreaLoaded(aabb) {
+		return false, false
+	}
+	return len(s.nearbyBBoxes(&standing, aabb)) == 0, true
 }
 
 func (s *Simulator) poseCollisionsAvailable(state *MovementState) bool {
@@ -1644,23 +1671,28 @@ func setSwimmingPoseFlags(state *MovementState) {
 	state.Size[1] = state.StandingHeight
 }
 
-func (s *Simulator) restorePoseAfterSwimming(state *MovementState, collisionsAvailable bool) {
+func (s *Simulator) restorePoseAfterSwimming(state *MovementState, collisionsAvailable bool) bool {
 	if !collisionsAvailable {
-		return
+		return false
 	}
-	if s.canFitHeight(state, state.StandingHeight) {
+	if fits, known := s.canFitHeightKnown(state, state.StandingHeight); !known {
+		return false
+	} else if fits {
 		state.Sneaking = false
 		state.Crawling = false
 		state.Size[1] = state.StandingHeight
-		return
+		return true
 	}
-	if s.canFitHeight(state, state.SneakingHeight) {
+	if fits, known := s.canFitHeightKnown(state, state.SneakingHeight); !known {
+		return false
+	} else if fits {
 		state.Sneaking = true
 		state.Crawling = false
 		state.Size[1] = state.SneakingHeight
-		return
+		return true
 	}
 	state.Sneaking = false
 	state.Crawling = true
 	state.Size[1] = state.CrawlingHeight
+	return true
 }

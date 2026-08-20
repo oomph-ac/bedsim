@@ -336,7 +336,13 @@ func (s *Simulator) containsAnyLiquid(box cube.BBox32) bool {
 	return false
 }
 
-func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, kind liquidKind) {
+func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, kind liquidKind) bool {
+	if len(positions) == 0 {
+		return true
+	}
+	if !s.movementAreaLoaded(state.BoundingBox(s.Options.UseSlideOffset).Grow(1)) {
+		return false
+	}
 	flow := mgl32.Vec3{}
 	for _, pos := range positions {
 		liquid, ok := s.liquidAt(pos)
@@ -355,6 +361,7 @@ func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, 
 			debugf("%s flow applied strength=%.6f flow=%v vel=%v", kind.typeName(), strength, flow, state.Vel)
 		}
 	}
+	return true
 }
 
 func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {

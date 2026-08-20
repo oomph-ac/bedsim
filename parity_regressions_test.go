@@ -174,6 +174,8 @@ func TestTeleportDoesNotApplyJumpImpulse(t *testing.T) {
 	state := newBaseState()
 	state.OnGround = true
 	state.Jumping = true
+	support := cube.Pos{7, 8, 9}
+	state.SupportingBlockPos = &support
 	state.QueueTeleport(mgl32.Vec3{10, 20, 30}, false, 0)
 
 	result := (&Simulator{World: mockWorld{}}).SimulateState(state)
@@ -185,6 +187,9 @@ func TestTeleportDoesNotApplyJumpImpulse(t *testing.T) {
 	}
 	if state.HasTeleport() {
 		t.Fatal("completed hard teleport remained active")
+	}
+	if state.SupportingBlockPos != nil {
+		t.Fatalf("teleport retained stale support block: %v", *state.SupportingBlockPos)
 	}
 }
 
@@ -350,6 +355,41 @@ func TestMovementChecksLiquidExitProbeArea(t *testing.T) {
 
 	if result.Outcome != SimulationOutcomeUnloadedChunk {
 		t.Fatalf("outcome = %v, want unloaded chunk for unknown liquid-exit probe", result.Outcome)
+	}
+}
+
+func TestMovementChecksLiquidFlowProbeArea(t *testing.T) {
+	base := newLiquidWorld().set(cube.Pos{15, 0, 0}, waterSource)
+	w := liquidFlowProbeWorld{liquidWorld: base}
+	state := submergedState()
+	state.Pos = mgl32.Vec3{15.5, 0.5, 0.5}
+	state.Client.Pos = state.Pos
+	state.HasGravity = false
+
+	result := newLiquidSim(w).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for unknown liquid-flow probe", result.Outcome)
+	}
+}
+
+func TestMovementChecksTargetPoseArea(t *testing.T) {
+	w := poseProbeWorld{staticWorld: staticWorld{
+		chunkLoaded: true,
+		boxes:       []cube.BBox32{cube.Box32(-1, 0.7, -1, 1, 1.8, 1)},
+	}}
+	state := newBaseState()
+	state.CrawlingHeight = 0.6
+	state.Crawling = true
+	state.Size[1] = state.CrawlingHeight
+
+	result := (&Simulator{World: w}).Simulate(state, InputState{StopCrawling: true})
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk for unknown target pose", result.Outcome)
+	}
+	if !state.Crawling || state.Size[1] != state.CrawlingHeight {
+		t.Fatalf("unknown target pose was committed: crawling=%v size=%v", state.Crawling, state.Size)
 	}
 }
 
@@ -621,6 +661,11 @@ func (invalidCollisionWorld) GetNearbyBBoxes(cube.BBox32) []cube.BBox32 {
 	return []cube.BBox32{cube.Box32(0, 0, 0, 0, 1, 1)}
 }
 
+// HasNearbyBBoxes reports the invalid box to exercise the unfilterable fast path.
+func (invalidCollisionWorld) HasNearbyBBoxes(cube.BBox32) bool {
+	return true
+}
+
 type selectiveChunkWorld struct{}
 
 func (selectiveChunkWorld) Block(cube.Pos) world.Block { return block.Air{} }
@@ -658,6 +703,24 @@ type liquidExitProbeWorld struct {
 // IsMovementAreaLoaded rejects the raised liquid-exit probe.
 func (liquidExitProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
 	return aabb.Max().Y() <= 2.5
+}
+
+type liquidFlowProbeWorld struct {
+	*liquidWorld
+}
+
+// IsMovementAreaLoaded rejects liquid-flow reads across the chunk boundary.
+func (liquidFlowProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	return aabb.Max().X() < 16
+}
+
+type poseProbeWorld struct {
+	staticWorld
+}
+
+// IsMovementAreaLoaded accepts the current crawl pose but rejects standing.
+func (poseProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	return aabb.Max().Y() <= 0.7
 }
 
 type approvingAreaWorld struct {
