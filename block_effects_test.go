@@ -111,7 +111,7 @@ func TestHoneyBlockReducesJumpPower(t *testing.T) {
 	state.Jumping = true
 	state.JumpHeight = DefaultJumpHeight
 
-	if !sim.attemptJump(state, nil) {
+	if !sim.attemptJump(state) {
 		t.Fatal("expected jump to be applied")
 	}
 	if want := float32(DefaultJumpHeight * 0.6); math32.Abs(state.Vel.Y()-want) > 1e-6 {

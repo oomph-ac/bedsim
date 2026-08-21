@@ -562,7 +562,7 @@ func TestSimulateStateDebugTraceIncludesCollisionStream(t *testing.T) {
 	}
 }
 
-func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
+func TestSimulateStateResolvesBlockedJumpThroughAutoStep(t *testing.T) {
 	var logs []string
 	sim := &Simulator{
 		World: staticWorld{
@@ -592,8 +592,45 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 	if result.Outcome != SimulationOutcomeNormal {
 		t.Fatalf("expected normal outcome, got %v", result.Outcome)
 	}
-	if !containsLog(logs, "jump determined to be blocked") {
-		t.Fatalf("expected jump-block debug log, logs=%v", logs)
+	if math32.Abs(result.Position.Y()) > 1e-6 || result.Position.Z() <= 0.69 {
+		t.Fatalf("expected the filtered auto-step path to move under the block, got position %v", result.Position)
+	}
+	if !containsLog(logs, "auto-step collision boxes=0/1") {
+		t.Fatalf("expected the overhead collision box to be excluded from auto-step, logs=%v", logs)
+	}
+	if containsLog(logs, "jump determined to be blocked") {
+		t.Fatalf("expected no pre-emptive jump cancellation, logs=%v", logs)
+	}
+}
+
+func TestCalculateAutoStepExcludesBoxesAtPlayerTop(t *testing.T) {
+	originalBB := cube.Box32(0, 0, 0, 1, 1.8, 1)
+	lowObstacle := cube.Box32(1, 0, 0, 2, 0.5, 1)
+	overhead := cube.Box32(0, 1.8, 0, 1, 2.8, 1)
+
+	result := calculateAutoStep(originalBB, mgl32.Vec3{1, 0, 0}, []cube.BBox32{lowObstacle, overhead}, false)
+
+	if result.collisionBoxCount != 1 {
+		t.Fatalf("expected only the low obstacle in the auto-step set, got %d boxes", result.collisionBoxCount)
+	}
+	if result.upVelocity.Y() != StepHeight {
+		t.Fatalf("expected overhead box to leave upward step velocity unchanged, got %v", result.upVelocity)
+	}
+}
+
+func TestCalculateAutoStepUsesReverseCollisionOrder(t *testing.T) {
+	originalBB := cube.Box32(-0.3, 0, -0.3, 0.3, 1.8, 0.3)
+	// These overlapping boxes depenetrate X to -0.1 in client reverse order.
+	// Processing them forward instead produces +0.3.
+	boxes := []cube.BBox32{
+		cube.Box32(0.2, 0.1, -0.2, 0.6, 0.3, 0.1),
+		cube.Box32(-0.8, 0.3, -0.6, 0, 1.1, 0.2),
+	}
+
+	result := calculateAutoStep(originalBB, mgl32.Vec3{0.4, 0, 0.2}, boxes, false)
+
+	if math32.Abs(result.upVelocity.X()+0.1) > 1e-6 {
+		t.Fatalf("expected reverse-order depenetration on X, got upward velocity %v", result.upVelocity)
 	}
 }
 
@@ -611,7 +648,7 @@ func TestStepUpTiebreaker(t *testing.T) {
 
 	startPos := mgl32.Vec3{0.5, 0, 0.5}
 
-	runSim := func(ignoreStepTiebreaker bool) (mgl32.Vec3, bool) {
+	runSim := func(ignoreStepTiebreaker bool) (mgl32.Vec3, bool, bool) {
 		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox32{slabBox, groundBox}}
 		sim := &Simulator{
 			World:   w,
@@ -642,20 +679,23 @@ func TestStepUpTiebreaker(t *testing.T) {
 			input.ClientVel = state.Vel
 		}
 		stepped := state.Pos.Y() >= 0.45
-		return state.Pos, stepped
+		return state.Pos, stepped, state.OnGround
 	}
 
 	t.Run("rejected without flag", func(t *testing.T) {
-		pos, stepped := runSim(false)
+		pos, stepped, _ := runSim(false)
 		if stepped {
 			t.Fatalf("expected step-up to be rejected by tie-breaker, but player stepped up to Y=%.4f", pos.Y())
 		}
 	})
 
 	t.Run("accepted with flag", func(t *testing.T) {
-		pos, stepped := runSim(true)
+		pos, stepped, onGround := runSim(true)
 		if !stepped {
 			t.Fatalf("expected step-up to be accepted with IgnoreClientStepTiebreaker, but player at Y=%.4f", pos.Y())
+		}
+		if !onGround {
+			t.Fatal("expected an accepted positive-height step to remain grounded")
 		}
 	})
 

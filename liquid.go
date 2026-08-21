@@ -107,7 +107,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	}
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
-	if !s.tryCollisions(state, false) {
+	if !s.tryCollisions(state) {
 		return false
 	}
 	stopRiptideOnBlockCollision(state)
