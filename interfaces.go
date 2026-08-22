@@ -28,6 +28,17 @@ type LiquidProvider interface {
 	Liquid(pos cube.Pos) (world.Liquid, bool)
 }
 
+// LiquidFlowProvider resolves block face and material properties used by
+// liquid-flow calculations. It is optional; BedSim otherwise uses block models
+// for faces and collision boxes for falling-current barriers.
+type LiquidFlowProvider interface {
+	// LiquidFlowFaceClosed reports whether face at pos blocks horizontal flow.
+	LiquidFlowFaceClosed(pos cube.Pos, face cube.Face) bool
+	// LiquidFlowBarrier reports whether the block material at pos bends falling
+	// liquid flow downward.
+	LiquidFlowBarrier(pos cube.Pos) bool
+}
+
 // MovementCollisionContext contains player-dependent state needed by dynamic
 // collision shapes such as scaffolding and powder snow.
 type MovementCollisionContext struct {
@@ -46,7 +57,8 @@ type MovementCollisionProvider interface {
 
 // ClimbableContactProvider resolves orientation-aware ladder and vine contact.
 // aabb is in world space.
-// The built-in fallback scans intersecting block volumes when this is absent.
+// The built-in fallback uses the climbable semantics of the player's current
+// block cell when this provider is absent.
 type ClimbableContactProvider interface {
 	// HasClimbableContact receives a world-space movement volume.
 	HasClimbableContact(aabb cube.BBox32) bool

@@ -858,6 +858,10 @@ func completeTeleport(state *MovementState) {
 }
 
 func (s *Simulator) simulateGlide(state *MovementState) {
+	if state.Vel.Y() > glideFallDistanceVelocityThreshold {
+		state.FallDistance = 1
+	}
+
 	radians := math32.Pi / 180.0
 	yaw, pitch := state.Rotation.Z()*radians, state.Rotation.X()*radians
 	yawCos := MCCos(-yaw - math32.Pi)
@@ -874,7 +878,10 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 	lookHz := pitchCos
 	sqrPitchCos := pitchCos * pitchCos
 
-	gravity := effectiveGravity(state, vel)
+	gravity := state.Gravity
+	if state.SlowFalling {
+		gravity = SlowFallingGravity
+	}
 	vel[1] += -gravity + sqrPitchCos*(gravity*0.75)
 	if vel[1] < 0 && lookHz > GlideHorizontalLookEpsilon {
 		yAccel := vel[1] * -0.1 * sqrPitchCos

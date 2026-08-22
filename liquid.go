@@ -377,7 +377,7 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
 				continue
 			}
 		}
-		if len(s.blockCollisions(neighbourPos)) != 0 {
+		if s.liquidFlowSideClosed(pos, neighbourPos) || s.liquidFlowSideClosed(neighbourPos, pos) {
 			continue
 		}
 		below := neighbourPos.Side(cube.FaceDown)
@@ -389,7 +389,7 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
 		for _, face := range liquidFaces {
 			neighbourPos := pos.Add(face.delta)
 			aboveNeighbour := neighbourPos.Side(cube.FaceUp)
-			if len(s.blockCollisions(neighbourPos)) != 0 || len(s.blockCollisions(aboveNeighbour)) != 0 {
+			if s.liquidFlowBarrier(neighbourPos) || s.liquidFlowBarrier(aboveNeighbour) {
 				if length := flow.Len(); length > 1e-4 {
 					flow = flow.Mul(1 / length)
 				}
@@ -404,8 +404,21 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
 	return mgl32.Vec3{}
 }
 
+// liquidFlowSideClosed reports whether the block at pos closes the face toward side.
 func (s *Simulator) liquidFlowSideClosed(pos, side cube.Pos) bool {
-	return s.blockAtPos(pos).Model().FaceSolid(pos, pos.Face(side), s.World)
+	face := pos.Face(side)
+	if provider, ok := s.World.(LiquidFlowProvider); ok {
+		return provider.LiquidFlowFaceClosed(pos, face)
+	}
+	return s.blockAtPos(pos).Model().FaceSolid(pos, face, s.World)
+}
+
+// liquidFlowBarrier reports whether the block at pos bends falling flow downward.
+func (s *Simulator) liquidFlowBarrier(pos cube.Pos) bool {
+	if provider, ok := s.World.(LiquidFlowProvider); ok {
+		return provider.LiquidFlowBarrier(pos)
+	}
+	return len(s.blockCollisions(pos)) != 0
 }
 
 func liquidDecay(liquid world.Liquid) int {

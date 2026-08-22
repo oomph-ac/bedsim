@@ -114,8 +114,9 @@ type MovementState struct {
 	GlideBoostTicks int64
 
 	HasGravity bool
-	// SlowFalling reports whether the slow-falling effect is active. Its lower
-	// gravity only applies while descending.
+	// SlowFalling reports whether the slow-falling effect is active. Ordinary
+	// travel uses its lower gravity while descending; gliding uses it whenever
+	// the effect is active.
 	SlowFalling bool
 
 	Crawling              bool
