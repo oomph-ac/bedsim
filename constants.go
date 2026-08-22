@@ -16,13 +16,14 @@ const (
 	// bounces are not capped.
 	BedBounceCap = float32(1)
 	// This can be validated in Mob::ascendLadder().
-	ClimbSpeed                     = float32(0.2)
-	MaxConsumingImpulse            = float32(0.1225)
-	MaxSneakImpulse                = float32(0.3)
-	DefaultUnderwaterMovementSpeed = float32(0.02)
-	DefaultLavaMovementSpeed       = float32(0.02)
-	DefaultSwimSpeedMultiplier     = float32(1)
-	GlideHorizontalLookEpsilon     = float32(1e-4)
+	ClimbSpeed                         = float32(0.2)
+	MaxConsumingImpulse                = float32(0.1225)
+	MaxSneakImpulse                    = float32(0.3)
+	DefaultUnderwaterMovementSpeed     = float32(0.02)
+	DefaultLavaMovementSpeed           = float32(0.02)
+	DefaultSwimSpeedMultiplier         = float32(1)
+	GlideHorizontalLookEpsilon         = float32(1e-4)
+	glideFallDistanceVelocityThreshold = float32(-0.5)
 	// WalkAirSpeed and SprintAirSpeed are the air acceleration pair vanilla
 	// selects on the sprint flag alone; neither scales with the movement
 	// attribute.
