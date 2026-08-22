@@ -634,6 +634,22 @@ func TestCalculateAutoStepUsesReverseCollisionOrder(t *testing.T) {
 	}
 }
 
+func TestCalculateAutoStepDoesNotAllocate(t *testing.T) {
+	originalBB := cube.Box32(0, 0, 0, 1, 1.8, 1)
+	boxes := []cube.BBox32{
+		cube.Box32(1, 0, 0, 2, 0.5, 1),
+		cube.Box32(0, 1.8, 0, 1, 2.8, 1),
+	}
+
+	allocations := testing.AllocsPerRun(100, func() {
+		calculateAutoStep(originalBB, mgl32.Vec3{1, 0, 0}, boxes, false)
+	})
+
+	if allocations != 0 {
+		t.Fatalf("calculateAutoStep allocations = %v, want 0", allocations)
+	}
+}
+
 // TestStepUpTiebreaker verifies the client-alignment tie-breaker in tryCollisions:
 //   - Without IgnoreClientStepTiebreaker, a slab/stair step-up is rejected when
 //     the client position matches the pre-step position.

@@ -1068,39 +1068,50 @@ type autoStepResult struct {
 	collisionBoxCount int
 }
 
+// autoStepCollisionBox reports whether box participates in the auto-step pass.
+func autoStepCollisionBox(originalBB, box cube.BBox32) bool {
+	return box.Min().Y() < originalBB.Max().Y()
+}
+
 // calculateAutoStep applies the client auto-step sequence to the filtered collision boxes.
 func calculateAutoStep(originalBB cube.BBox32, velocity mgl32.Vec3, bbList []cube.BBox32, useOneWayCollisions bool) autoStepResult {
-	stepBBList := make([]cube.BBox32, 0, len(bbList))
-	// The client excludes boxes that start at or above the original player bounding-box top.
-	for _, blockBox := range bbList {
-		if blockBox.Min().Y() < originalBB.Max().Y() {
-			stepBBList = append(stepBBList, blockBox)
-		}
-	}
-
 	upVelocity := mgl32.Vec3{0, StepHeight}
 	xVelocity := mgl32.Vec3{velocity.X()}
 	zVelocity := mgl32.Vec3{0, 0, velocity.Z()}
 	stepBB := originalBB
+	collisionBoxCount := 0
 
-	for i := len(stepBBList) - 1; i >= 0; i-- {
-		upVelocity = BBClipCollide(stepBBList[i], stepBB, upVelocity, useOneWayCollisions, nil)
+	for i := len(bbList) - 1; i >= 0; i-- {
+		if !autoStepCollisionBox(originalBB, bbList[i]) {
+			continue
+		}
+		collisionBoxCount++
+		upVelocity = BBClipCollide(bbList[i], stepBB, upVelocity, useOneWayCollisions, nil)
 	}
 	stepBB = stepBB.Translate(upVelocity)
 
-	for i := len(stepBBList) - 1; i >= 0; i-- {
-		xVelocity = BBClipCollide(stepBBList[i], stepBB, xVelocity, useOneWayCollisions, nil)
+	for i := len(bbList) - 1; i >= 0; i-- {
+		if !autoStepCollisionBox(originalBB, bbList[i]) {
+			continue
+		}
+		xVelocity = BBClipCollide(bbList[i], stepBB, xVelocity, useOneWayCollisions, nil)
 	}
 	stepBB = stepBB.Translate(xVelocity)
 
-	for i := len(stepBBList) - 1; i >= 0; i-- {
-		zVelocity = BBClipCollide(stepBBList[i], stepBB, zVelocity, useOneWayCollisions, nil)
+	for i := len(bbList) - 1; i >= 0; i-- {
+		if !autoStepCollisionBox(originalBB, bbList[i]) {
+			continue
+		}
+		zVelocity = BBClipCollide(bbList[i], stepBB, zVelocity, useOneWayCollisions, nil)
 	}
 	stepBB = stepBB.Translate(zVelocity)
 
 	downVelocity := upVelocity.Mul(-1)
-	for i := len(stepBBList) - 1; i >= 0; i-- {
-		downVelocity = BBClipCollide(stepBBList[i], stepBB, downVelocity, useOneWayCollisions, nil)
+	for i := len(bbList) - 1; i >= 0; i-- {
+		if !autoStepCollisionBox(originalBB, bbList[i]) {
+			continue
+		}
+		downVelocity = BBClipCollide(bbList[i], stepBB, downVelocity, useOneWayCollisions, nil)
 	}
 	stepBB = stepBB.Translate(downVelocity)
 
@@ -1111,7 +1122,7 @@ func calculateAutoStep(originalBB cube.BBox32, velocity mgl32.Vec3, bbList []cub
 		xVelocity:         xVelocity,
 		zVelocity:         zVelocity,
 		downVelocity:      downVelocity,
-		collisionBoxCount: len(stepBBList),
+		collisionBoxCount: collisionBoxCount,
 	}
 }
 
