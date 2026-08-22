@@ -593,7 +593,7 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 			}
 			oldVel := state.Vel
 			oldY := state.Pos.Y()
-			if !s.tryCollisions(state, false) {
+			if !s.tryCollisions(state) {
 				return false
 			}
 			stopRiptideOnBlockCollision(state)
@@ -616,7 +616,6 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 		}
 	}
 
-	var clientJumpPrevented bool
 	if applied := attemptKnockback(state); applied && s.Options.Debugf != nil {
 		s.Options.Debugf("knockback applied: %v", state.Vel)
 	}
@@ -627,7 +626,7 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	if debugf := s.Options.Debugf; debugf != nil {
 		debugf("moveRelative force applied (vel=%v)", state.Vel)
 	}
-	if jumped := s.attemptJump(state, &clientJumpPrevented); jumped && s.Options.Debugf != nil {
+	if jumped := s.attemptJump(state); jumped && s.Options.Debugf != nil {
 		s.Options.Debugf("jump force applied (sprint=%v): %v", state.Sprinting, state.Vel)
 	}
 	insideSemantics := s.blockMovementSemantics(s.blockAtPos(posFromVec3(state.Pos)))
@@ -689,7 +688,7 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
 	oldY := state.Pos.Y()
-	if !s.tryCollisions(state, clientJumpPrevented) {
+	if !s.tryCollisions(state) {
 		return false
 	}
 	stopRiptideOnBlockCollision(state)
@@ -1031,7 +1030,7 @@ func attemptKnockback(state *MovementState) bool {
 	return false
 }
 
-func (s *Simulator) attemptJump(state *MovementState, clientJumpPrevented *bool) bool {
+func (s *Simulator) attemptJump(state *MovementState) bool {
 	if !state.Jumping || !state.OnGround || state.JumpDelay > 0 {
 		if state.Jumping && s.Options.Debugf != nil {
 			s.Options.Debugf("rejected jump from client (onGround=%v jumpDelay=%d)", state.OnGround, state.JumpDelay)
@@ -1055,75 +1054,79 @@ func (s *Simulator) attemptJump(state *MovementState, clientJumpPrevented *bool)
 		newVel[2] += MCCos(force) * 0.2
 	}
 
-	if clientJumpPrevented != nil && !state.HasKnockback() && !state.HasTeleport() {
-		if s.isJumpBlocked(state, newVel) {
-			*clientJumpPrevented = true
-			if debugf := s.Options.Debugf; debugf != nil {
-				debugf("jump determined to be blocked")
-			}
-		}
-	}
-
 	state.SetVel(newVel)
 	return true
 }
 
-func (s *Simulator) isJumpBlocked(state *MovementState, jumpVel mgl32.Vec3) bool {
-	w := s.World
-	if w == nil {
-		return false
-	}
-	useSlideOffset := s.Options.UseSlideOffset
-	collisionBB := state.BoundingBox(useSlideOffset)
-	if !s.movementAreaLoaded(collisionBB.Extend(jumpVel)) {
-		return false
-	}
-	bbList := s.nearbyBBoxes(state, collisionBB.Extend(jumpVel))
-
-	yVel := mgl32.Vec3{0, jumpVel.Y()}
-	xVel := mgl32.Vec3{jumpVel.X()}
-	zVel := mgl32.Vec3{0, 0, jumpVel.Z()}
-
-	for i := len(bbList) - 1; i >= 0; i-- {
-		yVel = BBClipCollide(bbList[i], collisionBB, yVel, false, nil)
-	}
-	collisionBB = collisionBB.Translate(yVel)
-
-	for i := len(bbList) - 1; i >= 0; i-- {
-		xVel = BBClipCollide(bbList[i], collisionBB, xVel, false, nil)
-	}
-	collisionBB = collisionBB.Translate(xVel)
-
-	for i := len(bbList) - 1; i >= 0; i-- {
-		zVel = BBClipCollide(bbList[i], collisionBB, zVel, false, nil)
-	}
-	initialBlockCond := ((xVel[0] != jumpVel[0]) || (zVel[2] != jumpVel[2])) && yVel[1] == jumpVel[1]
-	if !initialBlockCond {
-		return false
-	}
-
-	xVel = mgl32.Vec3{jumpVel.X()}
-	yVel = mgl32.Vec3{0, jumpVel.Y()}
-	zVel = mgl32.Vec3{0, 0, jumpVel.Z()}
-	collisionBB = state.BoundingBox(useSlideOffset)
-
-	for i := len(bbList) - 1; i >= 0; i-- {
-		xVel = BBClipCollide(bbList[i], collisionBB, xVel, false, nil)
-	}
-	collisionBB = collisionBB.Translate(xVel)
-
-	for i := len(bbList) - 1; i >= 0; i-- {
-		zVel = BBClipCollide(bbList[i], collisionBB, zVel, false, nil)
-	}
-	collisionBB = collisionBB.Translate(zVel)
-
-	for i := len(bbList) - 1; i >= 0; i-- {
-		yVel = BBClipCollide(bbList[i], collisionBB, yVel, false, nil)
-	}
-	return yVel[1] != jumpVel[1] && xVel[0] == jumpVel[0] && zVel[2] == jumpVel[2]
+type autoStepResult struct {
+	boundingBox       cube.BBox32
+	velocity          mgl32.Vec3
+	upVelocity        mgl32.Vec3
+	xVelocity         mgl32.Vec3
+	zVelocity         mgl32.Vec3
+	downVelocity      mgl32.Vec3
+	collisionBoxCount int
 }
 
-func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool) bool {
+// autoStepCollisionBox reports whether box participates in the auto-step pass.
+func autoStepCollisionBox(originalBB, box cube.BBox32) bool {
+	return box.Min().Y() < originalBB.Max().Y()
+}
+
+// calculateAutoStep applies the client auto-step sequence to the filtered collision boxes.
+func calculateAutoStep(originalBB cube.BBox32, velocity mgl32.Vec3, bbList []cube.BBox32, useOneWayCollisions bool) autoStepResult {
+	upVelocity := mgl32.Vec3{0, StepHeight}
+	xVelocity := mgl32.Vec3{velocity.X()}
+	zVelocity := mgl32.Vec3{0, 0, velocity.Z()}
+	stepBB := originalBB
+	collisionBoxCount := 0
+
+	for i := len(bbList) - 1; i >= 0; i-- {
+		if !autoStepCollisionBox(originalBB, bbList[i]) {
+			continue
+		}
+		collisionBoxCount++
+		upVelocity = BBClipCollide(bbList[i], stepBB, upVelocity, useOneWayCollisions, nil)
+	}
+	stepBB = stepBB.Translate(upVelocity)
+
+	for i := len(bbList) - 1; i >= 0; i-- {
+		if !autoStepCollisionBox(originalBB, bbList[i]) {
+			continue
+		}
+		xVelocity = BBClipCollide(bbList[i], stepBB, xVelocity, useOneWayCollisions, nil)
+	}
+	stepBB = stepBB.Translate(xVelocity)
+
+	for i := len(bbList) - 1; i >= 0; i-- {
+		if !autoStepCollisionBox(originalBB, bbList[i]) {
+			continue
+		}
+		zVelocity = BBClipCollide(bbList[i], stepBB, zVelocity, useOneWayCollisions, nil)
+	}
+	stepBB = stepBB.Translate(zVelocity)
+
+	downVelocity := upVelocity.Mul(-1)
+	for i := len(bbList) - 1; i >= 0; i-- {
+		if !autoStepCollisionBox(originalBB, bbList[i]) {
+			continue
+		}
+		downVelocity = BBClipCollide(bbList[i], stepBB, downVelocity, useOneWayCollisions, nil)
+	}
+	stepBB = stepBB.Translate(downVelocity)
+
+	return autoStepResult{
+		boundingBox:       stepBB,
+		velocity:          upVelocity.Add(xVelocity).Add(zVelocity).Add(downVelocity),
+		upVelocity:        upVelocity,
+		xVelocity:         xVelocity,
+		zVelocity:         zVelocity,
+		downVelocity:      downVelocity,
+		collisionBoxCount: collisionBoxCount,
+	}
+}
+
+func (s *Simulator) tryCollisions(state *MovementState) bool {
 	w := s.World
 	if w == nil {
 		return true
@@ -1140,9 +1143,6 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 	penetration := mgl32.Vec3{}
 
 	yVel := mgl32.Vec3{0, currVel.Y()}
-	if clientJumpPrevented {
-		yVel[1] = 0
-	}
 	xVel := mgl32.Vec3{currVel.X()}
 	zVel := mgl32.Vec3{0, 0, currVel.Z()}
 
@@ -1185,7 +1185,7 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 	state.PenetratedLastFrame = hasPenetration
 
 	xCollision := currVel.X() != collisionVel.X()
-	yCollision := (currVel.Y() != collisionVel.Y()) || clientJumpPrevented
+	yCollision := currVel.Y() != collisionVel.Y()
 	zCollision := currVel.Z() != collisionVel.Z()
 	onGround := state.OnGround || (yCollision && currVel.Y() < 0.0)
 
@@ -1194,46 +1194,16 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 		if !s.movementAreaLoaded(stepProbeBB) {
 			return false
 		}
-		stepYVel := mgl32.Vec3{0, StepHeight}
-		stepXVel := mgl32.Vec3{currVel.X()}
-		stepZVel := mgl32.Vec3{0, 0, currVel.Z()}
-
-		stepBB := state.BoundingBox(useSlideOffset)
-		for _, blockBox := range bbList {
-			stepYVel = BBClipCollide(blockBox, stepBB, stepYVel, useOneWayCollisions, nil)
-		}
-		stepBB = stepBB.Translate(stepYVel)
+		stepResult := calculateAutoStep(state.BoundingBox(useSlideOffset), currVel, bbList, useOneWayCollisions)
+		stepBB, stepVel := stepResult.boundingBox, stepResult.velocity
 		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("stepYVel=%v", stepYVel)
+			debugf("auto-step collision boxes=%d/%d", stepResult.collisionBoxCount, len(bbList))
+			debugf("stepYVel=%v", stepResult.upVelocity)
+			debugf("stepXVel=%v", stepResult.xVelocity)
+			debugf("stepZVel=%v", stepResult.zVelocity)
+			debugf("inverseYStepVel=%v", stepResult.downVelocity)
 		}
 
-		for _, blockBox := range bbList {
-			stepXVel = BBClipCollide(blockBox, stepBB, stepXVel, useOneWayCollisions, nil)
-		}
-		stepBB = stepBB.Translate(stepXVel)
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("stepXVel=%v", stepXVel)
-		}
-
-		for _, blockBox := range bbList {
-			stepZVel = BBClipCollide(blockBox, stepBB, stepZVel, useOneWayCollisions, nil)
-		}
-		stepBB = stepBB.Translate(stepZVel)
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("stepZVel=%v", stepZVel)
-		}
-
-		inverseYStepVel := stepYVel.Mul(-1)
-		for _, blockBox := range bbList {
-			inverseYStepVel = BBClipCollide(blockBox, stepBB, inverseYStepVel, useOneWayCollisions, nil)
-		}
-		stepBB = stepBB.Translate(inverseYStepVel)
-		stepYVel = stepYVel.Add(inverseYStepVel)
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("inverseYStepVel=%v", inverseYStepVel)
-		}
-
-		stepVel := stepYVel.Add(stepXVel).Add(stepZVel)
 		newBBListCount := 0
 		hasStepCollisions := false
 		if s.Options.Debugf != nil {
@@ -1315,7 +1285,7 @@ func (s *Simulator) tryCollisions(state *MovementState, clientJumpPrevented bool
 
 	state.OnGround = (yCollision && currVel.Y() < 0) ||
 		(onGround && !yCollision && math32.Abs(currVel.Y()) <= 1e-5) ||
-		(clientJumpPrevented && onGround) || completedStep
+		completedStep
 	if !s.checkSupportingBlockPos(state, useSlideOffset, currVel) {
 		return false
 	}
