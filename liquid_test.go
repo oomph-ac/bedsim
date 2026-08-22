@@ -96,6 +96,20 @@ type layeredLiquidWorld struct {
 	layer map[cube.Pos]world.Liquid
 }
 
+type liquidFlowSemanticsWorld struct {
+	*liquidWorld
+}
+
+// LiquidFlowFaceClosed delegates face checks to the block model.
+func (w *liquidFlowSemanticsWorld) LiquidFlowFaceClosed(pos cube.Pos, face cube.Face) bool {
+	return w.Block(pos).Model().FaceSolid(pos, face, w)
+}
+
+// LiquidFlowBarrier makes every test block transparent to falling currents.
+func (*liquidFlowSemanticsWorld) LiquidFlowBarrier(cube.Pos) bool {
+	return false
+}
+
 func newLayeredLiquidWorld() *layeredLiquidWorld {
 	return &layeredLiquidWorld{liquidWorld: newLiquidWorld(), layer: map[cube.Pos]world.Liquid{}}
 }

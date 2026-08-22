@@ -107,6 +107,43 @@ func TestSlowFallingChangesGlideGravity(t *testing.T) {
 	}
 }
 
+func TestSlowFallingChangesGlideGravityWhileAscending(t *testing.T) {
+	state := newBaseState()
+	state.Gravity = NormalGravity
+	state.SlowFalling = true
+	state.Vel[1] = 0.2
+
+	(&Simulator{}).simulateGlide(state)
+
+	if want := float32(0.19355); math32.Abs(state.Vel.Y()-want) > 1e-6 {
+		t.Fatalf("expected ascending glide to use slow-falling gravity %v, got %v", want, state.Vel.Y())
+	}
+}
+
+func TestGlideLimitsFallDistanceDuringShallowDescent(t *testing.T) {
+	state := newBaseState()
+	state.FallDistance = 5
+	state.Vel[1] = -0.4
+
+	(&Simulator{}).simulateGlide(state)
+
+	if state.FallDistance != 1 {
+		t.Fatalf("expected shallow glide descent to set fall distance to 1, got %v", state.FallDistance)
+	}
+}
+
+func TestGlidePreservesFallDistanceDuringFastDescent(t *testing.T) {
+	state := newBaseState()
+	state.FallDistance = 5
+	state.Vel[1] = -0.6
+
+	(&Simulator{}).simulateGlide(state)
+
+	if state.FallDistance != 5 {
+		t.Fatalf("expected fast glide descent to preserve fall distance, got %v", state.FallDistance)
+	}
+}
+
 func TestSneakEdgeProtectionRequiresGround(t *testing.T) {
 	sim := &Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
 		cube.Box32(-1, -1, -1, 0, 0, 1),
