@@ -231,11 +231,11 @@ observation. Replay adds no waypoint, correction, or failure policy: callers
 remain responsible for deciding which outcomes invalidate a trajectory.
 
 `Simulator.ObserveHeadLiquid` samples the continuous vanilla eye attachment
-for the current standing, sneaking, swimming, crawling, or gliding pose. It
-compares that position with the local partial liquid surface and reads the
-configured second liquid layer, so callers do not need to approximate
-submersion from feet/head block occupancy. The result is unknown when required
-world or liquid-layer data is unavailable.
+for the current standing, sneaking, swimming, crawling, gliding, or active
+Riptide pose. It compares that position with the local partial liquid surface
+and reads the configured second liquid layer, so callers do not need to
+approximate submersion from feet/head block occupancy. The result is unknown
+when required world or liquid-layer data is unavailable.
 
 ### Correction modes
 

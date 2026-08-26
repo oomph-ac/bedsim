@@ -26,6 +26,9 @@ func (s *Simulator) ObserveHeadLiquid(state *MovementState) HeadLiquidObservatio
 	}
 	position := state.EyePosition()
 	observation.Position = position
+	if s.World == nil {
+		return observation
+	}
 	pos := posFromVec3(position)
 	probe := cube.Box32(
 		float32(pos.X()), float32(pos.Y()), float32(pos.Z()),
@@ -78,6 +81,9 @@ func (s *Simulator) Replay(initial MovementState, inputs []InputState) ReplayRes
 	return ReplayResult{State: cloneMovementState(state), Frames: frames}
 }
 
+// cloneMovementState returns an independent snapshot of state. The
+// TestCloneMovementStateHandlesEveryReferenceField guard must be updated when
+// MovementState gains another reference-bearing field.
 func cloneMovementState(state MovementState) MovementState {
 	if state.SupportingBlockPos != nil {
 		pos := *state.SupportingBlockPos

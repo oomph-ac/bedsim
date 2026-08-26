@@ -1,6 +1,7 @@
 package bedsim
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
@@ -21,6 +22,7 @@ func TestMovementState_EyePositionUsesVanillaPoseOffset(t *testing.T) {
 		{name: "swimming", state: MovementState{Swimming: true, SwimWaterGraceTicks: 1}, wantY: 10.4},
 		{name: "crawling", state: MovementState{Crawling: true}, wantY: 10.4},
 		{name: "gliding", state: MovementState{Gliding: true}, wantY: 10.4},
+		{name: "riptide", state: MovementState{RiptideTicks: 1}, wantY: 10.4},
 		{name: "scaled", state: MovementState{Size: mgl32.Vec3{0.6, 1.8, 2}}, wantY: 13.24},
 	}
 	for _, test := range tests {
@@ -31,6 +33,15 @@ func TestMovementState_EyePositionUsesVanillaPoseOffset(t *testing.T) {
 				t.Fatalf("eye position = %v, want %v", got, (mgl32.Vec3{2, test.wantY, 3}))
 			}
 		})
+	}
+}
+
+func TestSimulator_ObserveHeadLiquidFailsClosedWithoutWorld(t *testing.T) {
+	t.Parallel()
+
+	state := submergedState()
+	if got := (&Simulator{}).ObserveHeadLiquid(state); got.Known {
+		t.Fatalf("observation without world = %+v, want unknown", got)
 	}
 }
 
@@ -124,5 +135,36 @@ func TestSimulator_ReplayPreservesTickContinuityAndSnapshots(t *testing.T) {
 	if replay.Frames[0].State.SupportingBlockPos != nil && replay.Frames[1].State.SupportingBlockPos != nil &&
 		replay.Frames[0].State.SupportingBlockPos == replay.Frames[1].State.SupportingBlockPos {
 		t.Fatal("replay frame snapshots alias SupportingBlockPos")
+	}
+}
+
+func TestCloneMovementStateHandlesEveryReferenceField(t *testing.T) {
+	t.Parallel()
+
+	typ := reflect.TypeFor[MovementState]()
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		if typeContainsReferences(field.Type) && field.Name != "SupportingBlockPos" {
+			t.Fatalf("MovementState.%s contains references; update cloneMovementState and this guard", field.Name)
+		}
+	}
+}
+
+// typeContainsReferences reports whether values of typ may alias mutable state.
+func typeContainsReferences(typ reflect.Type) bool {
+	switch typ.Kind() {
+	case reflect.Array:
+		return typeContainsReferences(typ.Elem())
+	case reflect.Struct:
+		for i := range typ.NumField() {
+			if typeContainsReferences(typ.Field(i).Type) {
+				return true
+			}
+		}
+		return false
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
+		return true
+	default:
+		return false
 	}
 }

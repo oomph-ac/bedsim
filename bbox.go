@@ -21,15 +21,15 @@ func (s *MovementState) SwimPose() bool {
 }
 
 // EyePosition returns the vanilla player eye attachment position for the
-// current pose. Compact swimming, crawling, and gliding poses use the same
-// offset. The offset follows the entity scale used by BoundingBox.
+// current pose. Compact swimming, crawling, gliding, and active Riptide poses
+// use the same offset. The offset follows the entity scale used by BoundingBox.
 func (s *MovementState) EyePosition() mgl32.Vec3 {
 	if s == nil {
 		return mgl32.Vec3{}
 	}
 	offset := DefaultPlayerHeightOffset
 	switch {
-	case s.SwimPose() || s.Crawling || s.Gliding:
+	case s.SwimPose() || s.Crawling || s.Gliding || s.RiptideTicks > 0:
 		offset = CompactPlayerHeightOffset
 	case s.Sneaking:
 		offset = SneakingPlayerHeightOffset
