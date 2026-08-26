@@ -961,9 +961,10 @@ type riptideHeadProbeWorld struct {
 	headProbes int
 }
 
-// IsMovementAreaLoaded rejects the block containing a crawling player's head.
+// IsMovementAreaLoaded rejects the block containing a crawling player's
+// compact-pose eye attachment.
 func (w *riptideHeadProbeWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
-	if aabb.Min().Y() == 1 && aabb.Max().Y() == 2 && aabb.Min().X() == 0 && aabb.Max().X() == 1 && aabb.Min().Z() == 0 && aabb.Max().Z() == 1 {
+	if aabb.Min().Y() == 0 && aabb.Max().Y() == 1 && aabb.Min().X() == 0 && aabb.Max().X() == 1 && aabb.Min().Z() == 0 && aabb.Max().Z() == 1 {
 		w.headProbes++
 		return false
 	}
