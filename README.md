@@ -223,6 +223,20 @@ Both entry points reject NaN and infinite state/input values with
 `SimulationOutcomeMounted` after being aligned to their client-reported state;
 vehicle physics belongs in the caller's vehicle simulation.
 
+For speculative movement, `Simulator.Replay` copies an initial
+`MovementState` and advances a caller-supplied input sequence through the same
+`Simulate` tick lifecycle. Every `ReplayFrame` contains an independent state
+snapshot, the normal `SimulationResult`, and a post-tick head-liquid
+observation. Replay adds no waypoint, correction, or failure policy: callers
+remain responsible for deciding which outcomes invalidate a trajectory.
+
+`Simulator.ObserveHeadLiquid` samples the continuous vanilla eye attachment
+for the current standing, sneaking, swimming, crawling, or gliding pose. It
+compares that position with the local partial liquid surface and reads the
+configured second liquid layer, so callers do not need to approximate
+submersion from feet/head block occupancy. The result is unknown when required
+world or liquid-layer data is unavailable.
+
 ### Correction modes
 
 - `SimulationModeAuthoritative` — `NeedsCorrection` becomes true if position or velocity drift exceeds thresholds.

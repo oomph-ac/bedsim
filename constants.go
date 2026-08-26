@@ -34,6 +34,7 @@ const (
 
 	DefaultPlayerHeightOffset  = float32(1.62)
 	SneakingPlayerHeightOffset = float32(1.27)
+	CompactPlayerHeightOffset  = float32(0.4)
 
 	// TerminalVelocity is the natural convergence of the gravity formula:
 	// (v - 0.08) * 0.98 = v → v = -3.92. This is not explicitly clamped;

@@ -138,21 +138,8 @@ func (s *Simulator) riptideHeadInWater(state *MovementState) bool {
 // riptideHeadInWaterKnown reports whether the head is submerged and whether
 // the block containing it is loaded.
 func (s *Simulator) riptideHeadInWaterKnown(state *MovementState) (inWater, known bool) {
-	heightOffset := DefaultPlayerHeightOffset
-	if state.Sneaking {
-		heightOffset = SneakingPlayerHeightOffset
-	}
-	position := state.Pos.Add(mgl32.Vec3{0, heightOffset, 0})
-	pos := posFromVec3(position)
-	probe := cube.Box32(
-		float32(pos.X()), float32(pos.Y()), float32(pos.Z()),
-		float32(pos.X()+1), float32(pos.Y()+1), float32(pos.Z()+1),
-	)
-	if !s.movementAreaLoaded(probe) {
-		return false, false
-	}
-	liquid, ok := s.liquidAt(pos)
-	return ok && liquidWater.matches(liquid) && position.Y() < float32(pos.Y())+liquidHeight(liquid), true
+	observation := s.ObserveHeadLiquid(state)
+	return observation.Water, observation.Known
 }
 
 func stopRiptideOnBlockCollision(state *MovementState) {
