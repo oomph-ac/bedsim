@@ -150,12 +150,18 @@ type MovementState struct {
 	GameMode int32
 }
 
+// DefaultPlayerSize returns the vanilla player Size as (width, height, scale).
+// Callers with unknown or non-positive entity dimensions should fall back to it.
+func DefaultPlayerSize() mgl32.Vec3 {
+	return mgl32.Vec3{DefaultPlayerWidth, DefaultPlayerHeight, 1}
+}
+
 func (s *MovementState) ensurePoseHeights() {
 	if s.StandingHeight <= 0 {
 		if !s.Sneaking && !s.Crawling && s.Size.Y() > 0 {
 			s.StandingHeight = s.Size.Y()
 		} else {
-			s.StandingHeight = 1.8
+			s.StandingHeight = DefaultPlayerHeight
 		}
 	}
 	if s.SneakingHeight <= 0 {

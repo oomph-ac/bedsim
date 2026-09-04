@@ -32,6 +32,12 @@ const (
 	// WaterDrag is the ordinary horizontal water drag; sprinting uses 0.9.
 	WaterDrag = float32(0.8)
 
+	// DefaultPlayerWidth and DefaultPlayerHeight are the vanilla standing
+	// player bounding-box dimensions. DefaultPlayerSize packs them the way
+	// MovementState.Size expects.
+	DefaultPlayerWidth  = float32(0.6)
+	DefaultPlayerHeight = float32(1.8)
+
 	DefaultPlayerHeightOffset  = float32(1.62)
 	SneakingPlayerHeightOffset = float32(1.27)
 	CompactPlayerHeightOffset  = float32(0.4)
