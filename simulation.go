@@ -574,8 +574,12 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 		if s.Equipment != nil && s.Equipment.EnchantmentLevel(EnchantmentSoulSpeed) > 0 && blockSemantics.SoulSpeedNeutralizesAccelerationFriction {
 			accelerationMultiplier = 1
 		}
-		accelerationFriction := blockFriction * accelerationMultiplier
-		moveRelativeSpeed = mSpeed * (0.16277136 / (accelerationFriction * accelerationFriction * accelerationFriction))
+		accelerationFriction := float32(blockSemantics.GroundFriction*accelerationMultiplier) * DefaultAirFriction
+		// Preserve vanilla's float32 operation order. Dividing a precomputed
+		// cube by friction cubed is not numerically equivalent, even on grass.
+		baseFriction := float32(DefaultAirFriction * DefaultBlockFriction)
+		ratio := baseFriction / accelerationFriction
+		moveRelativeSpeed = float32(float32(mSpeed*ratio)*ratio) * ratio
 	}
 	if state.Gliding && s.Effects != nil {
 		if _, levitating := s.Effects.GetEffect(packet.EffectLevitation); levitating {
