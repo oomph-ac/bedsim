@@ -2,6 +2,8 @@ github.com/brentp/intintmap v0.0.0-20251106190759-56907b1f8479 h1:UZbbt19ACBOFO+
 github.com/brentp/intintmap v0.0.0-20251106190759-56907b1f8479/go.mod h1:TOk10ahXejq9wkEaym3KPRNeuR/h5Jx+s8QRWIa2oTM=
 github.com/chewxy/math32 v1.11.1 h1:b7PGHlp8KjylDoU8RrcEsRuGZhJuz8haxnKfuMMRqy8=
 github.com/chewxy/math32 v1.11.1/go.mod h1:dOB2rcuFrCn6UHrze36WSLVPKtzPMRAQvBvUwkSsLqs=
+github.com/df-mc/dragonfly v0.10.11-0.20260721135200-3e3556bddb5f h1:3fOtzXVIEsci6+Nayy+R/glF053UdQq2sRtHdQdinrs=
+github.com/df-mc/dragonfly v0.10.11-0.20260721135200-3e3556bddb5f/go.mod h1:NGnnP9U+QN2NeTfl+Ul2NvVvVbDaRTEgcMS2Gz9dpzA=
 github.com/df-mc/goleveldb v1.1.9 h1:ihdosZyy5jkQKrxucTQmN90jq/2lUwQnJZjIYIC/9YU=
 github.com/df-mc/goleveldb v1.1.9/go.mod h1:+NHCup03Sci5q84APIA21z3iPZCuk6m6ABtg4nANCSk=
 github.com/df-mc/worldupgrader v1.0.21 h1:Qr4/QB8ek7En0vkTuRXYq4FrZM0HHSOXsJOL7Ko4Cjg=
@@ -29,6 +31,8 @@ github.com/onsi/gomega v1.4.3 h1:RE1xgDvH7imwFD45h+u2SgIfERHlS2yNG4DObb5BSKU=
 github.com/onsi/gomega v1.4.3/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
 github.com/sandertv/gophertunnel v1.57.0 h1:UkgVg1xLCsOSm79rP09WmodGSHgA8M7+l4quL01cIL8=
 github.com/sandertv/gophertunnel v1.57.0/go.mod h1:W4VnrX9AIPIVXNDMEIKMIRj1T80EdOgdqXpGbQpyAbE=
+github.com/sandertv/gophertunnel v1.57.2-0.20260720171832-1706d533aa80 h1:epvVbD9bZVnPDXFcQE6YAufexj3MhcpBWlEIuGPJDek=
+github.com/sandertv/gophertunnel v1.57.2-0.20260720171832-1706d533aa80/go.mod h1:Frjuk3g1EEGRYjzyrEMS4j/hDvTcez2STfuRHkRPlNU=
 github.com/segmentio/fasthash v1.0.3 h1:EI9+KE1EwvMLBWwjpRDc+fEM+prwxDYbslddQGtrmhM=
 github.com/segmentio/fasthash v1.0.3/go.mod h1:waKX8l2N8yckOgmSsXJi7x1ZfdKZ4x7KRMzBtS3oedY=
 golang.org/x/exp v0.0.0-20260611194520-c48552f49976 h1:X8Hz2ImujgbmetVuW+w2YkyZChE3cBpZi2P158rTG9M=

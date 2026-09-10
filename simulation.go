@@ -683,15 +683,8 @@ func (s *Simulator) attemptJump(state *MovementState, clientJumpPrevented *bool)
 		return false
 	}
 
-	newVel := state.Vel
-	newVel[1] = math32.Max(state.JumpHeight, newVel[1])
+	newVel := JumpImpulse(state.Vel, state.JumpHeight, state.Rotation.Z(), state.Sprinting)
 	state.JumpDelay = JumpDelayTicks
-
-	if state.Sprinting {
-		force := state.Rotation.Z() * 0.017453292
-		newVel[0] -= MCSin(force) * 0.2
-		newVel[2] += MCCos(force) * 0.2
-	}
 
 	if clientJumpPrevented != nil && !state.HasKnockback() && !state.HasTeleport() {
 		if s.isJumpBlocked(state, newVel) {
