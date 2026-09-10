@@ -664,9 +664,8 @@ func TestSimulator_SprintStallIncludesMomentum(t *testing.T) {
 				cube.Box32(-10, -10, 1, 10, 10, 2),
 			}}}
 			state := newBaseState()
-			// The player box keeps its 1e-4 horizontal tolerance, so start in
-			// contact with the wall rather than one tolerance away from it.
-			state.SetPos(mgl32.Vec3{0.5, 1, 0.7001})
+			// Start at the full-width vanilla wall contact.
+			state.SetPos(mgl32.Vec3{0.5, 1, 0.7})
 			state.SetVel(tt.velocity)
 			state.OnGround = false
 			if !sim.tryCollisions(state) {

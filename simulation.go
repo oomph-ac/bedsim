@@ -1292,6 +1292,7 @@ func (s *Simulator) tryCollisions(state *MovementState) bool {
 	}
 	state.sprintMovementBlocked = SprintMovementBlocked(currVel, endPos.Sub(state.Pos))
 	state.SetPos(endPos)
+	state.rememberCollisionBox(collisionBB, useSlideOffset)
 
 	yCollision = math32.Abs(currVel.Y()-collisionVel.Y()) >= 1e-5
 	state.CollideX = math32.Abs(currVel.X()-collisionVel.X()) >= 1e-5

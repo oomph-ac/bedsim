@@ -41,17 +41,45 @@ func (s *MovementState) EyePosition() mgl32.Vec3 {
 	return s.Pos.Add(mgl32.Vec3{0, offset * scale, 0})
 }
 
-// BoundingBox returns the entity bounding box translated to the current position.
-func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox32 {
+// collisionShape retains native AABB endpoints after a sweep. Reconstructing a
+// box from its rounded center can move a flush face inside the touching block.
+// Pose changes and external position changes invalidate the retained endpoints.
+type collisionShape struct {
+	box        cube.BBox32
+	pos        mgl32.Vec3
+	dimensions mgl32.Vec2
+	yOffset    float32
+	valid      bool
+}
+
+func (s *MovementState) collisionDimensions() mgl32.Vec2 {
 	scale := s.Size[2]
-	width := (s.Size[0] * 0.5) * scale
 	height := s.Size[1] * scale
 	if s.SwimPose() {
 		height = s.Size[0] * scale
 	}
+	return mgl32.Vec2{(s.Size[0] * 0.5) * scale, height}
+}
+
+func (s *MovementState) rememberCollisionBox(box cube.BBox32, useSlideOffset bool) {
+	offset := float32(0)
+	if useSlideOffset {
+		offset = s.SlideOffset.Y()
+	}
+	s.collisionShape = collisionShape{box: box, pos: s.Pos, dimensions: s.collisionDimensions(), yOffset: offset, valid: true}
+}
+
+// BoundingBox returns the entity bounding box translated to the current position.
+func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox32 {
+	dimensions := s.collisionDimensions()
+	width, height := dimensions[0], dimensions[1]
 	yOffset := float32(0)
 	if useSlideOffset {
 		yOffset = s.SlideOffset.Y()
+	}
+	shape := s.collisionShape
+	if shape.valid && shape.pos == s.Pos && shape.dimensions == dimensions && shape.yOffset == yOffset {
+		return shape.box
 	}
 
 	return cube.Box32(
@@ -61,17 +89,13 @@ func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox32 {
 		s.Pos[0]+width,
 		s.Pos[1]+height+yOffset,
 		s.Pos[2]+width,
-	).GrowVec3(mgl32.Vec3{-1e-4, 0, -1e-4})
+	)
 }
 
 // ClientBoundingBox returns the bounding box translated to the client's position.
 func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox32 {
-	scale := s.Size[2]
-	width := (s.Size[0] * 0.5) * scale
-	height := s.Size[1] * scale
-	if s.SwimPose() {
-		height = s.Size[0] * scale
-	}
+	dimensions := s.collisionDimensions()
+	width, height := dimensions[0], dimensions[1]
 	yOffset := float32(0)
 	if useSlideOffset {
 		yOffset = s.SlideOffset.Y()
@@ -84,5 +108,5 @@ func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox32 {
 		s.Client.Pos[0]+width,
 		s.Client.Pos[1]+height+yOffset,
 		s.Client.Pos[2]+width,
-	).GrowVec3(mgl32.Vec3{-1e-4, 0, -1e-4})
+	)
 }

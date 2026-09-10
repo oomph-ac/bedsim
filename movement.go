@@ -19,6 +19,7 @@ type ClientState struct {
 // MovementState holds the authoritative movement state for a single entity.
 type MovementState struct {
 	sprintMovementBlocked bool
+	collisionShape        collisionShape
 	Client                ClientState
 
 	Pos, LastPos mgl32.Vec3
