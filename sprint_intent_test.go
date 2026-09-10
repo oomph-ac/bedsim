@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestSprintMovementBlocked checks stalled axes, wall slides, and the movement threshold.
 func TestSprintMovementBlocked(t *testing.T) {
 	for _, tt := range []struct {
 		name              string

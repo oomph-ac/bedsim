@@ -208,7 +208,7 @@ func (s *Simulator) updateSwimTravel(state *MovementState) {
 }
 
 func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) []cube.Pos {
-	box := state.BoundingBox(s.Options.UseSlideOffset)
+	box := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl32.Vec3{1e-4, 0, 1e-4})
 	offset := mgl32.Vec3{0.001, 0.401, 0.001}
 	if kind == liquidLava {
 		offset = mgl32.Vec3{0.1, 0.4, 0.1}

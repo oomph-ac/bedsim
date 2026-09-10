@@ -7,6 +7,7 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 )
 
+// TestSimulator_VanillaGroundAcceleration checks consecutive captured grass velocities.
 func TestSimulator_VanillaGroundAcceleration(t *testing.T) {
 	// Stationary-to-forward PAI velocity from the unmodified 1.26.45.1
 	// client walking on grass. These are post-physics velocities, not the
@@ -26,6 +27,7 @@ func TestSimulator_VanillaGroundAcceleration(t *testing.T) {
 	}
 }
 
+// TestSimulator_VanillaSoulSandAcceleration checks captured soul-sand acceleration.
 func TestSimulator_VanillaSoulSandAcceleration(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{0.5, 0.875, 0.5}

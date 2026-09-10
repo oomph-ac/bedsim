@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestMovementSpeedWithoutSprint checks sprint identity and preservation of other modifiers.
 func TestMovementSpeedWithoutSprint(t *testing.T) {
 	for _, tt := range []struct {
 		name        string

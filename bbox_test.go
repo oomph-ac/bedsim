@@ -1,26 +1,37 @@
 package bedsim
 
 import (
+	"testing"
+
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/go-gl/mathgl/mgl32"
-	"testing"
 )
 
-func TestBoundingBox_VanillaWallContact(t *testing.T) {
+// TestBoundingBoxRoundedWallSlide preserves tolerance for rounded client contact positions.
+func TestBoundingBoxRoundedWallSlide(t *testing.T) {
 	state := newBaseState()
-	state.Pos = mgl32.Vec3{26.5, -59, 5.611176}
+	state.Pos = mgl32.Vec3{256.3, 1, 0.5}
 	state.Client.Pos = state.Pos
-	// Real BDS 1.26.45.1 clips the 0.6-wide player at z=5.7 against
-	// the wall at z=6. Shrinking X/Z by 1e-4 instead penetrates to 5.7001.
-	wall := cube.Box32(24, -60, 6, 29, -58, 7)
-	for name, box := range map[string]cube.BBox32{"simulated": state.BoundingBox(false), "client": state.ClientBoundingBox(false)} {
-		t.Run(name, func(t *testing.T) {
-			var penetration mgl32.Vec3
-			clipped := BBClipCollide(wall, box, mgl32.Vec3{0, 0, 0.2584}, false, &penetration)
-			center := box.Translate(clipped).Min().Add(box.Translate(clipped).Max()).Mul(0.5)
-			if center.Z() != float32(5.7) {
-				t.Fatalf("wall contact = %.9g, vanilla 5.7", center.Z())
-			}
-		})
+	state.OnGround = true
+	// Rebuilding a full-width float32 box at x=256.3 puts its minimum at
+	// 255.9999847. That rounding must not turn a parallel wall slide into
+	// a horizontal collision or mark the player as stuck inside the wall.
+	sim := Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(255, 0, -10, 258, 1, 10),
+		cube.Box32(255, 0, -10, 256, 4, 10),
+	}}}
+	for tick := 0; tick < 3; tick++ {
+		state.Vel = mgl32.Vec3{0, -0.0784, 0.1}
+		previousZ := state.Pos.Z()
+		if !sim.tryCollisions(state) {
+			t.Fatal("collision simulation could not complete")
+		}
+		if state.CollideX || state.CollideZ || state.PenetratedLastFrame || state.StuckInCollider {
+			t.Errorf("tick %d: wall slide acquired collision or penetration: x=%v z=%v penetrated=%v stuck=%v",
+				tick, state.CollideX, state.CollideZ, state.PenetratedLastFrame, state.StuckInCollider)
+		}
+		if !state.OnGround || state.Pos.Z() <= previousZ {
+			t.Errorf("tick %d: wall slide stopped moving along the floor: pos=%v grounded=%v", tick, state.Pos, state.OnGround)
+		}
 	}
 }

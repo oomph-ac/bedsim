@@ -61,7 +61,7 @@ func (s *MovementState) BoundingBox(useSlideOffset bool) cube.BBox32 {
 		s.Pos[0]+width,
 		s.Pos[1]+height+yOffset,
 		s.Pos[2]+width,
-	)
+	).GrowVec3(mgl32.Vec3{-1e-4, 0, -1e-4})
 }
 
 // ClientBoundingBox returns the bounding box translated to the client's position.
@@ -84,5 +84,5 @@ func (s *MovementState) ClientBoundingBox(useSlideOffset bool) cube.BBox32 {
 		s.Client.Pos[0]+width,
 		s.Client.Pos[1]+height+yOffset,
 		s.Client.Pos[2]+width,
-	)
+	).GrowVec3(mgl32.Vec3{-1e-4, 0, -1e-4})
 }
