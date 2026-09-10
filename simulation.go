@@ -29,7 +29,7 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 		swimming: state.Swimming,
 		swimAmt:  state.SwimAmount,
 	}
-	inputWorldKnown := s.applyInput(state, input)
+	inputWorldKnown, processedMove := s.applyInput(state, input)
 	reason := SimulationOutcomeUnloadedChunk
 	// Teleports are authoritative and run before world-dependent simulation, so
 	// an unknown origin pose must not prevent one from reaching its destination.
@@ -50,7 +50,9 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 		advanceTeleport := reason != SimulationOutcomeTeleport || state.HasTeleport()
 		s.tickState(state, advanceTeleport)
 	}
-	return s.resultFromState(state, reason)
+	result := s.resultFromState(state, reason)
+	result.InputMoveVector = processedMove
+	return result
 }
 
 // movementPoseSnapshot preserves pose fields across an unloaded simulation.
@@ -212,7 +214,7 @@ func (s *Simulator) resultFromState(state *MovementState, outcome SimulationOutc
 	return result
 }
 
-func (s *Simulator) applyInput(state *MovementState, input InputState) bool {
+func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mgl32.Vec2) {
 	state.ensurePoseHeights()
 	poseCollisionsAvailable := s.poseCollisionsAvailable(state)
 	poseWorldKnown := poseCollisionsAvailable
@@ -358,9 +360,10 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) bool {
 	state.WantDown = input.WantDown
 	state.WantDownSlow = input.WantDownSlow
 
-	// Preserve bedsim's public impulse clamps unless upstream behavior is opted in.
+	// Raw controls need client slowdown; processed packet vectors retain the
+	// configured validation bounds. Both use the same item/pose multiplier.
 	maxImpulse := float32(1)
-	if !s.Options.UpstreamImpulseClamping {
+	if input.MoveVectorIsRaw || !s.Options.UpstreamImpulseClamping {
 		if input.UsingConsumable || (input.UsingItem && !input.UsingSpear) {
 			maxImpulse *= MaxConsumingImpulse
 		}
@@ -378,6 +381,9 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) bool {
 	moveVector := mgl32.Vec2{
 		ClampFloat(input.MoveVector[0], -maxImpulse, maxImpulse),
 		ClampFloat(input.MoveVector[1], -maxImpulse, maxImpulse),
+	}
+	if input.MoveVectorIsRaw {
+		moveVector = mgl32.Vec2{ClampFloat(input.MoveVector[0], -1, 1), ClampFloat(input.MoveVector[1], -1, 1)}.Mul(maxImpulse)
 	}
 	if input.InventoryAction {
 		moveVector = mgl32.Vec2{}
@@ -426,7 +432,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) bool {
 	}
 
 	state.Impulse = moveVector.Mul(0.98)
-	return poseWorldKnown
+	return poseWorldKnown, moveVector
 }
 
 func (s *Simulator) applyLegacySprint(state *MovementState, input InputState) {
