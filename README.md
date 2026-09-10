@@ -2,7 +2,7 @@
 
 Server-side Minecraft Bedrock movement simulation library for Go.
 
-`bedsim` replicates the Bedrock client's movement physics (collisions, stepping, edge-avoidance, liquids, gliding, teleportation) on the server, producing authoritative position and velocity values that can be compared against client-reported state.
+`bedsim` replicates the Bedrock client's movement physics on the server, producing authoritative position and velocity values that can be compared against client-reported state. It covers collisions, stepping, edge avoidance, liquids and currents, swimming, bubble columns, Riptide, crawling, gliding, movement enchantments, movement-sensitive blocks, and teleportation.
 
 Original code was written by [ethaniccc](https://github.com/ethaniccc) in [oomph](https://github.com/oomph-ac/oomph) and has been ported over into this library.
 The liquid movement physics were ported from [oomph#145](https://github.com/oomph-ac/oomph/pull/145) by [NopeNotDark](https://github.com/NopeNotDark).
@@ -24,10 +24,11 @@ Implement provider adapters to bridge your world and player systems:
 ```go
 sim := bedsim.Simulator{
     World:          myWorldProvider,      // block lookups, collisions, chunk-loaded checks
-    BlockSemantics: myBlockSemantics,     // optional: per-world names, friction, climbability
+    BlockSemantics: myBlockSemantics,     // optional: complete per-world movement semantics
     Liquids:        myLiquidProvider,     // second block layer (waterlogged blocks)
     Effects:        myEffectsProvider,    // jump boost, levitation, slow falling
     Inventory:      myInventoryProvider,  // elytra equipped check
+    Equipment:      myEquipmentProvider,  // movement enchantments and leather boots
     Options: bedsim.SimulationOptions{
         Mode:                        bedsim.SimulationModeAuthoritative,
         PositionCorrectionThreshold: 0.5,
@@ -44,8 +45,19 @@ if result.NeedsCorrection {
 
 Set `BlockSemantics` when movement behavior must come from a per-world block
 registry or custom block data instead of bedsim's Dragonfly-backed defaults.
-Custom friction values must be finite and positive; invalid values fall back to
-Dragonfly defaults.
+The adapter implements `BlockMovementSemanticsProvider` and returns the full
+`block.MovementSemantics` bundle: ground friction, any acceleration-only
+friction multiplier, Soul Speed interaction, climbability, cobweb status,
+slime/bed bounce behavior, inside-block movement, and vertical traversal.
+Built-in rules live in the
+`github.com/oomph-ac/bedsim/block` package. Custom ground friction must be
+finite and positive; an invalid value falls back to the built-in resolver. An
+invalid acceleration multiplier likewise falls back to the built-in block
+semantics.
+
+BedSim's semantics package does not mutate Dragonfly's registry. Applications
+own registry setup and must register any additional block implementations
+before finalizing their registry.
 
 Implement `DepthStriderProvider` on the inventory adapter when Depth Strider
 should affect water movement.
@@ -62,6 +74,64 @@ should affect water movement.
 > used instead. This keeps pre-existing integrations working, but it is
 > discovered by type assertion, so a signature typo degrades silently — prefer
 > the explicit field.
+
+### Optional movement capabilities
+
+`WorldProvider` is the only required world interface. A world may additionally
+implement `BubbleColumnProvider` for upward/downward columns and
+`BubbleColumnSurfaceProvider` when it can classify the exact surface variant,
+and `MovementCollisionProvider` for player-dependent collision shapes such as
+scaffolding and powder snow. Dynamic collision resolution receives sneak and
+descend intent plus leather-boots state. Implement `LiquidFlowProvider` when
+the world can expose exact liquid face closure and falling-current material
+barriers; otherwise BedSim falls back to block-model faces and collision boxes.
+
+For reliable streaming-world simulation, implement `MovementAreaProvider` so a
+swept movement volume can be checked precisely. Without it, BedSim checks every
+chunk touched by the current bounding box and velocity. Implement
+`ClimbableContactProvider` when ladder/vine orientation is resolved outside the
+block registry — it replaces the built-in single-cell check rather than adding
+to it — and `MovementSupportProvider` when dynamic collision shapes need to
+identify their supporting block.
+
+`MovementEquipmentProvider` supplies Depth Strider, Soul Speed, Swift Sneak,
+Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
+extension remains a fallback when the equipment provider reports no Depth
+Strider level. `EffectsProvider` also controls Weaving-aware web movement.
+
+Use `MovementState.QueueKnockback` and `MovementState.QueueTeleport` for
+authoritative events instead of setting their timer fields by hand. `Simulate`
+consumes those events as part of its tick; callers using `SimulateState` must
+clear transient fields such as `KnockbackPending` and
+`StoppedSwimmingThisTick` themselves. Set `MovementState.JumpStrength` for a
+custom base jump velocity; zero keeps the default.
+
+`MovementState.MovementSpeed` and `DefaultMovementSpeed` are effective movement
+attribute values. Include active Speed or Slowness modifiers in those values;
+BedSim uses them directly and does not apply the same modifiers a second time.
+`AirSpeed` is the air acceleration speed. It does not track the movement
+attribute: `Simulate` sets it to `WalkAirSpeed` or `SprintAirSpeed` from the
+sprint state, and `SimulateState` callers provide it with the current state.
+`JumpHeight` is output-only and derived during simulation; set `JumpStrength`
+when a custom base jump velocity is needed.
+
+Riptide input flags are not trusted on their own. Set `MovementState.RiptideReady`
+for the simulation tick only after validating a charged Riptide-trident release.
+Set `MovementState.RiptideCollision` after a server-observed entity collision to
+authorize the corresponding stop/reversal; ordinary client stop flags are ignored.
+Set `MovementState.RiptideInRain` from trusted weather exposure when rain should
+permit launch without direct water contact.
+
+Pose changes update `MovementState.Size`. Set `StandingHeight`,
+`SneakingHeight`, or `CrawlingHeight` when using non-vanilla dimensions; zero
+values preserve the current standing height and use vanilla crouch/crawl
+heights.
+
+Movement-sensitive block behavior includes honey blocks, sweet berry bushes,
+powder snow, scaffolding, webs (including Weaving), soul sand with Soul
+Speed, slime blocks, beds, climbables, fences/walls, and per-block friction.
+Dynamic collision behavior still depends on the world adapter returning the
+correct shapes for the current block state.
 
 ### Liquid movement
 
@@ -148,6 +218,25 @@ would be a breaking change outside liquid scope. Set
 - `Simulate` — applies client input, runs physics, advances tick counters, and returns the result. Use this when bedsim owns the full tick lifecycle.
 - `SimulateState` — runs physics on the current state without applying input or ticking counters. Use this when your caller handles input parsing and tick management externally.
 
+Both entry points reject NaN and infinite state/input values with
+`SimulationOutcomeInvalidInput`. Mounted players return
+`SimulationOutcomeMounted` after being aligned to their client-reported state;
+vehicle physics belongs in the caller's vehicle simulation.
+
+For speculative movement, `Simulator.Replay` copies an initial
+`MovementState` and advances a caller-supplied input sequence through the same
+`Simulate` tick lifecycle. Every `ReplayFrame` contains an independent state
+snapshot, the normal `SimulationResult`, and a post-tick head-liquid
+observation. Replay adds no waypoint, correction, or failure policy: callers
+remain responsible for deciding which outcomes invalidate a trajectory.
+
+`Simulator.ObserveHeadLiquid` samples the continuous vanilla eye attachment
+for the current standing, sneaking, swimming, crawling, gliding, or active
+Riptide pose. It compares that position with the local partial liquid surface
+and reads the configured second liquid layer, so callers do not need to
+approximate submersion from feet/head block occupancy. The result is unknown
+when required world or liquid-layer data is unavailable.
+
 ### Correction modes
 
 - `SimulationModeAuthoritative` — `NeedsCorrection` becomes true if position or velocity drift exceeds thresholds.
@@ -162,4 +251,4 @@ Each tick returns a `SimulationResult` containing:
 - Collision flags (`CollideX`, `CollideY`, `CollideZ`, `OnGround`)
 - `PositionDelta` / `VelocityDelta` — difference from client-reported values
 - `NeedsCorrection` — whether deltas exceed configured thresholds
-- `Outcome` — which simulation path was taken (normal, teleport, unreliable, unloaded chunk, immobile)
+- `Outcome` — which simulation path was taken (normal, teleport, unreliable, unloaded chunk, immobile, mounted, or invalid input)

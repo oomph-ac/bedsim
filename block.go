@@ -33,40 +33,6 @@ func BlockName(b world.Block) string {
 	return stored.(string)
 }
 
-// BlockFriction returns the friction of the block.
-func BlockFriction(b world.Block) float32 {
-	if f, ok := b.(block.Frictional); ok {
-		return float32(f.Friction())
-	}
-
-	switch BlockName(b) {
-	case "minecraft:slime":
-		return 0.8
-	case "minecraft:ice", "minecraft:packed_ice":
-		return 0.98
-	case "minecraft:blue_ice":
-		return 0.99
-	default:
-		return 0.6
-	}
-}
-
-// BlockClimbable returns whether the given block is climbable.
-func BlockClimbable(b world.Block) bool {
-	switch b.(type) {
-	case block.Ladder:
-		return true
-	}
-
-	switch BlockName(b) {
-	case "minecraft:vine", "minecraft:cave_vines", "minecraft:cave_vines_body_with_berries", "minecraft:cave_vines_head_with_berries",
-		"minecraft:twisting_vines", "minecraft:weeping_vines":
-		return true
-	default:
-		return false
-	}
-}
-
 // BlockSupportHeight returns the effective standing surface height for a ground
 // block by sampling its collision boxes at the block centre (0.5, 0.5).
 // This handles slabs, stairs, and any other sub-block geometry correctly.

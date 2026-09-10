@@ -44,13 +44,13 @@ var liquidFaces = [...]struct {
 	{cube.Pos{0, 0, 1}, mgl32.Vec3{0, 0, 1}},
 }
 
-func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, touchingLiquid bool) {
+func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, touchingLiquid bool) bool {
 	initialY := state.Pos.Y()
 	water := kind == liquidWater
 	// Captured before updateSwimTravel, matching the upstream ordering.
 	jumping := state.EffectiveJumping
 	if water {
-		if state.WantDown || state.WantDownSlow {
+		if state.WantDown || state.WantDownSlow || state.PressingDescend {
 			vel := state.Vel
 			vel[1] -= 0.04
 			state.SetVel(vel)
@@ -82,11 +82,16 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		if state.Swimming && state.SwimSpeedMultiplier != 0 {
 			swimSpeedMultiplier = state.SwimSpeedMultiplier
 		}
-		if inventory, ok := s.Inventory.(DepthStriderProvider); ok {
-			depthStriderLevel = math32.Min(math32.Max(float32(inventory.DepthStriderLevel()), 0), 3)
-			if !state.OnGround {
-				depthStriderLevel *= 0.5
+		if s.Equipment != nil {
+			depthStriderLevel = math32.Min(math32.Max(float32(s.Equipment.EnchantmentLevel(EnchantmentDepthStrider)), 0), 3)
+		}
+		if depthStriderLevel == 0 {
+			if inventory, ok := s.Inventory.(DepthStriderProvider); ok {
+				depthStriderLevel = math32.Min(math32.Max(float32(inventory.DepthStriderLevel()), 0), 3)
 			}
+		}
+		if !state.OnGround {
+			depthStriderLevel *= 0.5
 		}
 		depthStriderFraction := depthStriderLevel / 3
 		if swimSpeedMultiplier > 1 {
@@ -95,18 +100,31 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 			moveRelativeSpeed += (state.MovementSpeed - moveRelativeSpeed) * depthStriderFraction
 		}
 	}
-
 	moveRelative(state, moveRelativeSpeed)
+	stuckMovement := applyStuckSpeedMultiplier(state)
+	if !s.movementSweepLoaded(state) {
+		return false
+	}
 	oldVel := state.Vel
 	oldOnGround := state.OnGround
-	s.tryCollisions(state, false)
+	if !s.tryCollisions(state) {
+		return false
+	}
+	stopRiptideOnBlockCollision(state)
+	if stuckMovement {
+		state.SetMov(state.Vel)
+		state.SetVel(mgl32.Vec3{})
+		oldVel = mgl32.Vec3{}
+	}
 	s.setPostCollisionMotion(state, oldVel, oldOnGround, block.Air{})
-	state.SetMov(state.Vel)
+	if !stuckMovement {
+		state.SetMov(state.Vel)
+	}
 
 	vel := state.Vel
 	if water {
 		drag := float32(0.8)
-		if state.Sprinting {
+		if state.Sprinting || state.StoppedSwimmingThisTick {
 			drag = 0.9
 		}
 		if depthStriderLevel > 0 && swimSpeedMultiplier <= 1 {
@@ -133,15 +151,23 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	if state.CollideX || state.CollideZ {
 		raised := mgl32.Vec3{vel.X(), vel.Y() + 0.6 + initialY - state.Pos.Y(), vel.Z()}
 		raisedBox := state.BoundingBox(s.Options.UseSlideOffset).Translate(raised)
-		hasCollision := hasNearbyBBoxes(s.World, raisedBox)
+		if !s.movementAreaLoaded(raisedBox) {
+			return false
+		}
+		hasCollision := s.hasNearbyBBoxes(state, raisedBox)
 		hasLiquid := s.containsAnyLiquid(raisedBox)
-		s.debugf("liquid exit probe collision=%t liquid=%t box=%v", hasCollision, hasLiquid, raisedBox)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("liquid exit probe collision=%t liquid=%t box=%v", hasCollision, hasLiquid, raisedBox)
+		}
 		if !hasCollision && !hasLiquid {
 			vel[1] = 0.3
 		}
 	}
 	state.SetVel(vel)
+	s.applyBubbleColumns(state)
+	s.applyInsideBlockEffects(state)
 	state.FallDistance = 0
+	return true
 }
 
 func liquidGravity(swimming, water bool) float32 {
@@ -164,9 +190,9 @@ func (s *Simulator) updateSwimTravel(state *MovementState) {
 		rate = 0.085
 	}
 
-	if targetY > 0 && !state.WantDownSlow {
+	if targetY > 0 && !state.WantDownSlow && !state.PressingDescend {
 		belowPos := posFromVec3(state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset - 1.1}))
-		if _, belowAir := s.liquidMovementBlock(belowPos).(block.Air); belowAir {
+		if s.blockAir(s.liquidMovementBlock(belowPos)) {
 			liquidPos := posFromVec3(state.Pos.Add(mgl32.Vec3{0, DefaultPlayerHeightOffset - 1.2}))
 			if _, liquid := s.liquidAt(liquidPos); !liquid {
 				vel := state.Vel
@@ -201,10 +227,13 @@ func (s *Simulator) touchingLiquidBlocks(state *MovementState, kind liquidKind) 
 				if !ok || !kind.matches(liquid) {
 					continue
 				}
-				if s.Options.Debugf != nil {
+				if !liquidIntersects(box, pos, liquid) {
+					continue
+				}
+				if debugf := s.Options.Debugf; debugf != nil {
 					height := liquidHeight(liquid)
 					surface := float32(pos[1]) + height
-					s.debugf(
+					debugf(
 						"liquid block type=%s pos=%v depth=%d falling=%t height=%.6f surface=%.6f boxY=[%.6f %.6f] immersion=%.6f",
 						liquid.LiquidType(), pos, liquid.LiquidDepth(), liquid.LiquidFalling(), height, surface,
 						box.Min().Y(), box.Max().Y(), surface-box.Min().Y(),
@@ -284,6 +313,12 @@ func liquidHeight(liquid world.Liquid) float32 {
 	return float32(liquid.LiquidDepth()+1) / 9
 }
 
+// liquidIntersects reports whether box reaches the liquid surface in pos.
+func liquidIntersects(box cube.BBox32, pos cube.Pos, liquid world.Liquid) bool {
+	surface := float32(pos[1]) + liquidHeight(liquid)
+	return box.Max().Y() > float32(pos[1]) && box.Min().Y() < surface
+}
+
 func (s *Simulator) containsAnyLiquid(box cube.BBox32) bool {
 	min, max := box.Min(), box.Max()
 	minX, minY, minZ := int(math32.Floor(min.X())), int(math32.Floor(min.Y())), int(math32.Floor(min.Z()))
@@ -291,7 +326,8 @@ func (s *Simulator) containsAnyLiquid(box cube.BBox32) bool {
 	for x := minX; x < maxX; x++ {
 		for z := minZ; z < maxZ; z++ {
 			for y := minY; y < maxY; y++ {
-				if _, ok := s.liquidAt(cube.Pos{x, y, z}); ok {
+				pos := cube.Pos{x, y, z}
+				if liquid, ok := s.liquidAt(pos); ok && liquidIntersects(box, pos, liquid) {
 					return true
 				}
 			}
@@ -300,7 +336,13 @@ func (s *Simulator) containsAnyLiquid(box cube.BBox32) bool {
 	return false
 }
 
-func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, kind liquidKind) {
+func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, kind liquidKind) bool {
+	if len(positions) == 0 {
+		return true
+	}
+	if !s.movementAreaLoaded(state.BoundingBox(s.Options.UseSlideOffset).Grow(1)) {
+		return false
+	}
 	flow := mgl32.Vec3{}
 	for _, pos := range positions {
 		liquid, ok := s.liquidAt(pos)
@@ -315,8 +357,11 @@ func (s *Simulator) applyLiquidFlow(state *MovementState, positions []cube.Pos, 
 			strength = 0.0035
 		}
 		state.SetVel(state.Vel.Add(flow.Mul(strength / length)))
-		s.debugf("%s flow applied strength=%.6f flow=%v vel=%v", kind.typeName(), strength, flow, state.Vel)
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("%s flow applied strength=%.6f flow=%v vel=%v", kind.typeName(), strength, flow, state.Vel)
+		}
 	}
+	return true
 }
 
 func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
@@ -332,7 +377,7 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
 				continue
 			}
 		}
-		if len(s.blockCollisions(neighbourPos)) != 0 {
+		if s.liquidFlowSideClosed(pos, neighbourPos) || s.liquidFlowSideClosed(neighbourPos, pos) {
 			continue
 		}
 		below := neighbourPos.Side(cube.FaceDown)
@@ -344,7 +389,7 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
 		for _, face := range liquidFaces {
 			neighbourPos := pos.Add(face.delta)
 			aboveNeighbour := neighbourPos.Side(cube.FaceUp)
-			if len(s.blockCollisions(neighbourPos)) != 0 || len(s.blockCollisions(aboveNeighbour)) != 0 {
+			if s.liquidFlowBarrier(neighbourPos) || s.liquidFlowBarrier(aboveNeighbour) {
 				if length := flow.Len(); length > 1e-4 {
 					flow = flow.Mul(1 / length)
 				}
@@ -359,9 +404,21 @@ func (s *Simulator) liquidFlow(pos cube.Pos, liquid world.Liquid) mgl32.Vec3 {
 	return mgl32.Vec3{}
 }
 
+// liquidFlowSideClosed reports whether the block at pos closes the face toward side.
 func (s *Simulator) liquidFlowSideClosed(pos, side cube.Pos) bool {
-	stairs, ok := s.blockAtPos(pos).(block.Stairs)
-	return ok && stairs.Model().FaceSolid(pos, pos.Face(side), s.World)
+	face := pos.Face(side)
+	if provider, ok := s.World.(LiquidFlowProvider); ok {
+		return provider.LiquidFlowFaceClosed(pos, face)
+	}
+	return s.blockAtPos(pos).Model().FaceSolid(pos, face, s.World)
+}
+
+// liquidFlowBarrier reports whether the block at pos bends falling flow downward.
+func (s *Simulator) liquidFlowBarrier(pos cube.Pos) bool {
+	if provider, ok := s.World.(LiquidFlowProvider); ok {
+		return provider.LiquidFlowBarrier(pos)
+	}
+	return len(s.blockCollisions(pos)) != 0
 }
 
 func liquidDecay(liquid world.Liquid) int {

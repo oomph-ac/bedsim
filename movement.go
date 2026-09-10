@@ -29,15 +29,36 @@ type MovementState struct {
 	SlideOffset mgl32.Vec2
 	Impulse     mgl32.Vec2
 	Size        mgl32.Vec3
+	// StuckSpeedMultiplier is the strongest queued berry-bush or powder-snow
+	// multiplier. It applies to one displacement, then clears along with
+	// persistent velocity.
+	StuckSpeedMultiplier mgl32.Vec3
+	// StandingHeight, SneakingHeight, and CrawlingHeight preserve custom entity
+	// dimensions across pose transitions. Zero values use the current standing
+	// height and vanilla player pose heights respectively.
+	StandingHeight float32
+	SneakingHeight float32
+	CrawlingHeight float32
 
 	SupportingBlockPos *cube.Pos
 
-	Gravity      float32
-	JumpHeight   float32
+	Gravity float32
+	// JumpHeight is an output derived by Simulate from JumpStrength and active
+	// effects; set JumpStrength to customize the base jump velocity.
+	JumpHeight float32
+	// JumpStrength is the base jump velocity. Zero uses DefaultJumpHeight.
+	JumpStrength float32
 	FallDistance float32
 
-	MovementSpeed           float32
-	DefaultMovementSpeed    float32
+	// MovementSpeed is the effective movement attribute used by travel. Include
+	// movement effects in this value before passing the state to BedSim.
+	MovementSpeed float32
+	// DefaultMovementSpeed is the effective non-sprinting movement attribute
+	// used when sprinting is toggled.
+	DefaultMovementSpeed float32
+	// AirSpeed is the air acceleration speed, which does not track the movement
+	// attribute. Simulate sets it from the sprint state; SimulateState callers
+	// provide it as part of the current state.
 	AirSpeed                float32
 	UnderwaterMovementSpeed float32
 	LavaMovementSpeed       float32
@@ -49,6 +70,7 @@ type MovementState struct {
 
 	Knockback           mgl32.Vec3
 	TicksSinceKnockback uint64
+	KnockbackPending    bool
 
 	PendingTeleportPos mgl32.Vec3
 	PendingTeleports   int
@@ -57,11 +79,14 @@ type MovementState struct {
 	TicksSinceTeleport      uint64
 	TeleportCompletionTicks uint64
 	TeleportIsSmoothed      bool
+	TeleportPending         bool
 
 	Sprinting, PressingSprint         bool
 	ServerSprint, ServerSprintApplied bool
 
 	Sneaking, PressingSneak bool
+	PressingAscend          bool
+	PressingDescend         bool
 
 	Jumping, PressingJump bool
 	EffectiveJumping      bool
@@ -69,6 +94,9 @@ type MovementState struct {
 
 	Swimming   bool
 	SwimAmount float32
+	// StoppedSwimmingThisTick selects the client's fast water drag on the
+	// transition out of swimming.
+	StoppedSwimmingThisTick bool
 	// SwimWaterGraceTicks retains recent server-observed water contact.
 	SwimWaterGraceTicks    int64
 	AutoJumpingInWater     bool
@@ -86,6 +114,26 @@ type MovementState struct {
 	GlideBoostTicks int64
 
 	HasGravity bool
+	// SlowFalling reports whether the slow-falling effect is active. Ordinary
+	// travel uses its lower gravity while descending; gliding uses it whenever
+	// the effect is active.
+	SlowFalling bool
+
+	Crawling              bool
+	TicksSinceCanSlowdown int
+	RiptideTicks          int
+	StartingSpinAttack    bool
+	// RiptideReady is a one-tick trusted latch set after validating a charged
+	// Riptide trident release. RiptideCollision is set after a server-observed
+	// entity collision and authorizes the matching stop/reversal.
+	RiptideReady     bool
+	RiptideCollision bool
+	// RiptideInRain is server-observed weather exposure that permits a
+	// validated Riptide release without direct block-water contact.
+	RiptideInRain bool
+	// InVehicle is server-authoritative mounted state. Riptide cannot start
+	// while the player is riding a vehicle.
+	InVehicle bool
 
 	Flying, MayFly, TrustFlyStatus bool
 	JustDisabledFlight             bool
@@ -100,6 +148,38 @@ type MovementState struct {
 	Alive bool
 
 	GameMode int32
+}
+
+// DefaultPlayerSize returns the vanilla player Size as (width, height, scale).
+// Callers with unknown or non-positive entity dimensions should fall back to it.
+func DefaultPlayerSize() mgl32.Vec3 {
+	return mgl32.Vec3{DefaultPlayerWidth, DefaultPlayerHeight, 1}
+}
+
+// Clone returns independent simulation state for speculative movement. The
+// caller must keep the source stable while cloning it.
+func (s MovementState) Clone() MovementState {
+	if s.SupportingBlockPos != nil {
+		pos := *s.SupportingBlockPos
+		s.SupportingBlockPos = &pos
+	}
+	return s
+}
+
+func (s *MovementState) ensurePoseHeights() {
+	if s.StandingHeight <= 0 {
+		if !s.Sneaking && !s.Crawling && s.Size.Y() > 0 {
+			s.StandingHeight = s.Size.Y()
+		} else {
+			s.StandingHeight = DefaultPlayerHeight
+		}
+	}
+	if s.SneakingHeight <= 0 {
+		s.SneakingHeight = 1.49
+	}
+	if s.CrawlingHeight <= 0 {
+		s.CrawlingHeight = 0.6
+	}
 }
 
 func (s *MovementState) SetPos(newPos mgl32.Vec3) {
@@ -123,13 +203,44 @@ func (s *MovementState) SetRotation(newRot mgl32.Vec3) {
 }
 
 func (s *MovementState) HasKnockback() bool {
-	return s.TicksSinceKnockback == 0
+	return s.KnockbackPending || (s.TicksSinceKnockback == 0 && s.Knockback != (mgl32.Vec3{}))
 }
 
 func (s *MovementState) HasTeleport() bool {
+	if s.TeleportPending || s.PendingTeleports > 0 {
+		return true
+	}
+	if s.TeleportCompletionTicks == 0 {
+		return s.TicksSinceTeleport == 0 && s.TeleportPos != (mgl32.Vec3{})
+	}
 	return s.TicksSinceTeleport <= s.TeleportCompletionTicks
 }
 
 func (s *MovementState) RemainingTeleportTicks() int {
-	return int(s.TeleportCompletionTicks) - int(s.TicksSinceTeleport)
+	if !s.HasTeleport() || s.TicksSinceTeleport >= s.TeleportCompletionTicks {
+		return 0
+	}
+	remaining := s.TeleportCompletionTicks - s.TicksSinceTeleport
+	maxInt := uint64(^uint(0) >> 1)
+	if remaining > maxInt {
+		return int(maxInt)
+	}
+	return int(remaining)
+}
+
+// QueueKnockback schedules one authoritative velocity replacement.
+func (s *MovementState) QueueKnockback(velocity mgl32.Vec3) {
+	s.Knockback = velocity
+	s.KnockbackPending = true
+	s.TicksSinceKnockback = 0
+}
+
+// QueueTeleport schedules one authoritative teleport.
+func (s *MovementState) QueueTeleport(pos mgl32.Vec3, smoothed bool, completionTicks uint64) {
+	s.PendingTeleportPos = pos
+	s.TeleportPos = pos
+	s.TeleportIsSmoothed = smoothed
+	s.TeleportCompletionTicks = completionTicks
+	s.TicksSinceTeleport = 0
+	s.TeleportPending = true
 }

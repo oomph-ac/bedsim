@@ -3,6 +3,7 @@ package bedsim
 import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
+	"github.com/oomph-ac/bedsim/block"
 )
 
 // WorldProvider bridges the world/chunk system for collision and block lookups.
@@ -14,18 +15,71 @@ type WorldProvider interface {
 	IsChunkLoaded(chunkX, chunkZ int32) bool
 }
 
+// MovementAreaProvider can provide a precise loaded/known check for a swept
+// movement volume in world space. Worlds that only expose chunk loading use BedSim's
+// conservative chunk-range fallback.
+type MovementAreaProvider interface {
+	// IsMovementAreaLoaded receives a world-space movement volume.
+	IsMovementAreaLoaded(aabb cube.BBox32) bool
+}
+
 // LiquidProvider returns liquids from either block layer at a position.
 type LiquidProvider interface {
 	Liquid(pos cube.Pos) (world.Liquid, bool)
 }
 
-// BlockSemanticsProvider resolves movement-relevant block behavior. Implement
-// this when names, friction, or climbability come from a per-world registry or
-// custom block data instead of Dragonfly's default block types.
-type BlockSemanticsProvider interface {
-	BlockName(world.Block) string
-	BlockFriction(world.Block) float32
-	BlockClimbable(world.Block) bool
+// LiquidFlowProvider resolves block face and material properties used by
+// liquid-flow calculations. It is optional; BedSim otherwise uses block models
+// for faces and collision boxes for falling-current barriers.
+type LiquidFlowProvider interface {
+	// LiquidFlowFaceClosed reports whether face at pos blocks horizontal flow.
+	LiquidFlowFaceClosed(pos cube.Pos, face cube.Face) bool
+	// LiquidFlowBarrier reports whether the block material at pos bends falling
+	// liquid flow downward.
+	LiquidFlowBarrier(pos cube.Pos) bool
+}
+
+// MovementCollisionContext contains player-dependent state needed by dynamic
+// collision shapes such as scaffolding and powder snow.
+type MovementCollisionContext struct {
+	Position     [3]float32
+	Sneaking     bool
+	Descending   bool
+	WantDown     bool
+	LeatherBoots bool
+}
+
+// MovementCollisionProvider optionally resolves collision boxes whose shape
+// depends on current player input or equipment.
+type MovementCollisionProvider interface {
+	GetMovementBBoxes(aabb cube.BBox32, context MovementCollisionContext) []cube.BBox32
+}
+
+// ClimbableContactProvider resolves orientation-aware ladder and vine contact.
+// aabb is in world space.
+// The built-in fallback uses the climbable semantics of the player's current
+// block cell when this provider is absent.
+type ClimbableContactProvider interface {
+	// HasClimbableContact receives a world-space movement volume.
+	HasClimbableContact(aabb cube.BBox32) bool
+}
+
+// MovementSupportProvider resolves the exact support block for dynamic shapes.
+// aabb is in world space.
+// It is optional because a generic collision provider may not retain source
+// block identities.
+type MovementSupportProvider interface {
+	// SupportingBlock receives a world-space movement volume.
+	SupportingBlock(aabb cube.BBox32, context MovementCollisionContext) (cube.Pos, bool)
+}
+
+// BlockMovementSemanticsProvider resolves the complete movement behavior for a
+// block from a custom world registry or block data. GroundFriction and
+// GroundAccelerationFrictionMultiplier must be finite and positive; invalid
+// values fall back to BedSim's built-in semantics. Boolean and enum values are
+// used as returned, including their zero values.
+type BlockMovementSemanticsProvider interface {
+	BlockMovementSemantics(world.Block) block.MovementSemantics
 }
 
 // DefaultBlockSemantics uses bedsim's built-in Dragonfly-backed block helpers.
@@ -44,4 +98,21 @@ type InventoryProvider interface {
 // DepthStriderProvider exposes the equipped Depth Strider level.
 type DepthStriderProvider interface {
 	DepthStriderLevel() int
+}
+
+// MovementEnchantment identifies enchantments that directly affect movement.
+type MovementEnchantment uint8
+
+const (
+	EnchantmentDepthStrider MovementEnchantment = iota
+	EnchantmentSoulSpeed
+	EnchantmentSwiftSneak
+	EnchantmentRiptide
+)
+
+// MovementEquipmentProvider exposes equipment and enchantments whose effects
+// are part of client movement physics.
+type MovementEquipmentProvider interface {
+	EnchantmentLevel(enchantment MovementEnchantment) int
+	WearingLeatherBoots() bool
 }

@@ -114,7 +114,13 @@ func doBBClipCollide(stationary, moving cube.BBox32, velocity mgl32.Vec3) (resul
 	return
 }
 
-// BBHasZeroVolume returns true if the bounding box has zero volume.
+// BBHasZeroVolume returns true for empty or invalid bounding boxes.
 func BBHasZeroVolume(bb cube.BBox32) bool {
-	return bb.Min() == bb.Max()
+	min, max := bb.Min(), bb.Max()
+	for axis := range 3 {
+		if !finiteFloat(min[axis]) || !finiteFloat(max[axis]) || min[axis] >= max[axis] {
+			return true
+		}
+	}
+	return false
 }

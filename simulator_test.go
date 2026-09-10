@@ -10,6 +10,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
+	movementblock "github.com/oomph-ac/bedsim/block"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -114,21 +115,11 @@ func (m mockInventory) HasElytra() bool {
 }
 
 type overrideBlockSemantics struct {
-	name      string
-	friction  float32
-	climbable bool
+	semantics movementblock.MovementSemantics
 }
 
-func (s overrideBlockSemantics) BlockName(world.Block) string {
-	return s.name
-}
-
-func (s overrideBlockSemantics) BlockFriction(world.Block) float32 {
-	return s.friction
-}
-
-func (s overrideBlockSemantics) BlockClimbable(world.Block) bool {
-	return s.climbable
+func (s overrideBlockSemantics) BlockMovementSemantics(world.Block) movementblock.MovementSemantics {
+	return s.semantics
 }
 
 func newBaseState() *MovementState {
@@ -341,21 +332,25 @@ func TestSimulatorBlockSemanticsOverridesDefaults(t *testing.T) {
 	sim := &Simulator{
 		World: mockWorld{},
 		BlockSemantics: overrideBlockSemantics{
-			name:      "minecraft:custom_floor",
-			friction:  0.42,
-			climbable: true,
+			semantics: movementblock.MovementSemantics{
+				GroundFriction: 0.42,
+				Climbable:      true,
+				Cobweb:         true,
+				Bounce:         movementblock.BounceBed,
+			},
 		},
 	}
 	b := block.Air{}
 
-	if got := sim.blockName(b); got != "minecraft:custom_floor" {
-		t.Fatalf("expected semantic block name, got %q", got)
+	got := sim.blockMovementSemantics(b)
+	if got.GroundFriction != 0.42 {
+		t.Fatalf("expected semantic block friction, got %v", got.GroundFriction)
 	}
-	if got := sim.blockFriction(b); got != 0.42 {
-		t.Fatalf("expected semantic block friction, got %v", got)
-	}
-	if !sim.blockClimbable(b) {
+	if !got.Climbable {
 		t.Fatalf("expected semantic climbable value")
+	}
+	if !got.Cobweb || got.Bounce != movementblock.BounceBed {
+		t.Fatalf("expected complete semantic bundle, got %+v", got)
 	}
 }
 
@@ -363,20 +358,16 @@ func TestSimulatorDefaultBlockSemanticsFallback(t *testing.T) {
 	b := block.Air{}
 	sim := &Simulator{World: mockWorld{}}
 
-	if got := sim.blockName(b); got != BlockName(b) {
-		t.Fatalf("expected default block name, got %q", got)
-	}
-	if got := sim.blockFriction(b); got != BlockFriction(b) {
-		t.Fatalf("expected default block friction, got %v", got)
-	}
-	if got := sim.blockClimbable(b); got != BlockClimbable(b) {
-		t.Fatalf("expected default climbable value, got %v", got)
+	got := sim.blockMovementSemantics(b)
+	want := movementblock.Resolve(b, BlockName(b))
+	if got != want {
+		t.Fatalf("expected default movement semantics %+v, got %+v", want, got)
 	}
 }
 
 func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) {
 	b := block.Air{}
-	want := BlockFriction(b)
+	want := movementblock.Friction(b, BlockName(b))
 
 	tests := []struct {
 		name     string
@@ -394,14 +385,31 @@ func TestSimulatorInvalidBlockSemanticsFrictionFallsBackToDefault(t *testing.T) 
 			sim := &Simulator{
 				World: mockWorld{},
 				BlockSemantics: overrideBlockSemantics{
-					name:     "minecraft:custom_floor",
-					friction: tt.friction,
+					semantics: movementblock.MovementSemantics{GroundFriction: tt.friction},
 				},
 			}
-			if got := sim.blockFriction(b); got != want {
+			if got := sim.blockMovementSemantics(b).GroundFriction; got != want {
 				t.Fatalf("expected invalid semantic friction to fall back to %v, got %v", want, got)
 			}
 		})
+	}
+}
+
+func TestSimulatorInvalidAccelerationMultiplierFallsBackToBuiltIn(t *testing.T) {
+	b := block.SoulSand{}
+	want := movementblock.Resolve(b, BlockName(b)).GroundAccelerationFrictionMultiplier
+	sim := &Simulator{
+		World: mockWorld{},
+		BlockSemantics: overrideBlockSemantics{
+			semantics: movementblock.MovementSemantics{
+				GroundFriction:                       DefaultBlockFriction,
+				GroundAccelerationFrictionMultiplier: 0,
+			},
+		},
+	}
+
+	if got := sim.blockMovementSemantics(b).GroundAccelerationFrictionMultiplier; got != want {
+		t.Fatalf("expected invalid acceleration multiplier to fall back to %v, got %v", want, got)
 	}
 }
 
@@ -439,6 +447,39 @@ func TestSimulateStateOutcomeImmobileOrNotReady(t *testing.T) {
 	}
 	if state.Vel != (mgl32.Vec3{}) {
 		t.Fatalf("expected velocity to be cleared, got %v", state.Vel)
+	}
+}
+
+func TestEarlyExitClearsQueuedStuckMovement(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*MovementState)
+		world WorldProvider
+	}{
+		{name: "unloaded chunk", world: staticWorld{chunkLoaded: false}},
+		{name: "immobile", world: mockWorld{}, setup: func(state *MovementState) { state.Immobile = true }},
+		{name: "unreliable", world: mockWorld{}, setup: func(state *MovementState) { state.GameMode = packet.GameTypeCreative }},
+		{name: "teleport", world: mockWorld{}, setup: func(state *MovementState) {
+			state.TeleportCompletionTicks = 1
+			state.PendingTeleports = 1
+			state.TeleportPos = mgl32.Vec3{10, 20, 30}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := newBaseState()
+			state.StuckSpeedMultiplier = mgl32.Vec3{0.8, 0.75, 0.8}
+			if tt.setup != nil {
+				tt.setup(state)
+			}
+
+			(&Simulator{World: tt.world}).SimulateState(state)
+
+			if state.StuckSpeedMultiplier != (mgl32.Vec3{}) {
+				t.Fatalf("expected queued stuck movement to clear, got %v", state.StuckSpeedMultiplier)
+			}
+		})
 	}
 }
 
@@ -521,7 +562,7 @@ func TestSimulateStateDebugTraceIncludesCollisionStream(t *testing.T) {
 	}
 }
 
-func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
+func TestSimulateStateResolvesBlockedJumpThroughAutoStep(t *testing.T) {
 	var logs []string
 	sim := &Simulator{
 		World: staticWorld{
@@ -551,8 +592,61 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 	if result.Outcome != SimulationOutcomeNormal {
 		t.Fatalf("expected normal outcome, got %v", result.Outcome)
 	}
-	if !containsLog(logs, "jump determined to be blocked") {
-		t.Fatalf("expected jump-block debug log, logs=%v", logs)
+	if math32.Abs(result.Position.Y()) > 1e-6 || result.Position.Z() <= 0.69 {
+		t.Fatalf("expected the filtered auto-step path to move under the block, got position %v", result.Position)
+	}
+	if !containsLog(logs, "auto-step collision boxes=0/1") {
+		t.Fatalf("expected the overhead collision box to be excluded from auto-step, logs=%v", logs)
+	}
+	if containsLog(logs, "jump determined to be blocked") {
+		t.Fatalf("expected no pre-emptive jump cancellation, logs=%v", logs)
+	}
+}
+
+func TestCalculateAutoStepExcludesBoxesAtPlayerTop(t *testing.T) {
+	originalBB := cube.Box32(0, 0, 0, 1, 1.8, 1)
+	lowObstacle := cube.Box32(1, 0, 0, 2, 0.5, 1)
+	overhead := cube.Box32(0, 1.8, 0, 1, 2.8, 1)
+
+	result := calculateAutoStep(originalBB, mgl32.Vec3{1, 0, 0}, []cube.BBox32{lowObstacle, overhead}, false)
+
+	if result.collisionBoxCount != 1 {
+		t.Fatalf("expected only the low obstacle in the auto-step set, got %d boxes", result.collisionBoxCount)
+	}
+	if result.upVelocity.Y() != StepHeight {
+		t.Fatalf("expected overhead box to leave upward step velocity unchanged, got %v", result.upVelocity)
+	}
+}
+
+func TestCalculateAutoStepUsesReverseCollisionOrder(t *testing.T) {
+	originalBB := cube.Box32(-0.3, 0, -0.3, 0.3, 1.8, 0.3)
+	// These overlapping boxes depenetrate X to -0.1 in client reverse order.
+	// Processing them forward instead produces +0.3.
+	boxes := []cube.BBox32{
+		cube.Box32(0.2, 0.1, -0.2, 0.6, 0.3, 0.1),
+		cube.Box32(-0.8, 0.3, -0.6, 0, 1.1, 0.2),
+	}
+
+	result := calculateAutoStep(originalBB, mgl32.Vec3{0.4, 0, 0.2}, boxes, false)
+
+	if math32.Abs(result.upVelocity.X()+0.1) > 1e-6 {
+		t.Fatalf("expected reverse-order depenetration on X, got upward velocity %v", result.upVelocity)
+	}
+}
+
+func TestCalculateAutoStepDoesNotAllocate(t *testing.T) {
+	originalBB := cube.Box32(0, 0, 0, 1, 1.8, 1)
+	boxes := []cube.BBox32{
+		cube.Box32(1, 0, 0, 2, 0.5, 1),
+		cube.Box32(0, 1.8, 0, 1, 2.8, 1),
+	}
+
+	allocations := testing.AllocsPerRun(100, func() {
+		calculateAutoStep(originalBB, mgl32.Vec3{1, 0, 0}, boxes, false)
+	})
+
+	if allocations != 0 {
+		t.Fatalf("calculateAutoStep allocations = %v, want 0", allocations)
 	}
 }
 
@@ -564,13 +658,13 @@ func TestSimulateStateDebugTraceJumpBlocked(t *testing.T) {
 func TestStepUpTiebreaker(t *testing.T) {
 	// Geometry: ground at Y=0, a 0.5-high slab at X=1 (X=1..2, Y=0..0.5).
 	// The player stands on the ground at X≈0.5, walks in +X toward the slab.
-	// The step-up (0.5 blocks) is within StepHeight (0.6).
+	// The step-up (0.5 blocks) is within StepHeight (0.5625).
 	slabBox := cube.Box32(1, 0, -1, 2, 0.5, 2)
 	groundBox := cube.Box32(-1, -1, -1, 1, 0, 2)
 
 	startPos := mgl32.Vec3{0.5, 0, 0.5}
 
-	runSim := func(ignoreStepTiebreaker bool) (mgl32.Vec3, bool) {
+	runSim := func(ignoreStepTiebreaker bool) (mgl32.Vec3, bool, bool) {
 		w := staticWorld{chunkLoaded: true, boxes: []cube.BBox32{slabBox, groundBox}}
 		sim := &Simulator{
 			World:   w,
@@ -601,20 +695,23 @@ func TestStepUpTiebreaker(t *testing.T) {
 			input.ClientVel = state.Vel
 		}
 		stepped := state.Pos.Y() >= 0.45
-		return state.Pos, stepped
+		return state.Pos, stepped, state.OnGround
 	}
 
 	t.Run("rejected without flag", func(t *testing.T) {
-		pos, stepped := runSim(false)
+		pos, stepped, _ := runSim(false)
 		if stepped {
 			t.Fatalf("expected step-up to be rejected by tie-breaker, but player stepped up to Y=%.4f", pos.Y())
 		}
 	})
 
 	t.Run("accepted with flag", func(t *testing.T) {
-		pos, stepped := runSim(true)
+		pos, stepped, onGround := runSim(true)
 		if !stepped {
 			t.Fatalf("expected step-up to be accepted with IgnoreClientStepTiebreaker, but player at Y=%.4f", pos.Y())
+		}
+		if !onGround {
+			t.Fatal("expected an accepted positive-height step to remain grounded")
 		}
 	})
 

@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
+	movementblock "github.com/oomph-ac/bedsim/block"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -93,6 +94,20 @@ func (w *liquidWorld) IsChunkLoaded(chunkX, chunkZ int32) bool {
 type layeredLiquidWorld struct {
 	*liquidWorld
 	layer map[cube.Pos]world.Liquid
+}
+
+type liquidFlowSemanticsWorld struct {
+	*liquidWorld
+}
+
+// LiquidFlowFaceClosed delegates face checks to the block model.
+func (w *liquidFlowSemanticsWorld) LiquidFlowFaceClosed(pos cube.Pos, face cube.Face) bool {
+	return w.Block(pos).Model().FaceSolid(pos, face, w)
+}
+
+// LiquidFlowBarrier makes every test block transparent to falling currents.
+func (*liquidFlowSemanticsWorld) LiquidFlowBarrier(cube.Pos) bool {
+	return false
 }
 
 func newLayeredLiquidWorld() *layeredLiquidWorld {
@@ -354,9 +369,32 @@ func TestSwimAmountClampedToUnitRange(t *testing.T) {
 func TestStartSwimmingClearsSneaking(t *testing.T) {
 	sim := newLiquidSim(newLiquidWorld())
 	state := newBaseState()
+	state.Crawling = true
 	sim.applyInput(state, InputState{SneakDown: true, StartSneaking: true, StartSwimming: true})
 	if state.Sneaking {
 		t.Fatal("StartSwimming must clear Sneaking")
+	}
+	if state.Size.Y() != state.StandingHeight {
+		t.Fatalf("StartSwimming must clear the crouched height, got %v", state.Size.Y())
+	}
+	if state.Crawling {
+		t.Fatal("StartSwimming must clear Crawling")
+	}
+}
+
+func TestSimulateStateInitializesPoseHeightBeforeSwimming(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: block.Water{Still: true, Depth: 8}}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Swimming = true
+	state.StandingHeight = 0
+	state.SneakingHeight = 0
+	state.CrawlingHeight = 0
+
+	(&Simulator{World: w}).SimulateState(state)
+
+	if state.StandingHeight != 1.8 || state.Size.Y() != 1.8 {
+		t.Fatalf("expected initialized standing pose, got standing=%v size=%v", state.StandingHeight, state.Size)
 	}
 }
 
@@ -437,6 +475,32 @@ func TestSwimmingCancelsWaterGravity(t *testing.T) {
 	sim.SimulateState(state)
 	if !approxEqual(state.Vel.Y(), 0) {
 		t.Fatalf("swimming vertical velocity = %v, want 0", state.Vel.Y())
+	}
+}
+
+func TestStopSwimmingUsesFastWaterDragForOneTick(t *testing.T) {
+	sim := newLiquidSim(filledColumn(waterSource))
+	state := submergedState()
+	state.Swimming = false
+	state.StoppedSwimmingThisTick = true
+	state.Vel = mgl32.Vec3{0.5, 0, 0}
+
+	sim.SimulateState(state)
+	if !approxEqual(state.Vel.X(), 0.45) {
+		t.Fatalf("stop-swimming drag = %v, want 0.45", state.Vel.X())
+	}
+}
+
+func TestStopSwimmingFlagWithoutTransitionUsesNormalDrag(t *testing.T) {
+	sim := newLiquidSim(filledColumn(waterSource))
+	state := submergedState()
+	state.Swimming = false
+	state.Vel = mgl32.Vec3{0.5, 0, 0}
+
+	sim.Simulate(state, InputState{StopSwimming: true})
+
+	if !approxEqual(state.Vel.X(), 0.4) {
+		t.Fatalf("false stop-swimming drag = %v, want 0.4", state.Vel.X())
 	}
 }
 
@@ -668,6 +732,23 @@ func TestSwimTravelSurfaceClampSkippedWhenWantDownSlow(t *testing.T) {
 	}
 }
 
+func TestSwimTravelSurfaceClampSkippedWhenPressingDescend(t *testing.T) {
+	w := newLiquidWorld().fill(cube.Pos{-2, -4, -2}, cube.Pos{2, 0, 2}, waterSource)
+	sim := newLiquidSim(w)
+	state := submergedState()
+	state.Pos = mgl32.Vec3{0.5, 1.5, 0.5}
+	state.Swimming = true
+	state.Rotation = mgl32.Vec3{-90, 0, 0}
+	state.PressingDescend = true
+	state.Vel = mgl32.Vec3{0, 0.5, 0}
+	state.SwimWaterGraceTicks = DefaultSwimWaterGraceTicks
+
+	sim.SimulateState(state)
+	if approxEqual(state.Vel.Y(), 0) {
+		t.Fatal("PressingDescend must skip the surface clamp")
+	}
+}
+
 // Depth Strider lowers the horizontal drag coefficient toward 0.546, so
 // existing momentum decays faster rather than slower.
 func TestDepthStriderLowersDragCoefficient(t *testing.T) {
@@ -783,6 +864,21 @@ func TestInventoryWithoutDepthStriderProvider(t *testing.T) {
 	sim.SimulateState(state)
 	if !approxEqual(state.Vel.X(), 0.5*0.8) {
 		t.Fatalf("X = %v, want plain water drag", state.Vel.X())
+	}
+}
+
+func TestZeroEquipmentDepthStriderFallsBackToLegacyInventory(t *testing.T) {
+	sim := newLiquidSim(filledColumn(waterSource))
+	sim.Inventory = depthStriderInventory{level: 3}
+	sim.Equipment = fixedEquipment{}
+	state := submergedState()
+	state.Vel = mgl32.Vec3{0.5, 0, 0}
+	state.OnGround = true
+
+	sim.SimulateState(state)
+
+	if !approxEqual(state.Vel.X(), 0.5*0.54600006) {
+		t.Fatalf("legacy depth strider X = %v, want level-3 behavior", state.Vel.X())
 	}
 }
 
@@ -1355,9 +1451,10 @@ func TestClimbUsesEffectiveJumping(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			sim := newLiquidSim(newLiquidWorld())
 			sim.BlockSemantics = overrideBlockSemantics{
-				name:      "minecraft:ladder",
-				friction:  DefaultBlockFriction,
-				climbable: true,
+				semantics: movementblock.MovementSemantics{
+					GroundFriction: DefaultBlockFriction,
+					Climbable:      true,
+				},
 			}
 			state := submergedState()
 			apply(state)

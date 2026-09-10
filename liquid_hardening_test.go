@@ -470,6 +470,47 @@ func TestFlowDropWeightIsEight(t *testing.T) {
 	assertVec(t, flow, want)
 }
 
+func TestPartialNeighbourFaceAllowsFlowIntoDrop(t *testing.T) {
+	w := newLiquidWorld().
+		set(cube.Pos{0, 0, 0}, block.Water{Depth: 8}).
+		set(cube.Pos{1, 0, 0}, block.Slab{Block: block.Stone{}}).
+		set(cube.Pos{1, -1, 0}, block.Water{Depth: 8})
+	sim := newLiquidSim(w)
+
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8})
+
+	if !(flow.X() > 0) {
+		t.Fatalf("flow X = %v, want positive flow through the slab's open side", flow.X())
+	}
+}
+
+func TestCurrentBlockClosedFaceBlocksFlowIntoDrop(t *testing.T) {
+	pos := cube.Pos{0, 0, 0}
+	w := newLayeredLiquidWorld()
+	w.waterlog(pos, block.Stairs{Facing: cube.East}, block.Water{Depth: 8})
+	w.set(cube.Pos{1, -1, 0}, block.Water{Depth: 8})
+	sim := newLiquidSim(w)
+
+	flow := sim.liquidFlow(pos, block.Water{Depth: 8})
+
+	if flow.X() != 0 {
+		t.Fatalf("flow X = %v, want no flow through the current block's closed face", flow.X())
+	}
+}
+
+func TestFallingFlowUsesProviderBarrierSemantics(t *testing.T) {
+	w := &liquidFlowSemanticsWorld{liquidWorld: newLiquidWorld()}
+	w.set(cube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true}).
+		set(cube.Pos{1, 0, 0}, block.Stone{})
+	sim := newLiquidSim(w)
+
+	flow := sim.liquidFlow(cube.Pos{0, 0, 0}, block.Water{Depth: 8, Falling: true})
+
+	if flow.Len() != 0 {
+		t.Fatalf("flow = %v, want no falling-current barrier", flow)
+	}
+}
+
 // Falling liquid blocked by a solid neighbour adds a downward term of exactly
 // 6 against the unit-normalized horizontal flow.
 func TestFallingFlowDownwardWeightIsSix(t *testing.T) {
@@ -504,6 +545,20 @@ func TestStairsSolidFaceBlocksFlow(t *testing.T) {
 	// neighbour.
 	if flow := build(cube.West); !(flow.X() > 0) {
 		t.Fatalf("west-facing stairs: flow X = %v, want positive", flow.X())
+	}
+}
+
+func TestWaterloggedTrapdoorSolidFaceBlocksFlow(t *testing.T) {
+	pos := cube.Pos{0, 0, 0}
+	neighbour := cube.Pos{1, 0, 0}
+	w := newLayeredLiquidWorld()
+	w.waterlog(pos, block.WoodTrapdoor{Facing: cube.West, Open: true}, block.Water{Depth: 8})
+	w.set(neighbour, block.Water{Depth: 4})
+
+	flow := newLiquidSim(w).liquidFlow(pos, block.Water{Depth: 8})
+
+	if !approxEqual(flow.X(), 0) {
+		t.Fatalf("waterlogged trapdoor solid face allowed flow X = %v", flow.X())
 	}
 }
 

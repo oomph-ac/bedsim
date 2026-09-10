@@ -5,6 +5,10 @@ import "github.com/go-gl/mathgl/mgl32"
 // InputState represents a single tick's client input and reported state.
 type InputState struct {
 	MoveVector mgl32.Vec2
+	// MoveVectorIsRaw asks BedSim to apply client movement multipliers to raw
+	// controls. False preserves validation of an already processed packet vector.
+	// Raw controls always apply slowdown, regardless of UpstreamImpulseClamping.
+	MoveVectorIsRaw bool
 
 	Pitch   float32
 	Yaw     float32
@@ -37,9 +41,18 @@ type InputState struct {
 	StopSwimming  bool
 	WantDown      bool
 	WantDownSlow  bool
+	StartCrawling bool
+	StopCrawling  bool
+	DescendBlock  bool
 
 	StopGliding  bool
 	StartGliding bool
 
 	UsingConsumable bool
+	UsingItem       bool
+	UsingSpear      bool
+	InventoryAction bool
+
+	StartSpinAttack bool
+	StopSpinAttack  bool
 }
