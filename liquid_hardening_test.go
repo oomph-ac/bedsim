@@ -693,8 +693,8 @@ func TestLiquidGoldenScenario(t *testing.T) {
 		sim.Simulate(state, input)
 	}
 
-	wantPos := mgl32.Vec3{-0.012654960155487061, 2.922518253326416, 3.5954680442810059}
-	wantVel := mgl32.Vec3{-0.02702143903177032, 0.15549643337726593, 0.1142856627702713}
+	wantPos := mgl32.Vec3{-0.012862622737884521, 2.922518253326416, 3.5954177379608154}
+	wantVel := mgl32.Vec3{-0.027029925957322121, 0.15549643337726593, 0.11428361386060715}
 
 	const tolerance = 1e-6
 	for axis, name := range []string{"X", "Y", "Z"} {

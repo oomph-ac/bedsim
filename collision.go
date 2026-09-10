@@ -7,6 +7,10 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 )
 
+// Vanilla AABB::clipCollide snaps contact distances within one micrometre to
+// zero (Lens 26.30, 0x10ce9b090 / float32 constant at 0x10e26f130).
+const collisionContactEpsilon = float32(1e-6)
+
 type clipCollideResult struct {
 	depenetratingAxis     int
 	penetration           float32
@@ -45,10 +49,10 @@ func doBBClipCollide(stationary, moving cube.BBox32, velocity mgl32.Vec3) (resul
 		minPenetration := moving.Max()[i] - stationary.Min()[i]
 		maxPenetration := stationary.Max()[i] - moving.Min()[i]
 
-		if math32.Abs(minPenetration) <= 1e-7 {
+		if math32.Abs(minPenetration) <= collisionContactEpsilon {
 			minPenetration = 0
 		}
-		if math32.Abs(maxPenetration) <= 1e-7 {
+		if math32.Abs(maxPenetration) <= collisionContactEpsilon {
 			maxPenetration = 0
 		}
 

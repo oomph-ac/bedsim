@@ -108,6 +108,7 @@ func (s *Simulator) invalidSimulationResult(state *MovementState) SimulationResu
 }
 
 func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) SimulationOutcome {
+	state.sprintMovementBlocked = false
 	state.ensurePoseHeights()
 	clearRiptideReady := consumeTransient
 	defer func() {
@@ -186,14 +187,15 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 
 func (s *Simulator) resultFromState(state *MovementState, outcome SimulationOutcome) SimulationResult {
 	result := SimulationResult{
-		Position: state.Pos,
-		Velocity: state.Vel,
-		Movement: state.Mov,
-		OnGround: state.OnGround,
-		CollideX: state.CollideX,
-		CollideY: state.CollideY,
-		CollideZ: state.CollideZ,
-		Outcome:  outcome,
+		Position:              state.Pos,
+		Velocity:              state.Vel,
+		Movement:              state.Mov,
+		OnGround:              state.OnGround,
+		CollideX:              state.CollideX,
+		CollideY:              state.CollideY,
+		CollideZ:              state.CollideZ,
+		Outcome:               outcome,
+		SprintMovementBlocked: outcome == SimulationOutcomeNormal && state.sprintMovementBlocked,
 	}
 
 	result.PositionDelta = state.Pos.Sub(state.Client.Pos)
@@ -1022,12 +1024,14 @@ func moveRelative(state *MovementState, moveRelativeSpeed float32) {
 		force = moveRelativeSpeed / math32.Max(math32.Sqrt(force), 1.0)
 		mf, ms := impulse.Y()*force, impulse.X()*force
 
-		yaw := state.Rotation.Z() * math32.Pi / 180.0
-		v2, v3 := MCSin(yaw), MCCos(yaw)
+		// DefaultMoveSystems::horizontalMovement uses sincosf. The jump
+		// boost separately uses the lookup table in attemptJump.
+		yaw := state.Rotation.Z() * float32(math32.Pi/180)
+		v2, v3 := math32.Sin(yaw), math32.Cos(yaw)
 
 		newVel := state.Vel
-		newVel[0] += ms*v3 - mf*v2
-		newVel[2] += mf*v3 + ms*v2
+		newVel[0] += ms*v3 - v2*impulse.Y()*force
+		newVel[2] += ms*v2 + mf*v3
 		state.SetVel(newVel)
 	}
 }
@@ -1286,16 +1290,20 @@ func (s *Simulator) tryCollisions(state *MovementState) bool {
 			state.SlideOffset = mgl32.Vec2{}
 		}
 	}
+	state.sprintMovementBlocked = SprintMovementBlocked(currVel, endPos.Sub(state.Pos))
 	state.SetPos(endPos)
+	state.rememberCollisionBox(collisionBB, useSlideOffset)
 
 	yCollision = math32.Abs(currVel.Y()-collisionVel.Y()) >= 1e-5
 	state.CollideX = math32.Abs(currVel.X()-collisionVel.X()) >= 1e-5
 	state.CollideY = yCollision
 	state.CollideZ = math32.Abs(currVel.Z()-collisionVel.Z()) >= 1e-5
 
+	// FinalizeMoveSystemImpl derives ground contact from the requested Y
+	// movement, including after auto-step. A step taken during a jump is still
+	// airborne for the following tick; the downward collision then lands it.
 	state.OnGround = (yCollision && currVel.Y() < 0) ||
-		(onGround && !yCollision && math32.Abs(currVel.Y()) <= 1e-5) ||
-		completedStep
+		(state.OnGround && !yCollision && currVel.Y() == 0)
 	if !s.checkSupportingBlockPos(state, useSlideOffset, currVel) {
 		return false
 	}

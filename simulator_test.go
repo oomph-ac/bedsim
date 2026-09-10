@@ -650,6 +650,71 @@ func TestCalculateAutoStepDoesNotAllocate(t *testing.T) {
 	}
 }
 
+func TestSimulator_SprintStallIncludesMomentum(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		velocity mgl32.Vec3
+		blocked  bool
+	}{
+		{"glancing along X", mgl32.Vec3{0.1, 0.2, 0.02}, false},
+		{"head on along Z", mgl32.Vec3{0.02, 0.2, 0.1}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			sim := Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+				cube.Box32(-10, -10, 1, 10, 10, 2),
+			}}}
+			state := newBaseState()
+			// Start at the full-width vanilla wall contact.
+			state.SetPos(mgl32.Vec3{0.5, 1, 0.7})
+			state.SetVel(tt.velocity)
+			state.OnGround = false
+			if !sim.tryCollisions(state) {
+				t.Fatal("collision simulation unavailable")
+			}
+			result := sim.resultFromState(state, SimulationOutcomeNormal)
+			if !result.CollideZ || result.SprintMovementBlocked != tt.blocked {
+				t.Fatalf("result=%+v, want blocked=%v", result, tt.blocked)
+			}
+			if sim.resultFromState(state, SimulationOutcomeUnloadedChunk).SprintMovementBlocked {
+				t.Fatal("unavailable simulation must not publish a sprint stall")
+			}
+		})
+	}
+}
+
+func TestSimulator_AutoStepGroundContact(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		y      float32
+		ground bool
+	}{
+		{"descending", -0.0784, true},
+		{"stationary", 0, false},
+		{"jumping", DefaultJumpHeight, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			sim := Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+				cube.Box32(-2, -1, -2, 2, 0, 2),
+				cube.Box32(1, 0, -2, 2, 0.5, 2),
+			}}, Options: SimulationOptions{IgnoreClientStepTiebreaker: true}}
+			state := newBaseState()
+			state.SetPos(mgl32.Vec3{0.65, 0, 0.5})
+			state.SetVel(mgl32.Vec3{0.3, tt.y, 0})
+			state.OnGround = true
+			if !sim.tryCollisions(state) || math32.Abs(state.Pos.Y()-0.5) > 1e-5 {
+				t.Fatalf("expected successful half-block step, position=%v", state.Pos)
+			}
+			if state.OnGround != tt.ground {
+				t.Fatalf("ground=%v, want %v after requested Y=%v", state.OnGround, tt.ground, tt.y)
+			}
+			state.SetVel(mgl32.Vec3{0.1, -0.0784, 0})
+			if !sim.tryCollisions(state) || !state.OnGround {
+				t.Fatal("expected ground contact on the following downward collision")
+			}
+		})
+	}
+}
+
 // TestStepUpTiebreaker verifies the client-alignment tie-breaker in tryCollisions:
 //   - Without IgnoreClientStepTiebreaker, a slab/stair step-up is rejected when
 //     the client position matches the pre-step position.
@@ -812,6 +877,31 @@ func TestResultFromStateCorrectionModes(t *testing.T) {
 			result := sim.resultFromState(state, SimulationOutcomeNormal)
 			if result.NeedsCorrection != tc.wantSet {
 				t.Fatalf("mode=%v needsCorrection=%v want=%v", tc.mode, result.NeedsCorrection, tc.wantSet)
+			}
+		})
+	}
+}
+
+// Captured from an unmodified 1.26.45.1 client during airborne sprint steering.
+// A sine lookup table introduces an error on every tick at these headings.
+func TestMoveRelative_VanillaAirSteering(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		yaw           float32
+		before, after mgl32.Vec3
+	}{
+		{"first turn", -81.40101, mgl32.Vec3{0.3311201, 0, 0.04030281}, mgl32.Vec3{0.32424545, 0, 0.0401424}},
+		{"second turn", -73.75747, mgl32.Vec3{0.32312074, 0, 0.050257172}, mgl32.Vec3{0.31630123, 0, 0.052219465}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			state := newBaseState()
+			state.Rotation[2] = tt.yaw
+			state.Impulse = mgl32.Vec2{0, 0.98}
+			state.Vel = tt.before
+			moveRelative(state, 0.026)
+			got := state.Vel.Mul(0.91)
+			if got.Sub(tt.after).Len() > 4e-8 {
+				t.Fatalf("air velocity = %v, want vanilla %v", got, tt.after)
 			}
 		})
 	}

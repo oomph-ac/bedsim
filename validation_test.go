@@ -52,6 +52,10 @@ func collectNumericStateFields(t reflect.Type, prefix []int, name string) []nume
 		index := append(append([]int(nil), prefix...), i)
 		fieldName := name + "." + field.Name
 		switch field.Type {
+		case reflect.TypeFor[collisionShape]():
+			// Private, derived geometry cannot be supplied by callers. Its inputs
+			// (Pos, Size and pose/slide state) are covered by this exhaustive walk.
+			continue
 		case floatType, vec2Type, vec3Type:
 			fields = append(fields, numericStateField{name: fieldName, index: index, typ: field.Type})
 		default:

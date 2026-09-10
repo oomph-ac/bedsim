@@ -26,6 +26,10 @@ type SimulationResult struct {
 	// leaves this zero. Raw controls and analogue vectors remain caller-owned.
 	InputMoveVector mgl32.Vec2
 
+	// SprintMovementBlocked is the dominant-axis stall from the full movement
+	// request (including momentum), for the following tick's sprint intent.
+	SprintMovementBlocked bool
+
 	OnGround bool
 	CollideX bool
 	CollideY bool
