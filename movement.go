@@ -156,6 +156,16 @@ func DefaultPlayerSize() mgl32.Vec3 {
 	return mgl32.Vec3{DefaultPlayerWidth, DefaultPlayerHeight, 1}
 }
 
+// Clone returns independent simulation state for speculative movement. The
+// caller must keep the source stable while cloning it.
+func (s MovementState) Clone() MovementState {
+	if s.SupportingBlockPos != nil {
+		pos := *s.SupportingBlockPos
+		s.SupportingBlockPos = &pos
+	}
+	return s
+}
+
 func (s *MovementState) ensurePoseHeights() {
 	if s.StandingHeight <= 0 {
 		if !s.Sneaking && !s.Crawling && s.Size.Y() > 0 {

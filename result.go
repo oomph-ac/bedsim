@@ -21,6 +21,11 @@ type SimulationResult struct {
 	Velocity mgl32.Vec3
 	Movement mgl32.Vec3
 
+	// InputMoveVector is the processed primary input used by Simulate, before
+	// the 0.98 movement-impulse factor. SimulateState does not resolve input and
+	// leaves this zero. Raw controls and analogue vectors remain caller-owned.
+	InputMoveVector mgl32.Vec2
+
 	OnGround bool
 	CollideX bool
 	CollideY bool
