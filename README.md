@@ -99,6 +99,15 @@ Riptide, and leather-boots checks. The legacy `DepthStriderProvider` inventory
 extension remains a fallback when the equipment provider reports no Depth
 Strider level. `EffectsProvider` also controls Weaving-aware web movement.
 
+Keep the same `MovementState` across ticks so BedSim can retain the exact swept
+collision-box endpoints. When initialized or re-anchored with `SetPos` from a
+rounded client position with unchanged dimensions, BedSim recovers overlapping
+horizontal contact faces only if the recovered box still has exactly that
+float32 center. Recovery waits
+for loaded world geometry and does not change the tolerance used by normal
+collision sweeps. Use `QueueTeleport` for an actual client teleport: teleports
+and pose changes rebuild their box using native position/size arithmetic.
+
 Use `MovementState.QueueKnockback` and `MovementState.QueueTeleport` for
 authoritative events instead of setting their timer fields by hand. `Simulate`
 consumes those events as part of its tick; callers using `SimulateState` must

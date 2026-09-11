@@ -184,6 +184,9 @@ func (s *MovementState) ensurePoseHeights() {
 	}
 }
 
+// SetPos sets the server simulation position. A changed position is treated as
+// a new rounded anchor when dimensions are unchanged. Use QueueTeleport for a
+// native client teleport.
 func (s *MovementState) SetPos(newPos mgl32.Vec3) {
 	s.LastPos = s.Pos
 	s.Pos = newPos

@@ -7,8 +7,8 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 )
 
-// TestBoundingBoxRoundedWallSlide preserves the swept face through center rounding.
-func TestBoundingBoxRoundedWallSlide(t *testing.T) {
+// TestBoundingBoxSweptWallSlide preserves the swept face through center rounding.
+func TestBoundingBoxSweptWallSlide(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{256.5, 1, 0.5}
 	state.Client.Pos = state.Pos
@@ -108,5 +108,235 @@ func TestBoundingBox_RetainedShapeInvalidatesForExternalChanges(t *testing.T) {
 	clone.Crawling, clone.Size[1] = true, .6
 	if clone.BoundingBox(false).Max().Y() != float32(2.6) {
 		t.Fatal("retained standing height")
+	}
+}
+
+// TestBoundingBoxRoundedWallSlide preserves tolerance for rounded client contact positions.
+func TestBoundingBoxRoundedWallSlide(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{256.3, 1, 0.5}
+	state.Client.Pos = state.Pos
+	state.OnGround = true
+	// Rebuilding a full-width float32 box at x=256.3 puts its minimum at
+	// 255.9999847. That rounding must not turn a parallel wall slide into
+	// a horizontal collision or mark the player as stuck inside the wall.
+	sim := Simulator{World: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(255, 0, -10, 258, 1, 10),
+		cube.Box32(255, 0, -10, 256, 4, 10),
+	}}}
+	for tick := 0; tick < 3; tick++ {
+		state.Vel = mgl32.Vec3{0, -0.0784, 0.1}
+		previousZ := state.Pos.Z()
+		if !sim.tryCollisions(state) {
+			t.Fatal("collision simulation could not complete")
+		}
+		if state.CollideX || state.CollideZ || state.PenetratedLastFrame || state.StuckInCollider {
+			t.Errorf("tick %d: wall slide acquired collision or penetration: x=%v z=%v penetrated=%v stuck=%v",
+				tick, state.CollideX, state.CollideZ, state.PenetratedLastFrame, state.StuckInCollider)
+		}
+		if !state.OnGround || state.Pos.Z() <= previousZ {
+			t.Errorf("tick %d: wall slide stopped moving along the floor: pos=%v grounded=%v", tick, state.Pos, state.OnGround)
+		}
+	}
+}
+
+// roundedContactFixture places a player at a rounded contact on either horizontal axis.
+func roundedContactFixture(axis int, sign float32) (*MovementState, staticWorld) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{.5, 1, .5}
+	state.Pos[axis] = sign * 256.3
+	state.Client.Pos = state.Pos
+	state.OnGround = true
+	state.Vel = mgl32.Vec3{0, -.0784, 0}
+	state.Vel[2-axis] = .1
+	low, high := mgl32.Vec3{-300, 0, -300}, mgl32.Vec3{300, 4, 300}
+	if sign > 0 {
+		high[axis] = 256
+	} else {
+		low[axis] = -256
+	}
+	return state, staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
+		cube.Box32(-300, 0, -300, 300, 1, 300),
+		cube.Box32(low[0], low[1], low[2], high[0], high[1], high[2]),
+	}}
+}
+
+// TestSimulatorRoundedContactSeed covers public entry points and repeated server position reseeding.
+func TestSimulatorRoundedContactSeed(t *testing.T) {
+	for _, axis := range []int{0, 2} {
+		for _, sign := range []float32{-1, 1} {
+			for _, withInput := range []bool{false, true} {
+				state, world := roundedContactFixture(axis, sign)
+				sim := Simulator{World: world}
+				for tick := 0; tick < 3; tick++ {
+					// The server adopts a new rounded client center, without a client teleport.
+					pos := state.Pos
+					pos[2-axis] += .01
+					state.SetPos(pos)
+					state.Vel = mgl32.Vec3{0, -.0784, 0}
+					state.Vel[2-axis] = .1
+					var result SimulationResult
+					if withInput {
+						result = sim.Simulate(state, InputState{ClientPos: state.Pos, ClientVel: state.Vel})
+					} else {
+						result = sim.SimulateState(state)
+					}
+					if result.Outcome != SimulationOutcomeNormal || result.CollideX || result.CollideZ || state.PenetratedLastFrame || state.StuckInCollider {
+						t.Fatalf("axis=%d sign=%g input=%v tick=%d: false contact, result=%+v penetration=%v stuck=%v", axis, sign, withInput, tick, result, state.PenetratedLastFrame, state.StuckInCollider)
+					}
+					if state.Pos[axis] != sign*256.3 || !state.OnGround {
+						t.Fatalf("seed changed contact center or floor: pos=%v ground=%v", state.Pos, state.OnGround)
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestRoundedContactRecoveryKeepsRealPenetration rejects overlaps that cannot preserve the reported center.
+func TestRoundedContactRecoveryKeepsRealPenetration(t *testing.T) {
+	for _, axis := range []int{0, 2} {
+		for _, sign := range []float32{-1, 1} {
+			state, world := roundedContactFixture(axis, sign)
+			state.Pos[axis] -= sign * .005
+			state.Client.Pos = state.Pos
+			sim := Simulator{World: world}
+			result := sim.SimulateState(state)
+			if result.Outcome != SimulationOutcomeNormal || !state.PenetratedLastFrame || !(result.CollideX || result.CollideZ) {
+				t.Fatalf("real penetration disappeared: axis=%d sign=%g result=%+v", axis, sign, result)
+			}
+		}
+	}
+}
+
+// TestRoundedContactRecoveryCornerOrder retains the same corner regardless of provider order.
+func TestRoundedContactRecoveryCornerOrder(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		state := newBaseState()
+		state.Pos = mgl32.Vec3{256.3, 1, 256.3}
+		boxes := []cube.BBox32{
+			cube.Box32(255, 0, 255, 256, 4, 258),
+			cube.Box32(255, 0, 255, 258, 4, 256),
+		}
+		if reverse {
+			boxes[0], boxes[1] = boxes[1], boxes[0]
+		}
+		sim := Simulator{World: staticWorld{chunkLoaded: true, boxes: boxes}}
+		sim.prepareCollisionBox(state)
+		box := state.BoundingBox(false)
+		if box.Min() != (mgl32.Vec3{256, 1, 256}) {
+			t.Fatalf("reverse=%v: corner minimum=%v", reverse, box.Min())
+		}
+		center := box.Min().Add(box.Max()).Mul(.5)
+		if center.X() != state.Pos.X() || center.Z() != state.Pos.Z() {
+			t.Fatalf("recovery moved the reported center: %v", center)
+		}
+	}
+}
+
+// TestRoundedContactRecoveryDefersUnloadedWorld requires world evidence before retaining a recovered box.
+func TestRoundedContactRecoveryDefersUnloadedWorld(t *testing.T) {
+	state, world := roundedContactFixture(0, 1)
+	world.chunkLoaded = false
+	sim := Simulator{World: world}
+	result := sim.SimulateState(state)
+	if result.Outcome != SimulationOutcomeUnloadedChunk || state.collisionShape.valid {
+		t.Fatal("unloaded world established contact geometry")
+	}
+	world.chunkLoaded = true
+	sim.World = world
+	state.Vel = mgl32.Vec3{0, -.0784, .1}
+	result = sim.SimulateState(state)
+	if result.Outcome != SimulationOutcomeNormal || result.CollideX || state.PenetratedLastFrame {
+		t.Fatalf("loaded world failed to recover the contact: %+v", result)
+	}
+}
+
+// TestRoundedContactRecoveryNativeChanges preserves native reconstruction for teleport and size changes.
+func TestRoundedContactRecoveryNativeChanges(t *testing.T) {
+	for _, change := range []string{"teleport", "smoothed teleport", "height", "slide offset"} {
+		t.Run(change, func(t *testing.T) {
+			state, world := roundedContactFixture(0, 1)
+			sim := Simulator{World: world}
+			sim.prepareCollisionBox(state)
+			switch change {
+			case "teleport", "smoothed teleport":
+				state.QueueTeleport(state.Pos, change == "smoothed teleport", 0)
+				if result := sim.Simulate(state, InputState{ClientPos: state.Pos}); result.Outcome != SimulationOutcomeTeleport {
+					t.Fatalf("teleport failed: %+v", result)
+				}
+			case "height":
+				state.Size[1] = 1.49
+			case "slide offset":
+				sim.Options.UseSlideOffset = true
+				state.SlideOffset[1] = .1
+			}
+			state.Vel = mgl32.Vec3{0, -.0784, .1}
+			if !sim.tryCollisions(state) || !state.CollideX || !state.PenetratedLastFrame {
+				t.Fatal("native reconstruction incorrectly used client-position recovery")
+			}
+		})
+	}
+}
+
+// TestRoundedContactRecoveryAfterClientReset discards geometry across an unobserved movement interval.
+func TestRoundedContactRecoveryAfterClientReset(t *testing.T) {
+	state, world := roundedContactFixture(0, 1)
+	sim := Simulator{World: world}
+	// A native rebuild at this center differs from a client that reached it by sweeping.
+	state.QueueTeleport(state.Pos, false, 0)
+	if !sim.attemptTeleport(state) {
+		t.Fatal("teleport failed")
+	}
+	sim.resetToClient(state)
+	state.Vel = mgl32.Vec3{0, -.0784, .1}
+	result := sim.SimulateState(state)
+	if result.Outcome != SimulationOutcomeNormal || result.CollideX || state.PenetratedLastFrame {
+		t.Fatalf("client reset retained native geometry: %+v", result)
+	}
+}
+
+// TestRoundedContactRecoveryDoesNotEraseNewObstacles keeps known geometry when the world changes.
+func TestRoundedContactRecoveryDoesNotEraseNewObstacles(t *testing.T) {
+	state, world := roundedContactFixture(0, 1)
+	wall := world.boxes[1]
+	world.boxes = world.boxes[:1]
+	sim := Simulator{World: world}
+	sim.prepareCollisionBox(state)
+	world.boxes = append(world.boxes, wall)
+	sim.World = world
+	result := sim.SimulateState(state)
+	if result.Outcome != SimulationOutcomeNormal || !result.CollideX || !state.PenetratedLastFrame {
+		t.Fatalf("new obstacle was treated as lost contact geometry: %+v", result)
+	}
+}
+
+// roundedContactProbeWorld exposes the body but withholds the surrounding movement volume.
+type roundedContactProbeWorld struct{ staticWorld }
+
+// IsMovementAreaLoaded allows pose changes but rejects the later expanded movement probe.
+func (roundedContactProbeWorld) IsMovementAreaLoaded(box cube.BBox32) bool {
+	return box.Max().Y() <= 2.81
+}
+
+// TestRoundedContactRecoveryRollsBackUnloadedPose preserves swept endpoints when a pose tick cannot commit.
+func TestRoundedContactRecoveryRollsBackUnloadedPose(t *testing.T) {
+	state, world := roundedContactFixture(0, 1)
+	sim := Simulator{World: world}
+	sim.prepareCollisionBox(state)
+	original := state.BoundingBox(false)
+	sim.World = roundedContactProbeWorld{world}
+	result := sim.Simulate(state, InputState{ClientPos: state.Pos, StartSneaking: true})
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("expected an unloaded movement probe, got %+v", result)
+	}
+	if state.Sneaking || state.BoundingBox(false) != original {
+		t.Fatal("unloaded pose change replaced retained contact geometry")
+	}
+	sim.World = world
+	state.Vel = mgl32.Vec3{0, -.0784, .1}
+	result = sim.Simulate(state, InputState{ClientPos: state.Pos})
+	if result.Outcome != SimulationOutcomeNormal || result.CollideX || state.PenetratedLastFrame {
+		t.Fatalf("retry lost the contact geometry: %+v", result)
 	}
 }

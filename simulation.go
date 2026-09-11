@@ -22,12 +22,14 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 		return s.invalidSimulationResult(state)
 	}
 
+	s.prepareCollisionBox(state)
 	pose := movementPoseSnapshot{
-		size:     state.Size,
-		sneaking: state.Sneaking,
-		crawling: state.Crawling,
-		swimming: state.Swimming,
-		swimAmt:  state.SwimAmount,
+		collisionShape: state.collisionShape,
+		size:           state.Size,
+		sneaking:       state.Sneaking,
+		crawling:       state.Crawling,
+		swimming:       state.Swimming,
+		swimAmt:        state.SwimAmount,
 	}
 	inputWorldKnown, processedMove := s.applyInput(state, input)
 	reason := SimulationOutcomeUnloadedChunk
@@ -55,17 +57,19 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 	return result
 }
 
-// movementPoseSnapshot preserves pose fields across an unloaded simulation.
+// movementPoseSnapshot preserves pose fields and geometry across an unloaded simulation.
 type movementPoseSnapshot struct {
-	size     mgl32.Vec3
-	sneaking bool
-	crawling bool
-	swimming bool
-	swimAmt  float32
+	collisionShape collisionShape
+	size           mgl32.Vec3
+	sneaking       bool
+	crawling       bool
+	swimming       bool
+	swimAmt        float32
 }
 
 // restore replaces the state's pose fields with the snapshot.
 func (p movementPoseSnapshot) restore(state *MovementState) {
+	state.collisionShape = p.collisionShape
 	state.Size = p.size
 	state.Sneaking = p.sneaking
 	state.Crawling = p.crawling
@@ -145,6 +149,7 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		s.resetToClient(state)
 		return SimulationOutcomeUnreliable
 	}
+	s.prepareCollisionBox(state)
 	currentArea := state.BoundingBox(s.Options.UseSlideOffset)
 	if s.World != nil && !s.movementAreaLoaded(currentArea) {
 		clearRiptideReady = false
@@ -787,6 +792,7 @@ func (s *Simulator) resetToClient(state *MovementState) {
 	state.StuckSpeedMultiplier = mgl32.Vec3{}
 	state.LastPos = state.Client.LastPos
 	state.Pos = state.Client.Pos
+	state.collisionShape.valid = false
 	state.LastVel = state.Client.LastVel
 	state.Vel = state.Client.Vel
 	state.LastMov = state.Client.LastMov
@@ -822,6 +828,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 
 	if !state.TeleportIsSmoothed {
 		state.SetPos(state.TeleportPos)
+		state.rememberCollisionBox(state.collisionBoxAt(state.Pos, s.Options.UseSlideOffset), s.Options.UseSlideOffset)
 		state.SupportingBlockPos = nil
 		state.SetVel(mgl32.Vec3{})
 		state.JumpDelay = 0
@@ -843,6 +850,7 @@ func (s *Simulator) attemptTeleport(state *MovementState) bool {
 	}
 	newPos := state.Pos.Add(posDelta.Mul(1.0 / float32(remaining)))
 	state.SetPos(newPos)
+	state.rememberCollisionBox(state.collisionBoxAt(state.Pos, s.Options.UseSlideOffset), s.Options.UseSlideOffset)
 	state.SupportingBlockPos = nil
 	state.JumpDelay = 0
 	if remaining == 1 {
@@ -1145,6 +1153,7 @@ func (s *Simulator) tryCollisions(state *MovementState) bool {
 	if w == nil {
 		return true
 	}
+	s.prepareCollisionBox(state)
 	useSlideOffset := s.Options.UseSlideOffset
 	correctionThreshold := s.Options.PositionCorrectionThreshold
 
