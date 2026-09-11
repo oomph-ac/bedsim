@@ -1060,21 +1060,14 @@ func (s *Simulator) attemptJump(state *MovementState) bool {
 		return false
 	}
 
-	newVel := state.Vel
 	jumpHeight := state.JumpHeight
 	inBlock := s.blockAtPos(posFromVec3(state.Pos))
 	below := s.blockAtPos(posFromVec3(state.Pos.Sub(mgl32.Vec3{0, 0.1})))
 	if s.blockMovementSemantics(inBlock).Honey || s.blockMovementSemantics(below).Honey {
 		jumpHeight *= 0.6
 	}
-	newVel[1] = math32.Max(jumpHeight, newVel[1])
+	newVel := JumpImpulse(state.Vel, jumpHeight, state.Rotation.Z(), state.Sprinting)
 	state.JumpDelay = JumpDelayTicks
-
-	if state.Sprinting {
-		force := state.Rotation.Z() * 0.017453292
-		newVel[0] -= MCSin(force) * 0.2
-		newVel[2] += MCCos(force) * 0.2
-	}
 
 	state.SetVel(newVel)
 	return true
