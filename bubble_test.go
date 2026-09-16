@@ -276,7 +276,7 @@ func TestRiptideCollisionClearsActiveAttack(t *testing.T) {
 	state.RiptideTicks = 10
 	state.CollideX = true
 
-	stopRiptideOnBlockCollision(state)
+	(&Simulator{}).stopRiptideOnBlockCollision(state)
 	if state.RiptideTicks != 0 {
 		t.Fatalf("riptide collision left active attack: ticks=%d", state.RiptideTicks)
 	}

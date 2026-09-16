@@ -142,9 +142,14 @@ func (s *Simulator) riptideHeadInWaterKnown(state *MovementState) (inWater, know
 	return observation.Water, observation.Known
 }
 
-func stopRiptideOnBlockCollision(state *MovementState) {
+// stopRiptideOnBlockCollision ends the attack and restores a collision-free pose.
+func (s *Simulator) stopRiptideOnBlockCollision(state *MovementState) bool {
 	if state.RiptideTicks > 0 && (state.CollideX || state.CollideZ) {
 		state.RiptideTicks = 0
 		state.RiptideCollision = false
+		if !state.Gliding && !state.SwimPose() {
+			return s.restoreUprightPose(state, s.poseCollisionsAvailable(state))
+		}
 	}
+	return true
 }

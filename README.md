@@ -204,17 +204,16 @@ frame that was not simulated — unreliable, unloaded chunk, immobile, or
 teleport. A negative value requires real water contact on every tick. Lava the
 player is actually standing in takes priority over a retained water grace.
 
-Because the budget is applied at the start of a tick and decremented at the end,
-it is constant for the whole tick, so collision, liquid detection and exit
-probing always agree on one hitbox. The cost is that entering water adopts the
-swim pose one tick later than upstream, erring toward the larger box.
+Actual water contact enables the swim hitbox before movement on that tick,
+even when the grace budget is disabled. Dry ticks may retain the swim pose
+only while the configured budget lasts. A client that returns to real water
+once per budget interval can keep the grace active; lower the budget to
+reduce that allowance, or use a negative value to require contact every tick.
 
-Players genuinely in water are unaffected. Two residual limits are worth
-knowing: a client that reaches real water once every `SwimWaterGraceTicks` ticks
-sustains water travel at up to a 10:1 duty cycle, so the guard bounds hovering
-to the neighbourhood of actual water rather than eliminating it; and the pose
-lag above is a deliberate one-tick divergence from upstream. Lower
-`SwimWaterGraceTicks` to tighten both.
+**Step selection.** By default, client-position alignment can reject a valid
+step-up during server reconciliation. This is a simulator policy, not vanilla
+movement. Set `IgnoreClientStepTiebreaker` to accept a collision-free step when
+it travels farther horizontally than the unstepped movement.
 
 **Impulse clamps.** Upstream removed `MaxSneakImpulse` and `MaxConsumingImpulse`
 in this PR, clamping the move vector to `[-1, 1]` instead. bedsim keeps both by
