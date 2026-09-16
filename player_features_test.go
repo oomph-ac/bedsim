@@ -114,3 +114,110 @@ func TestStoppingGlideDoesNotCancelActiveBoost(t *testing.T) {
 		t.Fatalf("expected glide boost to keep ticking independently, got %d", state.GlideBoostTicks)
 	}
 }
+
+func TestValidatedRocketUseArmsGlideBoost(t *testing.T) {
+	state := newBaseState()
+	state.Gliding = true
+
+	(&Simulator{}).applyInput(state, InputState{StartGlideBoost: true})
+
+	if state.GlideBoostTicks != GlideBoostTicks {
+		t.Fatalf("GlideBoostTicks = %d, want %d", state.GlideBoostTicks, GlideBoostTicks)
+	}
+}
+
+func TestRocketUseWithoutGlideDoesNotArmBoost(t *testing.T) {
+	state := newBaseState()
+	state.Gliding = false
+
+	(&Simulator{}).applyInput(state, InputState{StartGlideBoost: true})
+
+	if state.GlideBoostTicks != 0 {
+		t.Fatalf("GlideBoostTicks = %d, want 0 without an active glide", state.GlideBoostTicks)
+	}
+}
+
+func TestRocketUseOnDeployTickArmsGlideBoost(t *testing.T) {
+	state := newBaseState()
+
+	(&Simulator{}).applyInput(state, InputState{StartGliding: true, StartGlideBoost: true})
+
+	if !state.Gliding {
+		t.Fatal("expected the elytra to deploy")
+	}
+	if state.GlideBoostTicks != GlideBoostTicks {
+		t.Fatalf("GlideBoostTicks = %d, want %d on the deploy tick", state.GlideBoostTicks, GlideBoostTicks)
+	}
+}
+
+func TestStoppingGlideOnTheSameTickRefusesBoost(t *testing.T) {
+	state := newBaseState()
+	state.Gliding = true
+
+	(&Simulator{}).applyInput(state, InputState{StopGliding: true, StartGlideBoost: true})
+
+	if state.GlideBoostTicks != 0 {
+		t.Fatalf("GlideBoostTicks = %d, want 0 once the glide ends", state.GlideBoostTicks)
+	}
+}
+
+func TestRocketUseRearmsPartiallySpentGlideBoost(t *testing.T) {
+	state := newBaseState()
+	state.Gliding = true
+	state.GlideBoostTicks = 3
+
+	(&Simulator{}).applyInput(state, InputState{StartGlideBoost: true})
+
+	if state.GlideBoostTicks != GlideBoostTicks {
+		t.Fatalf("GlideBoostTicks = %d, want a full %d window", state.GlideBoostTicks, GlideBoostTicks)
+	}
+}
+
+// glidingBoostSimulator returns a simulator and airborne gliding state facing
+// +Z, which is the look direction for zero yaw and pitch.
+func glidingBoostSimulator() (*Simulator, *MovementState) {
+	sim := &Simulator{World: mockWorld{}, Inventory: mockInventory{hasElytra: true}}
+	state := newBaseState()
+	state.Gliding = true
+	state.OnGround = false
+	state.Pos = mgl32.Vec3{0, 64, 0}
+	state.Client.Pos = state.Pos
+	return sim, state
+}
+
+func TestGlideBoostThrustsTowardLook(t *testing.T) {
+	sim, boosted := glidingBoostSimulator()
+	_, unboosted := glidingBoostSimulator()
+
+	sim.Simulate(boosted, InputState{StartGlideBoost: true})
+	sim.Simulate(unboosted, InputState{})
+
+	if boosted.Vel.Z() <= unboosted.Vel.Z() {
+		t.Fatalf("boosted Z velocity %v did not exceed unboosted %v", boosted.Vel.Z(), unboosted.Vel.Z())
+	}
+	if boosted.Vel.Y() <= unboosted.Vel.Y() {
+		t.Fatalf("boosted Y velocity %v did not exceed unboosted %v", boosted.Vel.Y(), unboosted.Vel.Y())
+	}
+}
+
+func TestGlideBoostThrustsForTheFullWindow(t *testing.T) {
+	sim, state := glidingBoostSimulator()
+
+	sim.Simulate(state, InputState{StartGlideBoost: true})
+	boostedTicks := 1
+	for state.GlideBoostTicks > 0 {
+		sim.Simulate(state, InputState{})
+		boostedTicks++
+	}
+
+	if boostedTicks != GlideBoostTicks {
+		t.Fatalf("boost thrust for %d ticks, want %d", boostedTicks, GlideBoostTicks)
+	}
+
+	// The window is spent: a further tick must not thrust again.
+	before := state.Vel
+	sim.Simulate(state, InputState{})
+	if state.Vel.Z() > before.Z() {
+		t.Fatalf("Z velocity rose from %v to %v after the boost window ended", before.Z(), state.Vel.Z())
+	}
+}

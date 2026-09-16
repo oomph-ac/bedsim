@@ -450,6 +450,13 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 	} else if input.StartGliding {
 		state.Gliding = true
 	}
+	// Rearm the rocket boost from the resolved glide state so a rocket used on
+	// the same tick the elytra deploys still thrusts. simulateGlide consumes
+	// the window this tick and tickState spends one tick of it afterwards, so
+	// the constant is the number of boosted ticks, not an off-by-one budget.
+	if input.StartGlideBoost && state.Gliding {
+		state.GlideBoostTicks = GlideBoostTicks
+	}
 
 	// Keep a validated launch edge pending when an unloaded tick could not
 	// consume it. A fresh validated event or successful simulation clears it.
