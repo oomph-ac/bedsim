@@ -1,6 +1,7 @@
 package bedsim
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -85,5 +86,34 @@ func TestMovementStateCloneDetachesReferences(t *testing.T) {
 	copy.SupportingBlockPos[0] = 9
 	if original.SupportingBlockPos[0] != 1 {
 		t.Fatal("clone retained supporting-block reference")
+	}
+}
+
+// TestItemUseMovementModifier checks explicit overrides and rejects invalid values before mutation.
+func TestItemUseMovementModifier(t *testing.T) {
+	for _, value := range []float32{0, MaxConsumingImpulse, .5, 1} {
+		for _, sneak := range []bool{false, true} {
+			for _, upstream := range []bool{false, true} {
+				state := newBaseState()
+				sim := Simulator{Options: SimulationOptions{UpstreamImpulseClamping: upstream}}
+				input := InputState{MoveVector: mgl32.Vec2{.25, -.5}, MoveVectorIsRaw: true, UsingConsumable: true, UsingItem: true, SneakDown: sneak, ItemUseMovementModifier: &value}
+				result := sim.Simulate(state, input)
+				scale := value
+				if sneak {
+					scale *= MaxSneakImpulse
+				}
+				if want := input.MoveVector.Mul(scale); result.InputMoveVector != want {
+					t.Fatalf("modifier %v sneak %v upstream %v: got %v want %v", value, sneak, upstream, result.InputMoveVector, want)
+				}
+			}
+		}
+	}
+	for _, value := range []float32{-1, 1.1, float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))} {
+		state := newBaseState()
+		before := state.Clone()
+		result := (&Simulator{}).Simulate(state, InputState{ItemUseMovementModifier: &value})
+		if result.Outcome != SimulationOutcomeInvalidInput || !reflect.DeepEqual(*state, before) {
+			t.Fatalf("invalid modifier %v mutated state or accepted: %v", value, result.Outcome)
+		}
 	}
 }

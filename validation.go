@@ -30,8 +30,11 @@ func finiteVec3(value mgl32.Vec3) bool {
 	return true
 }
 
-// finiteInput reports whether all numeric input fields are finite.
+// finiteInput checks numeric input and the optional item-use modifier range.
 func finiteInput(input InputState) bool {
+	if modifier := input.ItemUseMovementModifier; modifier != nil && (!finiteFloat(*modifier) || *modifier < 0 || *modifier > 1) {
+		return false
+	}
 	return finiteVec2(input.MoveVector) &&
 		finiteVec3(input.ClientPos) &&
 		finiteVec3(input.ClientVel) &&
