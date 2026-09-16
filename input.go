@@ -55,6 +55,11 @@ type InputState struct {
 	// StartSpinAttack owns proving a charged Riptide release.
 	StartGlideBoost bool
 
+	// ItemUseMovementModifier overrides item-use slowdown with a finite value in [0, 1].
+	// Nil derives the modifier from the item-use flags. The pointed-to value must
+	// remain immutable while this input is used or retained. Pose slowdown is separate.
+	ItemUseMovementModifier *float32
+
 	UsingConsumable bool
 	UsingItem       bool
 	UsingSpear      bool

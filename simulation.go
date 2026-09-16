@@ -393,7 +393,9 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 	// configured validation bounds. Both use the same item/pose multiplier.
 	maxImpulse := float32(1)
 	if input.MoveVectorIsRaw || !s.Options.UpstreamImpulseClamping {
-		if input.UsingConsumable || (input.UsingItem && !input.UsingSpear) {
+		if input.ItemUseMovementModifier != nil {
+			maxImpulse *= *input.ItemUseMovementModifier
+		} else if input.UsingConsumable || (input.UsingItem && !input.UsingSpear) {
 			maxImpulse *= MaxConsumingImpulse
 		}
 		if state.Sneaking || state.Crawling || state.Gliding {
