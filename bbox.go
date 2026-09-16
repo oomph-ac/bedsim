@@ -17,7 +17,7 @@ func BBoxFromDragonfly(box cube.BBox) cube.BBox32 {
 // SwimPose reports whether recent server-observed water contact permits the
 // client-requested collapsed hitbox.
 func (s *MovementState) SwimPose() bool {
-	return s.Swimming && s.SwimWaterGraceTicks > 0
+	return s.Swimming && (s.swimWaterContact || s.SwimWaterGraceTicks > 0)
 }
 
 // EyePosition returns the vanilla player eye attachment position for the
@@ -56,7 +56,7 @@ type collisionShape struct {
 func (s *MovementState) collisionDimensions() mgl32.Vec2 {
 	scale := s.Size[2]
 	height := s.Size[1] * scale
-	if s.SwimPose() {
+	if s.SwimPose() || s.Gliding || s.RiptideTicks > 0 {
 		height = s.Size[0] * scale
 	}
 	return mgl32.Vec2{(s.Size[0] * 0.5) * scale, height}

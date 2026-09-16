@@ -24,12 +24,15 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 
 	s.prepareCollisionBox(state)
 	pose := movementPoseSnapshot{
-		collisionShape: state.collisionShape,
-		size:           state.Size,
-		sneaking:       state.Sneaking,
-		crawling:       state.Crawling,
-		swimming:       state.Swimming,
-		swimAmt:        state.SwimAmount,
+		collisionShape:   state.collisionShape,
+		size:             state.Size,
+		sneaking:         state.Sneaking,
+		crawling:         state.Crawling,
+		swimming:         state.Swimming,
+		swimAmt:          state.SwimAmount,
+		gliding:          state.Gliding,
+		riptideTicks:     state.RiptideTicks,
+		riptideCollision: state.RiptideCollision,
 	}
 	inputWorldKnown, processedMove := s.applyInput(state, input)
 	reason := SimulationOutcomeUnloadedChunk
@@ -40,6 +43,7 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 	} else {
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
+		state.swimWaterContact = false
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
 	}
 	if s.Options.SprintTiming == SprintTimingLegacy {
@@ -59,12 +63,15 @@ func (s *Simulator) Simulate(state *MovementState, input InputState) SimulationR
 
 // movementPoseSnapshot preserves pose fields and geometry across an unloaded simulation.
 type movementPoseSnapshot struct {
-	collisionShape collisionShape
-	size           mgl32.Vec3
-	sneaking       bool
-	crawling       bool
-	swimming       bool
-	swimAmt        float32
+	collisionShape   collisionShape
+	size             mgl32.Vec3
+	sneaking         bool
+	crawling         bool
+	swimming         bool
+	swimAmt          float32
+	gliding          bool
+	riptideTicks     int
+	riptideCollision bool
 }
 
 // restore replaces the state's pose fields with the snapshot.
@@ -75,6 +82,9 @@ func (p movementPoseSnapshot) restore(state *MovementState) {
 	state.Crawling = p.crawling
 	state.Swimming = p.swimming
 	state.SwimAmount = p.swimAmt
+	state.Gliding = p.gliding
+	state.RiptideTicks = p.riptideTicks
+	state.RiptideCollision = p.riptideCollision
 }
 
 // SimulateState runs movement simulation using the current state values, without applying input updates
@@ -125,6 +135,7 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		// A teleport relocates the player without observing the destination,
 		// so any retained water contact from the origin is void.
 		state.SwimWaterGraceTicks = 0
+		state.swimWaterContact = false
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
 		return SimulationOutcomeTeleport
 	}
@@ -155,6 +166,7 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		clearRiptideReady = false
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
+		state.swimWaterContact = false
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
 		return SimulationOutcomeUnloadedChunk
 	}
@@ -163,6 +175,7 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		// Frozen ticks observe nothing, so the budget must not simply pause
 		// and resume later.
 		state.SwimWaterGraceTicks = 0
+		state.swimWaterContact = false
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
 		return SimulationOutcomeImmobileOrNotReady
 	}
@@ -174,16 +187,24 @@ func (s *Simulator) simulateCore(state *MovementState, consumeTransient bool) Si
 		clearRiptideReady = false
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
+		state.swimWaterContact = false
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
 		return SimulationOutcomeUnloadedChunk
 	}
 
 	prePhysics := *state
-	if !s.simulateMovement(state) {
+	movementKnown := s.simulateMovement(state)
+	// The last Riptide tick becomes upright when tickState expires the attack.
+	// Validate that resize before committing movement or advancing any counters.
+	if movementKnown && consumeTransient && state.RiptideTicks == 1 && !state.Gliding && !state.SwimPose() {
+		movementKnown = s.restoreUprightPose(state, s.poseCollisionsAvailable(state))
+	}
+	if !movementKnown {
 		*state = prePhysics
 		clearRiptideReady = false
 		state.SetVel(mgl32.Vec3{})
 		state.SwimWaterGraceTicks = 0
+		state.swimWaterContact = false
 		state.StuckSpeedMultiplier = mgl32.Vec3{}
 		return SimulationOutcomeUnloadedChunk
 	}
@@ -222,6 +243,7 @@ func (s *Simulator) resultFromState(state *MovementState, outcome SimulationOutc
 }
 
 func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mgl32.Vec2) {
+	wasFlightPose := state.Gliding || state.RiptideTicks > 0
 	state.ensurePoseHeights()
 	poseCollisionsAvailable := s.poseCollisionsAvailable(state)
 	poseWorldKnown := poseCollisionsAvailable
@@ -349,7 +371,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 	state.StoppedSwimmingThisTick = wasSwimming && input.StopSwimming
 	if input.StopSwimming {
 		state.Swimming = false
-		if !s.restorePoseAfterSwimming(state, poseCollisionsAvailable) {
+		if !s.restoreUprightPose(state, poseCollisionsAvailable) {
 			poseWorldKnown = false
 		}
 	} else if input.StartSwimming {
@@ -438,6 +460,9 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 		state.SetVel(state.Vel.Mul(-0.2))
 	}
 
+	if wasFlightPose && !state.Gliding && state.RiptideTicks == 0 && !state.SwimPose() {
+		poseWorldKnown = s.restoreUprightPose(state, poseCollisionsAvailable) && poseWorldKnown
+	}
 	state.Impulse = moveVector.Mul(0.98)
 	return poseWorldKnown, moveVector
 }
@@ -503,7 +528,7 @@ func (s *Simulator) tickState(state *MovementState, advanceTeleport bool) {
 	state.StoppedSwimmingThisTick = false
 }
 
-func (s *Simulator) simulateMovement(state *MovementState) bool {
+func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 	vel := state.Vel
 	for axis := range 3 {
 		if math32.Abs(vel[axis]) < 1e-8 {
@@ -513,6 +538,7 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	state.SetVel(vel)
 
 	// Bound retained water evidence before collision and travel inspect it.
+	wasSwimPose := state.SwimPose()
 	grace := s.swimWaterGraceTicks()
 	if state.SwimWaterGraceTicks > grace {
 		state.SwimWaterGraceTicks = grace
@@ -521,15 +547,25 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	waterBlocks := s.touchingLiquidBlocks(state, liquidWater)
 	lavaBlocks := s.touchingLiquidBlocks(state, liquidLava)
 	inWater := len(waterBlocks) != 0
+	state.swimWaterContact = inWater
+	if wasSwimPose && !state.SwimPose() && !state.Gliding && state.RiptideTicks == 0 {
+		if !s.restoreUprightPose(state, s.poseCollisionsAvailable(state)) {
+			return false
+		}
+	}
 	if inWater && state.Swimming {
 		state.SwimWaterGraceTicks = grace
 		setSwimmingPoseFlags(state)
 	}
 	defer func() {
+		hadSwimPose := state.SwimPose()
 		if inWater {
 			state.SwimWaterGraceTicks = grace
 		} else if state.SwimWaterGraceTicks > 0 {
 			state.SwimWaterGraceTicks--
+		}
+		if known && hadSwimPose && !state.SwimPose() && !state.Gliding && state.RiptideTicks == 0 {
+			known = s.restoreUprightPose(state, s.poseCollisionsAvailable(state))
 		}
 	}()
 	// The launch is a one-shot impulse; the remaining Riptide ticks decay
@@ -556,7 +592,9 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 		}
 		if waterTravel {
 			if state.Gliding {
-				state.Gliding = false
+				if !s.stopGliding(state) {
+					return false
+				}
 				state.GlideBoostTicks = 0
 			}
 			if !s.applyLiquidFlow(state, waterBlocks, liquidWater) {
@@ -596,7 +634,9 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	}
 	if state.Gliding && s.Effects != nil {
 		if _, levitating := s.Effects.GetEffect(packet.EffectLevitation); levitating {
-			state.Gliding = false
+			if !s.stopGliding(state) {
+				return false
+			}
 		}
 	}
 	if state.Gliding {
@@ -613,7 +653,9 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 			if !s.tryCollisions(state) {
 				return false
 			}
-			stopRiptideOnBlockCollision(state)
+			if !s.stopRiptideOnBlockCollision(state) {
+				return false
+			}
 			updateFallDistance(state, oldY)
 			if debugf := s.Options.Debugf; debugf != nil {
 				debugf("(glide) oldVel=%v, collisions=%v diff=%v", oldVel, state.Vel, state.Vel.Sub(state.Client.Vel))
@@ -627,7 +669,9 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 			return true
 		}
 
-		state.Gliding = false
+		if !s.stopGliding(state) {
+			return false
+		}
 		if debugf := s.Options.Debugf; debugf != nil {
 			debugf("cannot allow glide (onGround=%v hasElytra=%v)", state.OnGround, hasElytra)
 		}
@@ -708,7 +752,9 @@ func (s *Simulator) simulateMovement(state *MovementState) bool {
 	if !s.tryCollisions(state) {
 		return false
 	}
-	stopRiptideOnBlockCollision(state)
+	if !s.stopRiptideOnBlockCollision(state) {
+		return false
+	}
 	updateFallDistance(state, oldY)
 	if scaffoldDescend || nearClimbable {
 		state.FallDistance = 0
@@ -789,6 +835,7 @@ func (s *Simulator) resetToClient(state *MovementState) {
 	// A frame we did not simulate proves nothing about water contact, so the
 	// retained evidence is dropped rather than carried across the gap.
 	state.SwimWaterGraceTicks = 0
+	state.swimWaterContact = false
 	state.StuckSpeedMultiplier = mgl32.Vec3{}
 	state.LastPos = state.Client.LastPos
 	state.Pos = state.Client.Pos
@@ -1241,8 +1288,8 @@ func (s *Simulator) tryCollisions(state *MovementState) bool {
 		}
 
 		if !hasStepCollisions && Vec3HzDistSqr(collisionVel) < Vec3HzDistSqr(stepVel) {
-			// Match vanilla's step-vs-collision tie-breaker using client alignment to avoid false
-			// positives where the server predicts a step that the client rejects.
+			// Reconciliation policy uses client alignment to reject some otherwise
+			// valid steps that disagree with the reported client position.
 			// When IgnoreClientStepTiebreaker is set (pathfinder mode), skip the
 			// tie-breaker since the caller drives its own movement and always
 			// wants step-ups accepted.
@@ -1686,6 +1733,9 @@ func (s *Simulator) canFitHeightKnown(state *MovementState, height float32) (fit
 	standing.Size[1] = height
 	standing.Sneaking = false
 	standing.Swimming = false
+	standing.Gliding = false
+	standing.RiptideTicks = 0
+	standing.swimWaterContact = false
 	standing.SwimWaterGraceTicks = 0
 	standing.PressingDescend = false
 	standing.WantDown = false
@@ -1709,7 +1759,8 @@ func setSwimmingPoseFlags(state *MovementState) {
 	state.Size[1] = state.StandingHeight
 }
 
-func (s *Simulator) restorePoseAfterSwimming(state *MovementState, collisionsAvailable bool) bool {
+// restoreUprightPose chooses standing, sneaking, or crawling without entering a ceiling.
+func (s *Simulator) restoreUprightPose(state *MovementState, collisionsAvailable bool) bool {
 	if !collisionsAvailable {
 		return false
 	}
@@ -1733,4 +1784,13 @@ func (s *Simulator) restorePoseAfterSwimming(state *MovementState, collisionsAva
 	state.Crawling = true
 	state.Size[1] = state.CrawlingHeight
 	return true
+}
+
+// stopGliding restores the tallest collision-free pose when gliding ends.
+func (s *Simulator) stopGliding(state *MovementState) bool {
+	state.Gliding = false
+	if state.SwimPose() || state.RiptideTicks > 0 {
+		return true
+	}
+	return s.restoreUprightPose(state, s.poseCollisionsAvailable(state))
 }

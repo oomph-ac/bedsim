@@ -90,14 +90,14 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 				depthStriderLevel = math32.Min(math32.Max(float32(inventory.DepthStriderLevel()), 0), 3)
 			}
 		}
-		if !state.OnGround {
-			depthStriderLevel *= 0.5
-		}
 		depthStriderFraction := depthStriderLevel / 3
 		if swimSpeedMultiplier > 1 {
 			moveRelativeSpeed *= (0.7 + depthStriderFraction*0.3) * swimSpeedMultiplier
 		} else {
-			moveRelativeSpeed += (state.MovementSpeed - moveRelativeSpeed) * depthStriderFraction
+			if !state.OnGround {
+				depthStriderLevel *= 0.5
+			}
+			moveRelativeSpeed += (state.MovementSpeed - moveRelativeSpeed) * (depthStriderLevel / 3)
 		}
 	}
 	moveRelative(state, moveRelativeSpeed)
@@ -110,7 +110,9 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 	if !s.tryCollisions(state) {
 		return false
 	}
-	stopRiptideOnBlockCollision(state)
+	if !s.stopRiptideOnBlockCollision(state) {
+		return false
+	}
 	if stuckMovement {
 		state.SetMov(state.Vel)
 		state.SetVel(mgl32.Vec3{})

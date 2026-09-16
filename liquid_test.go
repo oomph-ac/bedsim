@@ -1490,3 +1490,88 @@ func TestShrinkLiquidBoxCollapsesToMidpoint(t *testing.T) {
 		t.Fatalf("X = [%v %v], want [0.001 0.999]", shrunk.Min().X(), shrunk.Max().X())
 	}
 }
+
+func TestBoostedDepthStriderKeepsFullAirborneAcceleration(t *testing.T) {
+	for _, onGround := range []bool{false, true} {
+		for _, level := range []int{0, 1, 2, 3, 5} {
+			sim := newLiquidSim(filledColumn(waterSource))
+			sim.Inventory = depthStriderInventory{level: level}
+			state := submergedState()
+			state.Swimming, state.OnGround = true, onGround
+			state.SwimSpeedMultiplier = 2
+			state.Impulse = mgl32.Vec2{0, 1}
+			sim.SimulateState(state)
+			want := float32(.02) * (float32(.7) + float32(min(level, 3))/3*.3) * 2
+			if !approxEqual(state.Mov.Z(), want) || !approxEqual(state.Vel.Z(), want*.8) {
+				t.Fatalf("ground=%v level=%d: move=%g velocity=%g, want %g and %g", onGround, level, state.Mov.Z(), state.Vel.Z(), want, want*.8)
+			}
+		}
+	}
+}
+
+func TestDisabledSwimGraceStillUsesObservedWaterPose(t *testing.T) {
+	w := filledColumn(waterSource)
+	sim := newLiquidSim(w)
+	sim.Options.SwimWaterGraceTicks = -1
+	state := submergedState()
+	state.Swimming = true
+	state.HasGravity = false
+	for tick := 0; tick < 2; tick++ {
+		result := sim.SimulateState(state)
+		bb := state.BoundingBox(false)
+		if result.Outcome != SimulationOutcomeNormal || !state.SwimPose() || state.SwimWaterGraceTicks != 0 || !approxEqual(bb.Max().Y()-bb.Min().Y(), .6) {
+			t.Fatalf("wet tick %d: pose=%v grace=%d box=%v outcome=%v", tick, state.SwimPose(), state.SwimWaterGraceTicks, bb, result.Outcome)
+		}
+	}
+	sim.World = mockWorld{}
+	sim.SimulateState(state)
+	if state.SwimPose() || !approxEqual(state.BoundingBox(false).Max().Y()-state.BoundingBox(false).Min().Y(), 1.8) {
+		t.Fatal("dry tick retained water contact or compact pose")
+	}
+}
+
+func TestObservedSwimContactClearsOnSkippedTicks(t *testing.T) {
+	for _, skip := range []string{"unloaded", "immobile", "unreliable", "teleport", "mounted"} {
+		t.Run(skip, func(t *testing.T) {
+			sim := newLiquidSim(filledColumn(waterSource))
+			sim.Options.SwimWaterGraceTicks = -1
+			state := submergedState()
+			state.Swimming = true
+			sim.SimulateState(state)
+			if !state.SwimPose() {
+				t.Fatal("failed to establish contact")
+			}
+			switch skip {
+			case "unloaded":
+				sim.World = staticWorld{chunkLoaded: false}
+			case "immobile":
+				state.Immobile = true
+			case "unreliable":
+				state.Alive = false
+			case "teleport":
+				state.QueueTeleport(mgl32.Vec3{30, 5, 30}, false, 0)
+			case "mounted":
+				state.InVehicle = true
+			}
+			result := sim.SimulateState(state)
+			if result.Outcome == SimulationOutcomeNormal || state.SwimPose() {
+				t.Fatalf("skipped tick kept contact: outcome=%v pose=%v", result.Outcome, state.SwimPose())
+			}
+		})
+	}
+}
+
+func TestSwimContactLossRestoresPoseBelowCeiling(t *testing.T) {
+	for _, grace := range []int64{-1, 1} {
+		sim := newLiquidSim(filledColumn(waterSource))
+		sim.Options.SwimWaterGraceTicks = grace
+		state := submergedState()
+		state.Swimming, state.HasGravity = true, false
+		sim.SimulateState(state)
+		sim.World = staticWorld{chunkLoaded: true, boxes: []cube.BBox32{cube.Box32(-2, 1.25, -2, 2, 4, 2)}}
+		result := sim.SimulateState(state)
+		if result.Outcome != SimulationOutcomeNormal || state.SwimPose() || !state.Crawling || state.StuckInCollider {
+			t.Fatalf("grace=%d: contact loss expanded into ceiling: outcome=%v swim=%v crawl=%v stuck=%v", grace, result.Outcome, state.SwimPose(), state.Crawling, state.StuckInCollider)
+		}
+	}
+}

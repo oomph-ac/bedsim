@@ -99,6 +99,8 @@ type MovementState struct {
 	// StoppedSwimmingThisTick selects the client's fast water drag on the
 	// transition out of swimming.
 	StoppedSwimmingThisTick bool
+	// swimWaterContact records water observed during the last simulated tick.
+	swimWaterContact bool
 	// SwimWaterGraceTicks retains recent server-observed water contact.
 	SwimWaterGraceTicks    int64
 	AutoJumpingInWater     bool
