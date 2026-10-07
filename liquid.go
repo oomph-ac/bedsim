@@ -3,7 +3,6 @@ package bedsim
 import (
 	"github.com/chewxy/math32"
 
-	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
@@ -98,7 +97,6 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		return false
 	}
 	oldVel := state.Vel
-	oldOnGround := state.OnGround
 	if !s.tryCollisions(state) {
 		return false
 	}
@@ -110,7 +108,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		state.SetVel(mgl32.Vec3{})
 		oldVel = mgl32.Vec3{}
 	}
-	s.setPostCollisionMotion(state, oldVel, oldOnGround, block.Air{})
+	s.setPostCollisionMotion(state, oldVel, nil, false)
 	if !stuckMovement {
 		state.SetMov(state.Vel)
 	}

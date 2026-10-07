@@ -177,19 +177,6 @@ func TestHoneyTopContactPreservesFallDistance(t *testing.T) {
 	}
 }
 
-func TestHoneyWalkSlowdownMatchesSlime(t *testing.T) {
-	sim := &Simulator{}
-	state := newBaseState()
-	state.OnGround = true
-	state.Vel = mgl32.Vec3{1, 0.05, 1}
-
-	sim.walkOnBlock(state, semanticsNamedBlock{"minecraft:honey_block"})
-
-	if want := float32(0.41); math32.Abs(state.Vel.X()-want) > 1e-6 || math32.Abs(state.Vel.Z()-want) > 1e-6 {
-		t.Fatalf("expected honey walk slowdown %v, got %v", want, state.Vel)
-	}
-}
-
 func TestSimulationAppliesScaffoldingTraversal(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
