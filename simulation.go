@@ -692,7 +692,10 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 		debugf("moveRelative force applied (vel=%v)", state.Vel)
 	}
 	leatherBoots := s.Equipment != nil && s.Equipment.WearingLeatherBoots()
-	climber := s.climberFlags(state, leatherBoots)
+	climber, climberKnown := s.climberFlags(state, leatherBoots)
+	if !climberKnown {
+		return false
+	}
 	state.descendThroughBlock = climber.overDescendable && state.PressingDescend
 	if state.descendThroughBlock {
 		state.SetVel(mgl32.Vec3{state.Vel.X(), -ScaffoldingSpeed, state.Vel.Z()})

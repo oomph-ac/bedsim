@@ -233,3 +233,28 @@ func TestLeatherBootsPowderSnowJumpAscends(t *testing.T) {
 		t.Fatalf("jump delay = %d, want %d", state.JumpDelay, JumpDelayTicks)
 	}
 }
+
+// floorLoadedWorld reports every area below its floor as unloaded.
+type floorLoadedWorld struct {
+	climbWorld
+	floor float32
+}
+
+func (w floorLoadedWorld) IsMovementAreaLoaded(aabb cube.BBox32) bool {
+	return aabb.Min().Y() >= w.floor
+}
+
+// A scaffold support below the loaded area makes the tick unknown rather than normal.
+func TestScaffoldingSupportProbeRequiresLoadedArea(t *testing.T) {
+	w := floorLoadedWorld{
+		climbWorld: climbWorld{blocks: map[cube.Pos]world.Block{{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"}}},
+		floor:      0,
+	}
+	state := climbingState(mgl32.Vec3{0.5, 1.5, 0.5})
+
+	result := (&Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}).SimulateState(state)
+
+	if result.Outcome != SimulationOutcomeUnloadedChunk {
+		t.Fatalf("outcome = %v, want unloaded chunk", result.Outcome)
+	}
+}

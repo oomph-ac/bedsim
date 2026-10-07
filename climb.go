@@ -23,15 +23,24 @@ type climberFlags struct {
 	holdOnSneak bool
 }
 
-// climberFlags samples the AABB footprint at the feet layer and the layer below.
-func (s *Simulator) climberFlags(state *MovementState, leatherBoots bool) climberFlags {
+// climberFlags samples the AABB footprint at the feet layer and the layer below,
+// and reports whether every probed cell, including scaffold supports, is loaded.
+func (s *Simulator) climberFlags(state *MovementState, leatherBoots bool) (climberFlags, bool) {
 	var flags climberFlags
 	bb := state.BoundingBox(s.Options.UseSlideOffset)
 	feetY := bb.Min().Y()
-	flags.inScaffolding, flags.inAscendable = s.climberLayer(bb, int(math32.Floor(feetY)), leatherBoots)
-	flags.overScaffolding, flags.overDescendable = s.climberLayer(bb, int(math32.Floor(feetY+(-1))), leatherBoots)
+	feetLayer, overLayer := math32.Floor(feetY), math32.Floor(feetY+(-1))
+	probe := cube.Box32(
+		math32.Floor(bb.Min().X()), overLayer-1, math32.Floor(bb.Min().Z()),
+		math32.Floor(bb.Max().X())+1, feetLayer+1, math32.Floor(bb.Max().Z())+1,
+	)
+	if !s.movementAreaLoaded(probe) {
+		return flags, false
+	}
+	flags.inScaffolding, flags.inAscendable = s.climberLayer(bb, int(feetLayer), leatherBoots)
+	flags.overScaffolding, flags.overDescendable = s.climberLayer(bb, int(overLayer), leatherBoots)
 	flags.climbable, flags.holdOnSneak = s.climbableAtFeet(state, leatherBoots)
-	return flags
+	return flags, true
 }
 
 // climberLayer reports scaffolding and ascendable blocks in one footprint layer.
