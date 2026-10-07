@@ -95,6 +95,8 @@ type EffectsProvider interface {
 
 // InventoryProvider exposes equipment checks needed by movement (elytra, etc.).
 type InventoryProvider interface {
+	// HasElytra reports a chest-slot elytra that can still fly: vanilla treats
+	// one with damage of at least its maximum durability minus one as broken.
 	HasElytra() bool
 }
 

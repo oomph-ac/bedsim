@@ -391,30 +391,29 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 
 	// Raw controls need client slowdown; processed packet vectors retain the
 	// configured validation bounds. Both use the same item/pose multiplier.
-	maxImpulse := float32(1)
+	itemModifier, poseModifier := float32(1), float32(1)
 	if input.MoveVectorIsRaw || !s.Options.UpstreamImpulseClamping {
 		if input.ItemUseMovementModifier != nil {
-			maxImpulse *= *input.ItemUseMovementModifier
+			itemModifier = *input.ItemUseMovementModifier
 		} else if input.UsingConsumable || (input.UsingItem && !input.UsingSpear) {
-			maxImpulse *= MaxConsumingImpulse
+			itemModifier = MaxConsumingImpulse
 		}
-		if state.Sneaking || state.Crawling || state.Gliding {
-			state.TicksSinceCanSlowdown++
-			sneakMultiplier := MaxSneakImpulse
-			if state.TicksSinceCanSlowdown > 2 && s.Equipment != nil {
-				sneakMultiplier += 0.15 * float32(s.Equipment.EnchantmentLevel(EnchantmentSwiftSneak))
-			}
-			maxImpulse *= ClampFloat(sneakMultiplier, 0, 1)
-		} else {
-			state.TicksSinceCanSlowdown = 0
-		}
+		poseModifier = s.sneakMovementModifier(state, input)
 	}
+	maxImpulse := poseModifier * itemModifier
 	moveVector := mgl32.Vec2{
 		ClampFloat(input.MoveVector[0], -maxImpulse, maxImpulse),
 		ClampFloat(input.MoveVector[1], -maxImpulse, maxImpulse),
 	}
 	if input.MoveVectorIsRaw {
-		moveVector = mgl32.Vec2{ClampFloat(input.MoveVector[0], -1, 1), ClampFloat(input.MoveVector[1], -1, 1)}.Mul(maxImpulse)
+		// Vanilla normalises raw input onto the unit circle, then rounds the
+		// pose and item-use products separately.
+		raw := input.MoveVector
+		if lengthSqr := float32(raw[1]*raw[1]) + float32(raw[0]*raw[0]); lengthSqr > 1 {
+			length := math32.Sqrt(lengthSqr)
+			raw = mgl32.Vec2{raw[0] / length, raw[1] / length}
+		}
+		moveVector = mgl32.Vec2{raw[0] * poseModifier * itemModifier, raw[1] * poseModifier * itemModifier}
 	}
 	if input.InventoryAction {
 		moveVector = mgl32.Vec2{}
@@ -467,6 +466,23 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 	}
 	state.Impulse = moveVector.Mul(0.98)
 	return poseWorldKnown, moveVector
+}
+
+// sneakMovementModifier returns the pose slowdown for horizontal input. Vanilla
+// applies it to held sneak or descend and to the sneaking and crawling poses,
+// even while gliding, but never while swimming, flying or in water last tick.
+func (s *Simulator) sneakMovementModifier(state *MovementState, input InputState) float32 {
+	slowed := state.Sneaking || state.Crawling || input.SneakDown || input.DescendBlock
+	if !slowed || state.Swimming || state.Flying || state.swimWaterContact {
+		state.TicksSinceCanSlowdown = 0
+		return 1
+	}
+	state.TicksSinceCanSlowdown++
+	multiplier := MaxSneakImpulse
+	if (state.Sneaking || state.Crawling) && state.TicksSinceCanSlowdown > 2 && s.Equipment != nil {
+		multiplier = float32(float32(s.Equipment.EnchantmentLevel(EnchantmentSwiftSneak))*0.15) + MaxSneakImpulse
+	}
+	return ClampFloat(multiplier, 0, 1)
 }
 
 func (s *Simulator) applyLegacySprint(state *MovementState, input InputState) {
@@ -926,49 +942,54 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 		state.FallDistance = 1
 	}
 
-	radians := math32.Pi / 180.0
-	yaw, pitch := state.Rotation.Z()*radians, state.Rotation.X()*radians
-	yawCos := MCCos(-yaw - math32.Pi)
-	yawSin := MCSin(-yaw - math32.Pi)
-	pitchCos := MCCos(pitch)
-	pitchSin := MCSin(pitch)
+	// The look vector uses the previous rotation plus the wrapped delta, with
+	// pitch negated before the table lookup; every product is rounded to float32.
+	const radians = float32(math32.Pi / 180.0)
+	yaw := wrappedGlideAngle(state.LastRotation.Z(), state.Rotation.Z())
+	lookPitch := wrappedGlideAngle(state.LastRotation.X(), state.Rotation.X()) * -radians
+	yawAngle := float32(yaw*-radians) - math32.Pi
+	lookPitchCos := MCCos(lookPitch)
+	lookX := MCSin(yawAngle) * -lookPitchCos
+	lookY := MCSin(lookPitch)
+	lookZ := MCCos(yawAngle) * -lookPitchCos
 
-	lookX := yawSin * -pitchCos
-	lookY := -pitchSin
-	lookZ := yawCos * -pitchCos
+	pitch := state.Rotation.X() * radians
+	pitchCos := MCCos(pitch)
+	lookHzSqr := float32(lookX*lookX) + float32(lookZ*lookZ)
+	lookLength := math32.Sqrt(float32(lookY*lookY) + float32(lookX*lookX) + float32(lookZ*lookZ))
+	sqrPitchCos := min(lookLength/0.4, 1) * pitchCos * pitchCos
 
 	vel := state.Vel
-	velHz := math32.Sqrt(vel[0]*vel[0] + vel[2]*vel[2])
-	lookHz := pitchCos
-	sqrPitchCos := pitchCos * pitchCos
+	velHz := math32.Sqrt(float32(vel[0]*vel[0]) + float32(vel[2]*vel[2]))
+	lookHz := math32.Sqrt(lookHzSqr)
 
 	gravity := state.Gravity
 	if state.SlowFalling {
 		gravity = SlowFallingGravity
 	}
-	vel[1] += -gravity + sqrPitchCos*(gravity*0.75)
-	if vel[1] < 0 && lookHz > GlideHorizontalLookEpsilon {
-		yAccel := vel[1] * -0.1 * sqrPitchCos
+	vel[1] -= float32(float32(float32(0.75*sqrPitchCos)-1) * -gravity)
+	if lookHzSqr > 0 && vel[1] < 0 {
+		yAccel := sqrPitchCos * -0.1 * vel[1]
+		vel[0] += float32(lookX*yAccel) / lookHz
 		vel[1] += yAccel
-		vel[0] += lookX * yAccel / lookHz
-		vel[2] += lookZ * yAccel / lookHz
+		vel[2] += float32(lookZ*yAccel) / lookHz
 	}
-	if pitch < 0 && lookHz > GlideHorizontalLookEpsilon {
-		yAccel := velHz * -pitchSin * 0.04
-		vel[1] += yAccel * 3.2
-		vel[0] -= lookX * yAccel / lookHz
-		vel[2] -= lookZ * yAccel / lookHz
+	if pitch < 0 {
+		yAccel := MCSin(pitch) * velHz * -0.04
+		vel[0] -= float32(yAccel*lookX) / lookHz
+		vel[1] += float32(3.2 * yAccel)
+		vel[2] -= float32(yAccel*lookZ) / lookHz
 	}
-	if lookHz > GlideHorizontalLookEpsilon {
-		vel[0] += (lookX/lookHz*velHz - vel[0]) * 0.1
-		vel[2] += (lookZ/lookHz*velHz - vel[2]) * 0.1
+	if lookHzSqr > 0 {
+		vel[0] += float32(float32(float32(lookX/lookHz*velHz)-vel[0]) * 0.1)
+		vel[2] += float32(float32(float32(lookZ/lookHz*velHz)-vel[2]) * 0.1)
 	}
 
 	if state.GlideBoostTicks > 0 {
 		oldVel := vel
-		vel[0] += (lookX * 0.1) + (((lookX * 1.5) - vel[0]) * 0.5)
-		vel[1] += (lookY * 0.1) + (((lookY * 1.5) - vel[1]) * 0.5)
-		vel[2] += (lookZ * 0.1) + (((lookZ * 1.5) - vel[2]) * 0.5)
+		vel[0] = vel[0] + float32(float32(float32(1.5*lookX)-vel[0])*0.5) + float32(lookX*0.1)
+		vel[1] = vel[1] + float32(float32(float32(lookY*1.5)-vel[1])*0.5) + float32(lookY*0.1)
+		vel[2] = vel[2] + float32(float32(float32(1.5*lookZ)-vel[2])*0.5) + float32(lookZ*0.1)
 		if debugf := s.Options.Debugf; debugf != nil {
 			debugf("applied glide boost (old=%v new=%v)", oldVel, vel)
 		}
@@ -982,6 +1003,15 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 	vel[2] *= 0.99
 
 	state.SetVel(vel)
+}
+
+// wrappedGlideAngle returns previous + wrapDegrees(current - previous) in float32.
+func wrappedGlideAngle(previous, current float32) float32 {
+	delta := math32.Mod(current-previous+180, 360)
+	if delta < 0 {
+		delta += 360
+	}
+	return delta + -180 + previous
 }
 
 func (s *Simulator) walkOnBlock(state *MovementState, blockUnder world.Block) {
