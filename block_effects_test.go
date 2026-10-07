@@ -350,3 +350,19 @@ func TestBubbleColumnAppliesBeforeHoney(t *testing.T) {
 		t.Fatalf("bubble column and honey velocity = %v, want -0.12", state.Vel.Y())
 	}
 }
+
+// Vanilla deflates the occupied range in float32, so the 0.001 margin vanishes
+// once coordinates are large enough to round it away.
+func TestInsideCellRangeKeepsFloat32DeflationAtLargeCoordinates(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{65535.7, 0, 0.5}
+
+	minPos, maxPos := insideCellRange(state.BoundingBox(false))
+
+	if minPos.X() != 65535 || maxPos.X() != 65536 {
+		t.Fatalf("large-coordinate x range = [%d, %d], want [65535, 65536]", minPos.X(), maxPos.X())
+	}
+	if minPos.Z() != 0 || maxPos.Z() != 0 {
+		t.Fatalf("small-coordinate z range = [%d, %d], want [0, 0]", minPos.Z(), maxPos.Z())
+	}
+}
