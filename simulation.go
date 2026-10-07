@@ -683,7 +683,6 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 				state.SetVel(mgl32.Vec3{})
 			}
 			s.applyInsideBlockEffects(state)
-			s.applyBubbleColumns(state)
 			return true
 		}
 
@@ -725,25 +724,6 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 	scaffoldDescend := state.descendThroughBlock && (climber.inScaffolding || climber.overScaffolding)
 	resetsFallDistance := state.descendThroughBlock || climber.climbable || climber.inScaffolding || climber.overScaffolding
 
-	inCobweb := s.isInsideCobweb(state)
-
-	if inCobweb {
-		newVel := state.Vel
-		xz, y := float32(0.25), float32(0.05)
-		if s.Effects != nil {
-			if _, weaving := s.Effects.GetEffect(EffectWeaving); weaving {
-				xz, y = 0.5, 0.25
-			}
-		}
-		newVel[0] *= xz
-		newVel[1] *= y
-		newVel[2] *= xz
-		state.SetVel(newVel)
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("web force applied (vel=%v)", newVel)
-		}
-	}
-
 	stuckMovement := applyStuckSpeedMultiplier(state)
 	if !s.movementSweepLoaded(state) {
 		return false
@@ -781,13 +761,6 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 	s.setPostCollisionMotion(state, oldVel, landedOn, landed)
 	autoClimb := s.applyAutoClimb(state)
 
-	if inCobweb {
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("post-move cobweb force applied (0 vel)")
-		}
-		state.SetVel(mgl32.Vec3{})
-	}
-
 	newVel := state.Vel
 	if scaffoldDescend {
 		// Descending through scaffolding suppresses gravity but keeps vertical drag.
@@ -813,7 +786,6 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 	state.SetVel(newVel)
 	s.applyStandOnDamping(state)
 	s.applyInsideBlockEffects(state)
-	s.applyBubbleColumns(state)
 	return true
 }
 
@@ -1439,30 +1411,6 @@ func (s *Simulator) avoidEdge(state *MovementState) (mgl32.Vec3, bool, bool) {
 		debugf("(avoidEdge): oldVel=%v newVel=%v", oldVel, newVel)
 	}
 	return retained, true, true
-}
-
-func (s *Simulator) isInsideCobweb(state *MovementState) bool {
-	if s.World == nil {
-		return false
-	}
-
-	bb := state.BoundingBox(s.Options.UseSlideOffset)
-	insideCobweb := false
-	for pos, b := range nearbyBlocks(bb.Grow(1), s.World) {
-		if s.blockAir(b) {
-			continue
-		}
-		if !bb.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
-			continue
-		}
-		if s.blockMovementSemantics(b).Cobweb {
-			insideCobweb = true
-		}
-		if insideCobweb {
-			break
-		}
-	}
-	return insideCobweb
 }
 
 func nearbyBlocks(aabb cube.BBox32, w WorldProvider) iter.Seq2[cube.Pos, world.Block] {
