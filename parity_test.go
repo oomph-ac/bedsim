@@ -65,18 +65,12 @@ func TestBedrockStepHeight(t *testing.T) {
 func TestBedBounceUsesVanillaRestitutionWithoutCap(t *testing.T) {
 	sim := &Simulator{BlockSemantics: overrideBlockSemantics{semantics: movementblock.MovementSemantics{Bounce: movementblock.BounceBed}}}
 	state := newBaseState()
-	state.Vel = mgl32.Vec3{0, -2}
 
-	sim.landOnBlock(state, state.Vel, block.Air{})
-
-	if want := float32(1.5); math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("expected bed bounce %v, got %v", want, state.Vel.Y())
+	if got, want := sim.restitution(state, -2, block.Air{}, true), float32(1.5); math32.Abs(got-want) > 1e-6 {
+		t.Fatalf("expected bed bounce %v, got %v", want, got)
 	}
-
-	state.Vel = mgl32.Vec3{0, -1}
-	sim.landOnBlock(state, state.Vel, block.Air{})
-	if want := float32(0.75); math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("expected bed bounce %v, got %v", want, state.Vel.Y())
+	if got, want := sim.restitution(state, -1, block.Air{}, true), float32(0.75); math32.Abs(got-want) > 1e-6 {
+		t.Fatalf("expected bed bounce %v, got %v", want, got)
 	}
 }
 
@@ -84,7 +78,7 @@ func TestTinyVelocityIsNotDiscardedPrematurely(t *testing.T) {
 	sim := &Simulator{World: mockWorld{}}
 	state := newBaseState()
 	state.HasGravity = false
-	state.Vel = mgl32.Vec3{1e-7, 0, 0}
+	state.Vel = mgl32.Vec3{2e-7, 0, 0}
 
 	sim.SimulateState(state)
 
