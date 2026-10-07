@@ -470,7 +470,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 
 // sneakMovementModifier returns the pose slowdown for horizontal input. Vanilla
 // applies it to held sneak or descend and to the sneaking and crawling poses,
-// but never while swimming, flying, in water from the previous tick, or gliding.
+// even while gliding, but never while swimming, flying or in water last tick.
 func (s *Simulator) sneakMovementModifier(state *MovementState, input InputState) float32 {
 	slowed := state.Sneaking || state.Crawling || input.SneakDown || input.DescendBlock
 	if !slowed || state.Swimming || state.Flying || state.swimWaterContact {

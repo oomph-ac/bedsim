@@ -147,8 +147,8 @@ func TestRawMovementNormalisesOntoUnitCircle(t *testing.T) {
 	}
 }
 
-// TestSneakSlowdownFollowsVanillaGate covers held descend and the gliding,
-// swimming and in-water exemptions.
+// TestSneakSlowdownFollowsVanillaGate covers held descend, gliding (no trigger
+// and no exemption) and the swimming and in-water exemptions.
 func TestSneakSlowdownFollowsVanillaGate(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -158,6 +158,8 @@ func TestSneakSlowdownFollowsVanillaGate(t *testing.T) {
 	}{
 		{"held descend", func(*MovementState) {}, InputState{DescendBlock: true}, MaxSneakImpulse},
 		{"gliding", func(s *MovementState) { s.Gliding = true }, InputState{}, 1},
+		{"gliding held sneak", func(s *MovementState) { s.Gliding = true }, InputState{SneakDown: true}, MaxSneakImpulse},
+		{"gliding held descend", func(s *MovementState) { s.Gliding = true }, InputState{DescendBlock: true}, MaxSneakImpulse},
 		{"swimming", func(s *MovementState) { s.Swimming = true }, InputState{SneakDown: true}, 1},
 		{"in water", func(s *MovementState) { s.swimWaterContact = true }, InputState{SneakDown: true}, 1},
 	} {

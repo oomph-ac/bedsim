@@ -105,8 +105,8 @@ With `InputState.MoveVectorIsRaw`, BedSim follows the vanilla server: raw input
 longer than one is normalised onto the unit circle, then the sneak/crawl
 slowdown and the item-use slowdown are applied as separately rounded float32
 products. The sneak slowdown applies to held sneak or descend and to the
-sneaking and crawling poses, but not while gliding, swimming, flying, or
-touching water on the previous tick. `MaxConsumingImpulse` is the default
+sneaking and crawling poses, but not while swimming, flying, or touching
+water on the previous tick. Gliding neither triggers nor exempts it. `MaxConsumingImpulse` is the default
 `0.35` item modifier squared in float32.
 
 Keep the same `MovementState` across ticks so BedSim can retain the exact swept
