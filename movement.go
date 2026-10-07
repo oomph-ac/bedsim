@@ -31,9 +31,9 @@ type MovementState struct {
 	SlideOffset mgl32.Vec2
 	Impulse     mgl32.Vec2
 	Size        mgl32.Vec3
-	// StuckSpeedMultiplier is the strongest queued berry-bush or powder-snow
-	// multiplier. It applies to one displacement, then clears along with
-	// persistent velocity.
+	// StuckSpeedMultiplier is the per-axis minimum of the web, berry-bush and
+	// powder-snow multipliers queued after the last move. It applies to one
+	// displacement in every travel mode, then clears along with persistent velocity.
 	StuckSpeedMultiplier mgl32.Vec3
 	// StandingHeight, SneakingHeight, and CrawlingHeight preserve custom entity
 	// dimensions across pose transitions. Zero values use the current standing

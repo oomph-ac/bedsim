@@ -152,8 +152,9 @@ func TestInsideCobwebTranslatesBlockVolume(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
 
-	if !sim.isInsideCobweb(state) {
-		t.Fatal("expected intersection with translated cobweb block volume away from the origin")
+	sim.applyInsideBlockEffects(state)
+	if want := (mgl32.Vec3{0.25, 0.05, 0.25}); state.StuckSpeedMultiplier != want {
+		t.Fatalf("expected translated cobweb to queue %v, got %v", want, state.StuckSpeedMultiplier)
 	}
 }
 
@@ -163,8 +164,9 @@ func TestInsideCobwebUsesFullBlockVolumeWithoutCollisionBoxes(t *testing.T) {
 	state := newBaseState()
 	state.Pos = mgl32.Vec3{float32(pos.X()) + 0.5, float32(pos.Y()), float32(pos.Z()) + 0.5}
 
-	if !sim.isInsideCobweb(state) {
-		t.Fatal("expected a non-collidable cobweb to occupy its full block volume")
+	sim.applyInsideBlockEffects(state)
+	if want := (mgl32.Vec3{0.25, 0.05, 0.25}); state.StuckSpeedMultiplier != want {
+		t.Fatalf("expected a non-collidable cobweb to queue %v, got %v", want, state.StuckSpeedMultiplier)
 	}
 }
 

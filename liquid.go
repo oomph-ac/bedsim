@@ -156,7 +156,6 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		}
 	}
 	state.SetVel(vel)
-	s.applyBubbleColumns(state)
 	s.applyInsideBlockEffects(state)
 	state.FallDistance = 0
 	return true

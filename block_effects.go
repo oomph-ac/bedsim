@@ -47,53 +47,82 @@ func applyStuckSpeedMultiplier(state *MovementState) bool {
 	return true
 }
 
+// insideCellRange returns the inclusive block range an entity occupies. Cells
+// overlapped by 0.001 or less on any axis are not inside.
+func insideCellRange(bb cube.BBox32) (minPos, maxPos cube.Pos) {
+	min, max := bb.Min(), bb.Max()
+	for axis := range 3 {
+		minPos[axis] = int(math32.Floor(min[axis] + 0.001))
+		maxPos[axis] = int(math32.Floor(max[axis] - 0.001))
+	}
+	return minPos, maxPos
+}
+
+// applyInsideBlockEffects applies post-move block contact: bubble columns,
+// then honey, then the slowdown multiplier for the next move.
 func (s *Simulator) applyInsideBlockEffects(state *MovementState) {
 	if s.World == nil {
 		return
 	}
-	bb := state.BoundingBox(s.Options.UseSlideOffset)
-	min, maxPoint := bb.Min(), bb.Max()
-	for x := int(math32.Floor(min.X())); x < int(math32.Ceil(maxPoint.X())); x++ {
-		for y := int(math32.Floor(min.Y())); y < int(math32.Ceil(maxPoint.Y())); y++ {
-			for z := int(math32.Floor(min.Z())); z < int(math32.Ceil(maxPoint.Z())); z++ {
-				pos := cube.Pos{x, y, z}
-				if !bb.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
-					continue
-				}
-				b := s.World.Block(pos)
+	s.applyBubbleColumns(state)
+	if !state.swimWaterContact {
+		s.applyHoneyWallSlide(state)
+	}
+	minPos, maxPos := insideCellRange(state.BoundingBox(s.Options.UseSlideOffset))
+	var berry, powderSnow, web bool
+	for x := minPos.X(); x <= maxPos.X(); x++ {
+		for y := minPos.Y(); y <= maxPos.Y(); y++ {
+			for z := minPos.Z(); z <= maxPos.Z(); z++ {
+				b := s.World.Block(cube.Pos{x, y, z})
 				if s.blockAir(b) {
 					continue
 				}
 				semantics := s.blockMovementSemantics(b)
-				applyInsideBlockMovement(state, semantics.InsideMovement)
+				berry = berry || semantics.InsideMovement == movementblock.InsideMovementSweetBerryBush
+				powderSnow = powderSnow || semantics.InsideMovement == movementblock.InsideMovementPowderSnow
+				web = web || semantics.Cobweb
 			}
 		}
 	}
-	s.applyHoneyWallSlide(state)
+	if powderSnow {
+		applyInsideBlockMovement(state, movementblock.InsideMovementPowderSnow)
+	}
+	if web {
+		multiplier := mgl32.Vec3{0.25, 0.05, 0.25}
+		// Weaving replaces the web multiplier only when no other slowdown block is entered.
+		if !berry && !powderSnow && s.Effects != nil {
+			if _, weaving := s.Effects.GetEffect(EffectWeaving); weaving {
+				multiplier = mgl32.Vec3{0.5, 0.25, 0.5}
+			}
+		}
+		queueStuckSpeedMultiplier(state, multiplier)
+	}
+	if berry {
+		applyInsideBlockMovement(state, movementblock.InsideMovementSweetBerryBush)
+	}
+	if berry || powderSnow || web {
+		state.FallDistance = 0
+	}
 }
 
-// applyHoneyWallSlide slows the entity once per overlapped honey block. Contact
-// with the block volume is enough; a horizontal collision is not required, and
-// overlapping two blocks compounds the horizontal factor.
+// applyHoneyWallSlide slows the entity once per occupied honey cell, including
+// the cell it stands on. Overlapping two cells compounds the horizontal factor.
 func (s *Simulator) applyHoneyWallSlide(state *MovementState) {
-	bb := state.BoundingBox(s.Options.UseSlideOffset).GrowVec3(mgl32.Vec3{1e-3, 0, 1e-3})
-	min, maxPoint := bb.Min(), bb.Max()
-	for x := int(math32.Floor(min.X())); x < int(math32.Ceil(maxPoint.X())); x++ {
-		for y := int(math32.Floor(min.Y())); y < int(math32.Ceil(maxPoint.Y())); y++ {
-			for z := int(math32.Floor(min.Z())); z < int(math32.Ceil(maxPoint.Z())); z++ {
+	minPos, maxPos := insideCellRange(state.BoundingBox(s.Options.UseSlideOffset))
+	for x := minPos.X(); x <= maxPos.X(); x++ {
+		for y := minPos.Y(); y <= maxPos.Y(); y++ {
+			for z := minPos.Z(); z <= maxPos.Z(); z++ {
 				pos := cube.Pos{x, y, z}
-				if !bb.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
+				if !s.blockMovementSemantics(s.World.Block(pos)).Honey {
 					continue
 				}
-				if s.blockMovementSemantics(s.World.Block(pos)).Honey {
-					velocity := state.Vel
-					velocity[0] *= 0.4
-					velocity[1] = max(-0.12, velocity[1])
-					velocity[2] *= 0.4
-					state.SetVel(velocity)
-					if honeySlideResetsFallDistance(state, pos) {
-						state.FallDistance = 0
-					}
+				velocity := state.Vel
+				velocity[0] *= 0.4
+				velocity[1] = max(-0.12, velocity[1])
+				velocity[2] *= 0.4
+				state.SetVel(velocity)
+				if honeySlideResetsFallDistance(state, pos) {
+					state.FallDistance = 0
 				}
 			}
 		}
