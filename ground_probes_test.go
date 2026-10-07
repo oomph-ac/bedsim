@@ -265,3 +265,48 @@ func TestSmallVerticalClipGrounds(t *testing.T) {
 		t.Fatalf("expected landing collision, onGround=%v collideY=%v pos=%v", state.OnGround, state.CollideY, state.Pos)
 	}
 }
+
+// orderedBoxWorld returns its boxes in a fixed provider order.
+type orderedBoxWorld struct {
+	groundWorld
+	order []cube.Pos
+}
+
+func (w orderedBoxWorld) GetNearbyBBoxes(aabb cube.BBox32) []cube.BBox32 {
+	var out []cube.BBox32
+	for _, pos := range w.order {
+		for _, box := range w.boxes[pos] {
+			if box = box.Translate(posVec3(pos)); strictlyIntersects(aabb, box) {
+				out = append(out, box)
+			}
+		}
+	}
+	return out
+}
+
+// An exact landing tie resolves in vanilla's x, z, y gathering order, not the
+// provider's order.
+func TestLandingTieUsesVanillaGatheringOrder(t *testing.T) {
+	slime, stone := cube.Pos{0, 0, 0}, cube.Pos{1, 0, 0}
+	for name, order := range map[string][]cube.Pos{
+		"slime first": {slime, stone},
+		"stone first": {stone, slime},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := orderedBoxWorld{groundWorld: newGroundWorld(), order: order}
+			w.place(slime, block.Slime{}, 1)
+			w.place(stone, block.Stone{}, 1)
+			sim := &Simulator{World: w}
+			state := groundState(mgl32.Vec3{1, 1.2, 0.5})
+			state.OnGround = false
+			state.HasGravity = false
+			state.Vel = mgl32.Vec3{0, -0.5, 0}
+
+			sim.SimulateState(state)
+
+			if want := float32(0.5); state.Vel.Y() != want {
+				t.Fatalf("boundary landing vy=%v, want slime bounce %v", state.Vel.Y(), want)
+			}
+		})
+	}
+}

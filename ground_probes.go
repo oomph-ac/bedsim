@@ -44,12 +44,14 @@ func (s *Simulator) groundFrictionSemantics(state *MovementState) (world.Block, 
 
 // landingBlock returns the block a downward collision lands on: among the
 // move's collision boxes whose centre is at or below minY-0.2, the highest
-// centre wins, then the centre nearest the probe plane's centre.
+// centre wins, then the centre nearest the probe plane's centre. Exact ties
+// keep the first box in vanilla's gathering order, whatever the provider order.
 func (s *Simulator) landingBlock(box cube.BBox32, boxes []cube.BBox32) (world.Block, bool) {
 	planeY := box.Min().Y() + standingOnProbeOffset
 	centerX := (box.Max().X()-box.Min().X())*0.5 + box.Min().X()
 	centerZ := (box.Max().Z()-box.Min().Z())*0.5 + box.Min().Z()
 	best := -1
+	var bestPos cube.Pos
 	bestGap := float32(math32.MaxFloat32)
 	bestDist := float32(0)
 	for i, candidate := range boxes {
@@ -63,16 +65,27 @@ func (s *Simulator) landingBlock(box cube.BBox32, boxes []cube.BBox32) (world.Bl
 		dy := cy - planeY
 		dz := (max.Z()-min.Z())*0.5 + min.Z() - centerZ
 		dist := float32(float32(dz*dz)+float32(dy*dy)) + float32(dx*dx)
-		if gap < bestGap || best >= 0 && gap == bestGap && dist < bestDist {
-			best, bestGap, bestDist = i, gap, dist
+		pos := cube.Pos{int(math32.Floor(min.X())), int(math32.Floor(min.Y())), int(math32.Floor(min.Z()))}
+		if best < 0 || gap < bestGap || gap == bestGap && (dist < bestDist || dist == bestDist && gathersBefore(pos, bestPos)) {
+			best, bestPos, bestGap, bestDist = i, pos, gap, dist
 		}
 	}
 	if best < 0 || BBHasZeroVolume(boxes[best]) {
 		return nil, false
 	}
-	min := boxes[best].Min()
-	pos := cube.Pos{int(math32.Floor(min.X())), int(math32.Floor(min.Y())), int(math32.Floor(min.Z()))}
-	return s.blockAtPos(pos), true
+	return s.blockAtPos(bestPos), true
+}
+
+// gathersBefore reports whether vanilla gathers a's collision shapes before
+// b's: x ascending, then z, then y. Shapes of one block keep provider order.
+func gathersBefore(a, b cube.Pos) bool {
+	if a.X() != b.X() {
+		return a.X() < b.X()
+	}
+	if a.Z() != b.Z() {
+		return a.Z() < b.Z()
+	}
+	return a.Y() < b.Y()
 }
 
 // restitution returns the vertical speed a downward landing rebounds with.
