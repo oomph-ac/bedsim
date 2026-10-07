@@ -82,7 +82,9 @@ implement `BubbleColumnProvider` for upward/downward columns and
 `BubbleColumnSurfaceProvider` when it can classify the exact surface variant,
 and `MovementCollisionProvider` for player-dependent collision shapes such as
 scaffolding and powder snow. Dynamic collision resolution receives sneak and
-descend intent plus leather-boots state. Implement `LiquidFlowProvider` when
+descend intent plus leather-boots state. `DescendThroughBlock` reports the
+vanilla descend-through state: drop a scaffolding or powder-snow top only while
+it is set, since descend intent alone does not sink through a scaffold bridge. Implement `LiquidFlowProvider` when
 the world can expose exact liquid face closure and falling-current material
 barriers; otherwise BedSim falls back to block-model faces and collision boxes.
 

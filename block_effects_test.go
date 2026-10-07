@@ -177,36 +177,6 @@ func TestHoneyTopContactPreservesFallDistance(t *testing.T) {
 	}
 }
 
-func TestScaffoldingAscendAndDescendSpeeds(t *testing.T) {
-	state := newBaseState()
-	state.PressingAscend = true
-	applyAscendableMovement(state, movementblock.TraversalScaffolding, false)
-	if state.Vel.Y() != 0.15 {
-		t.Fatalf("expected scaffolding ascend velocity 0.15, got %v", state.Vel.Y())
-	}
-
-	state.PressingAscend = false
-	state.PressingDescend = true
-	applyAscendableMovement(state, movementblock.TraversalScaffolding, false)
-	if state.Vel.Y() != -0.15 {
-		t.Fatalf("expected scaffolding descend velocity -0.15, got %v", state.Vel.Y())
-	}
-}
-
-func TestPowderSnowTraversalRequiresLeatherBoots(t *testing.T) {
-	state := newBaseState()
-	state.PressingAscend = true
-	applyAscendableMovement(state, movementblock.TraversalPowderSnow, false)
-	if state.Vel.Y() != 0 {
-		t.Fatalf("expected no powder-snow ascent without leather boots, got %v", state.Vel.Y())
-	}
-
-	applyAscendableMovement(state, movementblock.TraversalPowderSnow, true)
-	if state.Vel.Y() != 0.2 {
-		t.Fatalf("expected leather-boots powder-snow ascent 0.2, got %v", state.Vel.Y())
-	}
-}
-
 func TestHoneyWalkSlowdownMatchesSlime(t *testing.T) {
 	sim := &Simulator{}
 	state := newBaseState()
@@ -233,45 +203,6 @@ func TestSimulationAppliesScaffoldingTraversal(t *testing.T) {
 
 	if state.Vel.Y() != 0.15 {
 		t.Fatalf("expected integrated scaffolding ascent 0.15, got %v", state.Vel.Y())
-	}
-}
-
-func TestScaffoldingDescendSkipsAirGravity(t *testing.T) {
-	w := environmentWorld{blocks: map[cube.Pos]world.Block{
-		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
-	}}
-	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
-	state := newBaseState()
-	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
-	state.Gravity = NormalGravity
-	state.HasGravity = true
-	state.PressingDescend = true
-	state.FallDistance = 4
-	sim.SimulateState(state)
-	if math32.Abs(state.Vel.Y()-(-0.15)) > 1e-6 {
-		t.Fatalf("scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15)
-	}
-	if state.FallDistance != 0 {
-		t.Fatalf("scaffolding descent left fall distance = %v", state.FallDistance)
-	}
-}
-
-func TestScaffoldingSupportEnablesDescent(t *testing.T) {
-	w := environmentWorld{blocks: map[cube.Pos]world.Block{
-		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
-	}}
-	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
-	support := cube.Pos{0, 0, 0}
-	state := newBaseState()
-	state.Pos = mgl32.Vec3{0.5, 1, 0.5}
-	state.OnGround = true
-	state.HasGravity = true
-	state.SupportingBlockPos = &support
-	state.PressingDescend = true
-
-	sim.SimulateState(state)
-	if math32.Abs(state.Vel.Y()-(-0.15)) > 1e-6 {
-		t.Fatalf("supported scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15)
 	}
 }
 

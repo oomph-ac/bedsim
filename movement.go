@@ -89,6 +89,8 @@ type MovementState struct {
 	Sneaking, PressingSneak bool
 	PressingAscend          bool
 	PressingDescend         bool
+	// descendThroughBlock records this tick's scaffolding or powder-snow descent.
+	descendThroughBlock bool
 
 	Jumping, PressingJump bool
 	EffectiveJumping      bool

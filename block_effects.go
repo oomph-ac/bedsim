@@ -47,30 +47,6 @@ func applyStuckSpeedMultiplier(state *MovementState) bool {
 	return true
 }
 
-// applyAscendableMovement applies input-driven vertical block traversal and
-// reports whether ordinary vertical travel should be skipped.
-func applyAscendableMovement(state *MovementState, traversal movementblock.Traversal, leatherBoots bool) bool {
-	velocity := state.Vel
-	switch traversal {
-	case movementblock.TraversalScaffolding:
-		if state.PressingDescend {
-			velocity[1] = -0.15
-			state.SetVel(velocity)
-			return true
-		} else if state.PressingAscend {
-			velocity[1] = 0.15
-		}
-	case movementblock.TraversalPowderSnow:
-		if state.PressingDescend {
-			velocity[1] = -0.15
-		} else if state.PressingAscend && leatherBoots {
-			velocity[1] = 0.2
-		}
-	}
-	state.SetVel(velocity)
-	return false
-}
-
 func (s *Simulator) applyInsideBlockEffects(state *MovementState) {
 	if s.World == nil {
 		return
