@@ -117,3 +117,57 @@ func TestItemUseMovementModifier(t *testing.T) {
 		}
 	}
 }
+
+// TestRawMovementSlowdownRoundsPoseThenItem pins vanilla's float32 order: pose
+// slowdown first, then the 0.35 modifier squared, each product rounded.
+func TestRawMovementSlowdownRoundsPoseThenItem(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input InputState
+		want  uint32
+	}{
+		{"consuming", InputState{UsingConsumable: true}, 0x3d96872b},
+		{"consuming sneak", InputState{UsingConsumable: true, SneakDown: true}, 0x3cb4a234},
+	} {
+		in := tc.input
+		in.MoveVector, in.MoveVectorIsRaw = mgl32.Vec2{0, .6}, true
+		result := (&Simulator{}).Simulate(newBaseState(), in)
+		if got := math.Float32bits(result.InputMoveVector.Y()); got != tc.want {
+			t.Fatalf("%s: forward %#08x, want %#08x", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestRawMovementNormalisesOntoUnitCircle keeps diagonal raw input at unit length.
+func TestRawMovementNormalisesOntoUnitCircle(t *testing.T) {
+	result := (&Simulator{}).Simulate(newBaseState(), InputState{MoveVector: mgl32.Vec2{1, 1}, MoveVectorIsRaw: true})
+	want := float32(1 / math.Sqrt2)
+	if result.InputMoveVector != (mgl32.Vec2{want, want}) {
+		t.Fatalf("diagonal raw input = %v, want %v on both axes", result.InputMoveVector, want)
+	}
+}
+
+// TestSneakSlowdownFollowsVanillaGate covers held descend and the gliding,
+// swimming and in-water exemptions.
+func TestSneakSlowdownFollowsVanillaGate(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(*MovementState)
+		input InputState
+		want  float32
+	}{
+		{"held descend", func(*MovementState) {}, InputState{DescendBlock: true}, MaxSneakImpulse},
+		{"gliding", func(s *MovementState) { s.Gliding = true }, InputState{}, 1},
+		{"swimming", func(s *MovementState) { s.Swimming = true }, InputState{SneakDown: true}, 1},
+		{"in water", func(s *MovementState) { s.swimWaterContact = true }, InputState{SneakDown: true}, 1},
+	} {
+		state := newBaseState()
+		tc.setup(state)
+		in := tc.input
+		in.MoveVector, in.MoveVectorIsRaw = mgl32.Vec2{0, 1}, true
+		(&Simulator{}).applyInput(state, in)
+		if want := tc.want * 0.98; state.Impulse.Y() != want {
+			t.Fatalf("%s: impulse %v, want %v", tc.name, state.Impulse.Y(), want)
+		}
+	}
+}

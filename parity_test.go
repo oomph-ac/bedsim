@@ -2,6 +2,7 @@ package bedsim
 
 import (
 	"github.com/chewxy/math32"
+	"math"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
@@ -158,5 +159,20 @@ func TestSneakEdgeProtectionRequiresGround(t *testing.T) {
 
 	if state.Vel.X() != 0.5 {
 		t.Fatalf("edge protection ran while airborne: %v", state.Vel)
+	}
+}
+
+// TestTrigTableIndexTruncatesNegativeAngles pins vanilla's index for negative
+// angles: round the scaled angle, add the quarter turn, truncate, then wrap.
+func TestTrigTableIndexTruncatesNegativeAngles(t *testing.T) {
+	for bits := math.Float32bits(-7); bits > math.Float32bits(-6.99); bits -= 7 {
+		angle := math.Float32frombits(bits)
+		scaled := float32(angle * 10430.378)
+		if got, want := MCCos(angle), mcSinTable[uint16(int32(scaled+16384))]; got != want {
+			t.Fatalf("MCCos(%v) = %v, want %v", angle, got, want)
+		}
+		if got, want := MCSin(angle), mcSinTable[uint16(int32(scaled))]; got != want {
+			t.Fatalf("MCSin(%v) = %v, want %v", angle, got, want)
+		}
 	}
 }
