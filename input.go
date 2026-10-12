@@ -47,6 +47,13 @@ type InputState struct {
 
 	StopGliding  bool
 	StartGliding bool
+	// StartGlideBoost is a caller-validated firework rocket use. Vanilla only
+	// converts a rocket into forward thrust while gliding, which includes the
+	// tick a StartGliding in this same input deploys the elytra; launching one
+	// on the ground or in free fall does not accelerate the player. The caller
+	// owns proving the rocket was actually consumed, the same way
+	// StartSpinAttack owns proving a charged Riptide release.
+	StartGlideBoost bool
 
 	// ItemUseMovementModifier overrides item-use slowdown with a finite value in [0, 1].
 	// Nil derives the modifier from the item-use flags. The pointed-to value must
