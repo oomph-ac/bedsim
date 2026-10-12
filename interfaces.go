@@ -47,6 +47,9 @@ type MovementCollisionContext struct {
 	Descending   bool
 	WantDown     bool
 	LeatherBoots bool
+	// DescendThroughBlock is set while the player sinks through scaffolding or
+	// powder snow; vanilla drops those blocks' top collision only in this state.
+	DescendThroughBlock bool
 }
 
 // MovementCollisionProvider optionally resolves collision boxes whose shape
@@ -92,6 +95,8 @@ type EffectsProvider interface {
 
 // InventoryProvider exposes equipment checks needed by movement (elytra, etc.).
 type InventoryProvider interface {
+	// HasElytra reports a chest-slot elytra that can still fly: vanilla treats
+	// one with damage of at least its maximum durability minus one as broken.
 	HasElytra() bool
 }
 

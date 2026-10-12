@@ -1,6 +1,8 @@
 package bedsim
 
 import (
+	"math"
+
 	"github.com/chewxy/math32"
 	"testing"
 
@@ -1573,5 +1575,22 @@ func TestSwimContactLossRestoresPoseBelowCeiling(t *testing.T) {
 		if result.Outcome != SimulationOutcomeNormal || state.SwimPose() || !state.Crawling || state.StuckInCollider {
 			t.Fatalf("grace=%d: contact loss expanded into ceiling: outcome=%v swim=%v crawl=%v stuck=%v", grace, result.Outcome, state.SwimPose(), state.Crawling, state.StuckInCollider)
 		}
+	}
+}
+
+// TestDepthStriderWaterSpeedDividesLast pins vanilla's float32 order for the
+// water speed blend: the level multiplies the difference before the division.
+func TestDepthStriderWaterSpeedDividesLast(t *testing.T) {
+	speed, level := waterTravelSpeed(0.02, 0.1, 2, 1, true)
+	if got := math.Float32bits(speed); got != 0x3d962fc9 || level != 2 {
+		t.Fatalf("speed %#08x level %v, want 0x3d962fc9 and 2", got, level)
+	}
+	base, ground := float32(0.02), float32(0.1)
+	speed, level = waterTravelSpeed(base, ground, 2, 1, false)
+	if want := base + (ground-base)/3; speed != want || level != 1 {
+		t.Fatalf("airborne speed %v level %v, want %v and 1", speed, level, want)
+	}
+	if speed, level = waterTravelSpeed(0.02, 0.1, 3, 2, false); speed != float32(0.04) || level != 3 {
+		t.Fatalf("dolphin speed %v level %v, want 0.04 and an unhalved 3", speed, level)
 	}
 }

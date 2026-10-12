@@ -18,14 +18,16 @@ func init() {
 	}
 }
 
-// MCSin returns the Minecraft sin of the given angle.
+// MCSin returns the Minecraft sin of the given angle. The index truncates
+// toward zero and wraps, as vanilla's integer conversion does.
 func MCSin(val float32) float32 {
-	return mcSinTable[uint16(val*10430.378)&65535]
+	return mcSinTable[uint16(int32(val*10430.378))]
 }
 
-// MCCos returns the Minecraft cos of the given angle.
+// MCCos returns the Minecraft cos of the given angle. The scaled angle is
+// rounded before the quarter-turn offset is added.
 func MCCos(val float32) float32 {
-	return mcSinTable[uint16(val*10430.378+16384.0)&65535]
+	return mcSinTable[uint16(int32(float32(val*10430.378)+16384.0))]
 }
 
 // ClampFloat clamps the given value to the given range.

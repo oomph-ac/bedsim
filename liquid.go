@@ -3,7 +3,6 @@ package bedsim
 import (
 	"github.com/chewxy/math32"
 
-	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
@@ -90,15 +89,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 				depthStriderLevel = math32.Min(math32.Max(float32(inventory.DepthStriderLevel()), 0), 3)
 			}
 		}
-		depthStriderFraction := depthStriderLevel / 3
-		if swimSpeedMultiplier > 1 {
-			moveRelativeSpeed *= (0.7 + depthStriderFraction*0.3) * swimSpeedMultiplier
-		} else {
-			if !state.OnGround {
-				depthStriderLevel *= 0.5
-			}
-			moveRelativeSpeed += (state.MovementSpeed - moveRelativeSpeed) * (depthStriderLevel / 3)
-		}
+		moveRelativeSpeed, depthStriderLevel = waterTravelSpeed(moveRelativeSpeed, state.MovementSpeed, depthStriderLevel, swimSpeedMultiplier, state.OnGround)
 	}
 	moveRelative(state, moveRelativeSpeed)
 	stuckMovement := applyStuckSpeedMultiplier(state)
@@ -106,7 +97,6 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		return false
 	}
 	oldVel := state.Vel
-	oldOnGround := state.OnGround
 	if !s.tryCollisions(state) {
 		return false
 	}
@@ -118,7 +108,7 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		state.SetVel(mgl32.Vec3{})
 		oldVel = mgl32.Vec3{}
 	}
-	s.setPostCollisionMotion(state, oldVel, oldOnGround, block.Air{})
+	s.setPostCollisionMotion(state, oldVel, nil, false)
 	if !stuckMovement {
 		state.SetMov(state.Vel)
 	}
@@ -166,10 +156,24 @@ func (s *Simulator) simulateLiquidTravel(state *MovementState, kind liquidKind, 
 		}
 	}
 	state.SetVel(vel)
-	s.applyBubbleColumns(state)
 	s.applyInsideBlockEffects(state)
 	state.FallDistance = 0
 	return true
+}
+
+// waterTravelSpeed returns the water acceleration and the Depth Strider level
+// used for drag. Vanilla rounds each product and divides by the maximum level last.
+func waterTravelSpeed(base, groundSpeed, depthStrider, swimMultiplier float32, onGround bool) (float32, float32) {
+	if swimMultiplier > 1 {
+		return float32(base*swimMultiplier) * (float32(depthStrider/3*0.3) + 0.7), depthStrider
+	}
+	if depthStrider <= 0 {
+		return base, depthStrider
+	}
+	if !onGround {
+		depthStrider *= 0.5
+	}
+	return base + float32((groundSpeed-base)*depthStrider)/3, depthStrider
 }
 
 func liquidGravity(swimming, water bool) float32 {

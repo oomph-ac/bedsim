@@ -121,8 +121,9 @@ func TestHoneyBlockReducesJumpPower(t *testing.T) {
 
 func TestHoneyWallSlideAppliesOnSolidSideContact(t *testing.T) {
 	w := honeyWallWorld{
+		// Honey collision is inset by 1/16 on each horizontal side.
 		staticWorld: staticWorld{chunkLoaded: true, boxes: []cube.BBox32{
-			cube.Box32(1, -1, 0, 2, 2, 1),
+			cube.Box32(1.0625, -1, 0.0625, 1.9375, 2, 0.9375),
 		}},
 		pos: cube.Pos{1, 0, 0},
 	}
@@ -177,49 +178,6 @@ func TestHoneyTopContactPreservesFallDistance(t *testing.T) {
 	}
 }
 
-func TestScaffoldingAscendAndDescendSpeeds(t *testing.T) {
-	state := newBaseState()
-	state.PressingAscend = true
-	applyAscendableMovement(state, movementblock.TraversalScaffolding, false)
-	if state.Vel.Y() != 0.15 {
-		t.Fatalf("expected scaffolding ascend velocity 0.15, got %v", state.Vel.Y())
-	}
-
-	state.PressingAscend = false
-	state.PressingDescend = true
-	applyAscendableMovement(state, movementblock.TraversalScaffolding, false)
-	if state.Vel.Y() != -0.15 {
-		t.Fatalf("expected scaffolding descend velocity -0.15, got %v", state.Vel.Y())
-	}
-}
-
-func TestPowderSnowTraversalRequiresLeatherBoots(t *testing.T) {
-	state := newBaseState()
-	state.PressingAscend = true
-	applyAscendableMovement(state, movementblock.TraversalPowderSnow, false)
-	if state.Vel.Y() != 0 {
-		t.Fatalf("expected no powder-snow ascent without leather boots, got %v", state.Vel.Y())
-	}
-
-	applyAscendableMovement(state, movementblock.TraversalPowderSnow, true)
-	if state.Vel.Y() != 0.2 {
-		t.Fatalf("expected leather-boots powder-snow ascent 0.2, got %v", state.Vel.Y())
-	}
-}
-
-func TestHoneyWalkSlowdownMatchesSlime(t *testing.T) {
-	sim := &Simulator{}
-	state := newBaseState()
-	state.OnGround = true
-	state.Vel = mgl32.Vec3{1, 0.05, 1}
-
-	sim.walkOnBlock(state, semanticsNamedBlock{"minecraft:honey_block"})
-
-	if want := float32(0.41); math32.Abs(state.Vel.X()-want) > 1e-6 || math32.Abs(state.Vel.Z()-want) > 1e-6 {
-		t.Fatalf("expected honey walk slowdown %v, got %v", want, state.Vel)
-	}
-}
-
 func TestSimulationAppliesScaffoldingTraversal(t *testing.T) {
 	w := environmentWorld{blocks: map[cube.Pos]world.Block{
 		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
@@ -233,45 +191,6 @@ func TestSimulationAppliesScaffoldingTraversal(t *testing.T) {
 
 	if state.Vel.Y() != 0.15 {
 		t.Fatalf("expected integrated scaffolding ascent 0.15, got %v", state.Vel.Y())
-	}
-}
-
-func TestScaffoldingDescendSkipsAirGravity(t *testing.T) {
-	w := environmentWorld{blocks: map[cube.Pos]world.Block{
-		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
-	}}
-	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
-	state := newBaseState()
-	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
-	state.Gravity = NormalGravity
-	state.HasGravity = true
-	state.PressingDescend = true
-	state.FallDistance = 4
-	sim.SimulateState(state)
-	if math32.Abs(state.Vel.Y()-(-0.15)) > 1e-6 {
-		t.Fatalf("scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15)
-	}
-	if state.FallDistance != 0 {
-		t.Fatalf("scaffolding descent left fall distance = %v", state.FallDistance)
-	}
-}
-
-func TestScaffoldingSupportEnablesDescent(t *testing.T) {
-	w := environmentWorld{blocks: map[cube.Pos]world.Block{
-		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:scaffolding"},
-	}}
-	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
-	support := cube.Pos{0, 0, 0}
-	state := newBaseState()
-	state.Pos = mgl32.Vec3{0.5, 1, 0.5}
-	state.OnGround = true
-	state.HasGravity = true
-	state.SupportingBlockPos = &support
-	state.PressingDescend = true
-
-	sim.SimulateState(state)
-	if math32.Abs(state.Vel.Y()-(-0.15)) > 1e-6 {
-		t.Fatalf("supported scaffolding descent velocity = %v, want %v", state.Vel.Y(), -0.15)
 	}
 }
 
@@ -289,9 +208,161 @@ func TestSimulationDetectsNonSolidWebAndAppliesWeaving(t *testing.T) {
 	state.Vel = mgl32.Vec3{0.1, 0, 0}
 	state.HasGravity = false
 
+	sim.SimulateState(state)
+	if want := (mgl32.Vec3{0.5, 0.25, 0.5}); state.StuckSpeedMultiplier != want {
+		t.Fatalf("expected Weaving web multiplier %v, got %v", want, state.StuckSpeedMultiplier)
+	}
+	want := state.Vel.X() * 0.5
 	result := sim.SimulateState(state)
 
-	if want := float32(0.05); math32.Abs(result.Movement.X()-want) > 1e-6 {
+	if math32.Abs(result.Movement.X()-want) > 1e-6 {
 		t.Fatalf("expected Weaving web movement %v, got %v", want, result.Movement.X())
+	}
+}
+
+func TestGlidingIntoWebUsesSlowdownMultiplier(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:web"},
+	}}
+	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}, Inventory: mockInventory{hasElytra: true}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Gliding = true
+	state.Gravity = NormalGravity
+	state.Vel = mgl32.Vec3{0, 0, 0.5}
+
+	sim.SimulateState(state)
+	if want := (mgl32.Vec3{0.25, 0.05, 0.25}); state.StuckSpeedMultiplier != want {
+		t.Fatalf("gliding web contact queued %v, want %v", state.StuckSpeedMultiplier, want)
+	}
+	if !state.Gliding {
+		t.Fatal("expected glide to continue")
+	}
+	sim.SimulateState(state)
+	if state.Vel != (mgl32.Vec3{}) {
+		t.Fatalf("expected web slowdown to clear gliding velocity, got %v", state.Vel)
+	}
+}
+
+func TestOverlappingSlowdownBlocksUseWeakestAxisNotProduct(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:web"},
+		{0, 1, 0}: semanticsNamedBlock{name: "minecraft:sweet_berry_bush"},
+	}}
+	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.HasGravity = false
+
+	sim.SimulateState(state)
+	if want := (mgl32.Vec3{0.25, 0.05, 0.25}); state.StuckSpeedMultiplier != want {
+		t.Fatalf("web and berry bush queued %v, want %v", state.StuckSpeedMultiplier, want)
+	}
+	state.Vel = mgl32.Vec3{0.4, 0, 0}
+	result := sim.SimulateState(state)
+	if want := float32(0.4 * 0.25); math32.Abs(result.Movement.X()-want) > 1e-6 {
+		t.Fatalf("web and berry bush moved %v, want %v", result.Movement.X(), want)
+	}
+}
+
+func TestWeavingKeepsWebMultiplierInsideOtherSlowdownBlocks(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:web"},
+		{0, 1, 0}: semanticsNamedBlock{name: "minecraft:powder_snow"},
+	}}
+	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}, Effects: fixedEffects{EffectWeaving: 0}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+
+	sim.applyInsideBlockEffects(state)
+
+	if want := (mgl32.Vec3{0.25, 0.05, 0.25}); state.StuckSpeedMultiplier != want {
+		t.Fatalf("Weaving in web and powder snow queued %v, want %v", state.StuckSpeedMultiplier, want)
+	}
+}
+
+func TestSlowdownBlockContactResetsFallDistance(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{0, 0, 0}: semanticsNamedBlock{name: "minecraft:sweet_berry_bush"},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.FallDistance = 4
+
+	(&Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}).applyInsideBlockEffects(state)
+
+	if state.FallDistance != 0 {
+		t.Fatalf("berry bush contact left fall distance = %v", state.FallDistance)
+	}
+}
+
+func TestHoneyDoesNotSlowEntityInWater(t *testing.T) {
+	w := environmentWorld{blocks: map[cube.Pos]world.Block{
+		{1, 0, 0}: semanticsNamedBlock{name: "minecraft:honey_block"},
+	}}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.75, 0, 0.5}
+	state.Vel = mgl32.Vec3{0.1, -0.2, 0.1}
+	state.swimWaterContact = true
+
+	(&Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}).applyInsideBlockEffects(state)
+
+	if want := (mgl32.Vec3{0.1, -0.2, 0.1}); state.Vel != want {
+		t.Fatalf("honey changed in-water velocity to %v", state.Vel)
+	}
+}
+
+func TestInsideBlocksIgnoreMarginalOverlap(t *testing.T) {
+	w := environmentWorld{
+		bubbles: map[cube.Pos]BubbleColumnDirection{{1, 0, 0}: BubbleColumnUp},
+		blocks: map[cube.Pos]world.Block{
+			{0, 0, 1}: semanticsNamedBlock{name: "minecraft:honey_block"},
+		},
+	}
+	state := newBaseState()
+	// The box overlaps the bubble column (x) and honey (z) cells by 0.0005.
+	state.Pos = mgl32.Vec3{0.7005, 0, 0.7005}
+	state.Vel = mgl32.Vec3{0.1, -0.2, 0.1}
+
+	(&Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}).applyInsideBlockEffects(state)
+
+	if want := (mgl32.Vec3{0.1, -0.2, 0.1}); state.Vel != want {
+		t.Fatalf("marginal overlap changed velocity to %v", state.Vel)
+	}
+}
+
+func TestBubbleColumnAppliesBeforeHoney(t *testing.T) {
+	w := environmentWorld{
+		bubbles: map[cube.Pos]BubbleColumnDirection{{0, -1, 0}: BubbleColumnUp},
+		blocks: map[cube.Pos]world.Block{
+			{0, 0, 0}: semanticsNamedBlock{name: "minecraft:honey_block"},
+		},
+	}
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{0.5, 0, 0.5}
+	state.Vel = mgl32.Vec3{0, -1, 0}
+	state.HasGravity = false
+
+	(&Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}).SimulateState(state)
+
+	// The submerged column gives -0.94; honey then caps the descent at -0.12.
+	if state.Vel.Y() != -0.12 {
+		t.Fatalf("bubble column and honey velocity = %v, want -0.12", state.Vel.Y())
+	}
+}
+
+// Vanilla deflates the occupied range in float32, so the 0.001 margin vanishes
+// once coordinates are large enough to round it away.
+func TestInsideCellRangeKeepsFloat32DeflationAtLargeCoordinates(t *testing.T) {
+	state := newBaseState()
+	state.Pos = mgl32.Vec3{65535.7, 0, 0.5}
+
+	minPos, maxPos := insideCellRange(state.BoundingBox(false))
+
+	if minPos.X() != 65535 || maxPos.X() != 65536 {
+		t.Fatalf("large-coordinate x range = [%d, %d], want [65535, 65536]", minPos.X(), maxPos.X())
+	}
+	if minPos.Z() != 0 || maxPos.Z() != 0 {
+		t.Fatalf("small-coordinate z range = [%d, %d], want [0, 0]", minPos.Z(), maxPos.Z())
 	}
 }

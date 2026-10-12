@@ -9,7 +9,6 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/go-gl/mathgl/mgl32"
-	movementblock "github.com/oomph-ac/bedsim/block"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -391,30 +390,29 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 
 	// Raw controls need client slowdown; processed packet vectors retain the
 	// configured validation bounds. Both use the same item/pose multiplier.
-	maxImpulse := float32(1)
+	itemModifier, poseModifier := float32(1), float32(1)
 	if input.MoveVectorIsRaw || !s.Options.UpstreamImpulseClamping {
 		if input.ItemUseMovementModifier != nil {
-			maxImpulse *= *input.ItemUseMovementModifier
+			itemModifier = *input.ItemUseMovementModifier
 		} else if input.UsingConsumable || (input.UsingItem && !input.UsingSpear) {
-			maxImpulse *= MaxConsumingImpulse
+			itemModifier = MaxConsumingImpulse
 		}
-		if state.Sneaking || state.Crawling || state.Gliding {
-			state.TicksSinceCanSlowdown++
-			sneakMultiplier := MaxSneakImpulse
-			if state.TicksSinceCanSlowdown > 2 && s.Equipment != nil {
-				sneakMultiplier += 0.15 * float32(s.Equipment.EnchantmentLevel(EnchantmentSwiftSneak))
-			}
-			maxImpulse *= ClampFloat(sneakMultiplier, 0, 1)
-		} else {
-			state.TicksSinceCanSlowdown = 0
-		}
+		poseModifier = s.sneakMovementModifier(state, input)
 	}
+	maxImpulse := poseModifier * itemModifier
 	moveVector := mgl32.Vec2{
 		ClampFloat(input.MoveVector[0], -maxImpulse, maxImpulse),
 		ClampFloat(input.MoveVector[1], -maxImpulse, maxImpulse),
 	}
 	if input.MoveVectorIsRaw {
-		moveVector = mgl32.Vec2{ClampFloat(input.MoveVector[0], -1, 1), ClampFloat(input.MoveVector[1], -1, 1)}.Mul(maxImpulse)
+		// Vanilla normalises raw input onto the unit circle, then rounds the
+		// pose and item-use products separately.
+		raw := input.MoveVector
+		if lengthSqr := float32(raw[1]*raw[1]) + float32(raw[0]*raw[0]); lengthSqr > 1 {
+			length := math32.Sqrt(lengthSqr)
+			raw = mgl32.Vec2{raw[0] / length, raw[1] / length}
+		}
+		moveVector = mgl32.Vec2{raw[0] * poseModifier * itemModifier, raw[1] * poseModifier * itemModifier}
 	}
 	if input.InventoryAction {
 		moveVector = mgl32.Vec2{}
@@ -474,6 +472,23 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 	}
 	state.Impulse = moveVector.Mul(0.98)
 	return poseWorldKnown, moveVector
+}
+
+// sneakMovementModifier returns the pose slowdown for horizontal input. Vanilla
+// applies it to held sneak or descend and to the sneaking and crawling poses,
+// even while gliding, but never while swimming, flying or in water last tick.
+func (s *Simulator) sneakMovementModifier(state *MovementState, input InputState) float32 {
+	slowed := state.Sneaking || state.Crawling || input.SneakDown || input.DescendBlock
+	if !slowed || state.Swimming || state.Flying || state.swimWaterContact {
+		state.TicksSinceCanSlowdown = 0
+		return 1
+	}
+	state.TicksSinceCanSlowdown++
+	multiplier := MaxSneakImpulse
+	if (state.Sneaking || state.Crawling) && state.TicksSinceCanSlowdown > 2 && s.Equipment != nil {
+		multiplier = float32(float32(s.Equipment.EnchantmentLevel(EnchantmentSwiftSneak))*0.15) + MaxSneakImpulse
+	}
+	return ClampFloat(multiplier, 0, 1)
 }
 
 func (s *Simulator) applyLegacySprint(state *MovementState, input InputState) {
@@ -538,6 +553,8 @@ func (s *Simulator) tickState(state *MovementState, advanceTeleport bool) {
 }
 
 func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
+	// Only ordinary travel can start a descent through a block this tick.
+	state.descendThroughBlock = false
 	vel := state.Vel
 	for axis := range 3 {
 		if math32.Abs(vel[axis]) < 1e-8 {
@@ -623,12 +640,11 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 		return true
 	}
 
-	blockUnder := s.blockAtPos(posFromVec3(state.Pos.Sub(mgl32.Vec3{0, 0.5})))
+	blockUnder, blockSemantics := s.groundFrictionSemantics(state)
 	blockFriction := DefaultAirFriction
 	moveRelativeSpeed := state.AirSpeed
 	if state.OnGround {
 		mSpeed := state.MovementSpeed
-		blockSemantics := s.blockMovementSemantics(blockUnder)
 		blockFriction *= blockSemantics.GroundFriction
 		accelerationMultiplier := blockSemantics.GroundAccelerationFrictionMultiplier
 		if s.Equipment != nil && s.Equipment.EnchantmentLevel(EnchantmentSoulSpeed) > 0 && blockSemantics.SoulSpeedNeutralizesAccelerationFriction {
@@ -674,7 +690,6 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 				state.SetVel(mgl32.Vec3{})
 			}
 			s.applyInsideBlockEffects(state)
-			s.applyBubbleColumns(state)
 			return true
 		}
 
@@ -696,115 +711,70 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 	if debugf := s.Options.Debugf; debugf != nil {
 		debugf("moveRelative force applied (vel=%v)", state.Vel)
 	}
-	if jumped := s.attemptJump(state); jumped && s.Options.Debugf != nil {
+	leatherBoots := s.Equipment != nil && s.Equipment.WearingLeatherBoots()
+	climber, climberKnown := s.climberFlags(state, leatherBoots)
+	if !climberKnown {
+		return false
+	}
+	state.descendThroughBlock = climber.overDescendable && state.PressingDescend
+	if state.descendThroughBlock {
+		state.SetVel(mgl32.Vec3{state.Vel.X(), -ScaffoldingSpeed, state.Vel.Z()})
+	}
+	if applyClimbJump(state, climber) {
+		if debugf := s.Options.Debugf; debugf != nil {
+			debugf("climb jump applied: %v", state.Vel)
+		}
+	} else if jumped := s.attemptJump(state); jumped && s.Options.Debugf != nil {
 		s.Options.Debugf("jump force applied (sprint=%v): %v", state.Sprinting, state.Vel)
 	}
-	insideSemantics := s.blockMovementSemantics(s.blockAtPos(posFromVec3(state.Pos)))
-	if insideSemantics.Traversal == movementblock.TraversalNone && state.SupportingBlockPos != nil {
-		supportingSemantics := s.blockMovementSemantics(s.blockAtPos(*state.SupportingBlockPos))
-		if supportingSemantics.Traversal == movementblock.TraversalScaffolding {
-			insideSemantics.Traversal = supportingSemantics.Traversal
-		}
-	}
-	leatherBoots := s.Equipment != nil && s.Equipment.WearingLeatherBoots()
-	scaffoldDescend := applyAscendableMovement(state, insideSemantics.Traversal, leatherBoots)
-
-	nearClimbable := s.climbableContact(state, insideSemantics.Climbable)
-	if nearClimbable {
-		newVel := state.Vel
-		negClimbSpeed := -ClimbSpeed
-		if newVel[1] < negClimbSpeed {
-			newVel[1] = negClimbSpeed
-		}
-		if state.EffectiveJumping || state.CollideX || state.CollideZ {
-			newVel[1] = ClimbSpeed
-		}
-		if state.Sneaking && newVel[1] < 0 {
-			newVel[1] = 0
-		}
-		state.SetVel(newVel)
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("added climb velocity: %v (collided=%v effectiveJumping=%v)", newVel, state.CollideX || state.CollideZ, state.EffectiveJumping)
-		}
-	}
-
-	inCobweb := s.isInsideCobweb(state)
-
-	if inCobweb {
-		newVel := state.Vel
-		xz, y := float32(0.25), float32(0.05)
-		if s.Effects != nil {
-			if _, weaving := s.Effects.GetEffect(EffectWeaving); weaving {
-				xz, y = 0.5, 0.25
-			}
-		}
-		newVel[0] *= xz
-		newVel[1] *= y
-		newVel[2] *= xz
-		state.SetVel(newVel)
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("web force applied (vel=%v)", newVel)
-		}
-	}
+	applyLadderTravel(state, climber)
+	scaffoldDescend := state.descendThroughBlock && (climber.inScaffolding || climber.overScaffolding)
+	resetsFallDistance := state.descendThroughBlock || climber.climbable || climber.inScaffolding || climber.overScaffolding
 
 	stuckMovement := applyStuckSpeedMultiplier(state)
 	if !s.movementSweepLoaded(state) {
 		return false
 	}
-	if !s.avoidEdge(state) {
+	retainedVel, edgeClipped, known := s.avoidEdge(state)
+	if !known {
 		return false
 	}
 
 	oldVel := state.Vel
-	oldOnGround := state.OnGround
 	oldY := state.Pos.Y()
-	if !s.tryCollisions(state) {
+	moveBoxes, known := s.moveWithCollisions(state)
+	if !known {
 		return false
 	}
 	if !s.stopRiptideOnBlockCollision(state) {
 		return false
 	}
 	updateFallDistance(state, oldY)
-	if scaffoldDescend || nearClimbable {
+	if resetsFallDistance {
 		state.FallDistance = 0
 	}
 
-	if state.SupportingBlockPos != nil {
-		blockUnder = s.blockAtPos(*state.SupportingBlockPos)
-	} else {
-		blockUnder = s.blockAtPos(posFromVec3(state.Pos.Sub(mgl32.Vec3{0, 0.2})))
-		if s.blockAir(blockUnder) {
-			below := s.blockAtPos(posFromVec3(state.Pos).Side(cube.FaceDown))
-			if IsWall(below) || IsFence(below) {
-				blockUnder = below
-			}
-		}
-	}
-
-	if oldY == state.Pos.Y() {
-		s.walkOnBlock(state, blockUnder)
-	} else {
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("walkOnBlock: y changed, skipping block walk effects")
-		}
-	}
+	landedOn, landed := s.landingBlock(state.BoundingBox(s.Options.UseSlideOffset), moveBoxes)
 
 	state.SetMov(state.Vel)
+	if edgeClipped {
+		// Edge clipping shortens only this tick's displacement.
+		state.Vel[0], state.Vel[2] = retainedVel[0], retainedVel[2]
+	}
 	if stuckMovement {
 		state.SetVel(mgl32.Vec3{})
 		oldVel = mgl32.Vec3{}
 	}
-	s.setPostCollisionMotion(state, oldVel, oldOnGround, blockUnder)
-
-	if inCobweb {
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("post-move cobweb force applied (0 vel)")
-		}
-		state.SetVel(mgl32.Vec3{})
-	}
+	s.setPostCollisionMotion(state, oldVel, landedOn, landed)
+	autoClimb := s.applyAutoClimb(state)
 
 	newVel := state.Vel
-	if !scaffoldDescend {
+	if scaffoldDescend {
+		// Descending through scaffolding suppresses gravity but keeps vertical drag.
+		if state.HasGravity {
+			newVel[1] *= NormalGravityMultiplier
+		}
+	} else if !autoClimb {
 		if s.Effects != nil {
 			if amp, ok := s.Effects.GetEffect(packet.EffectLevitation); ok {
 				levSpeed := LevitationGravityMultiplier * float32(amp+1)
@@ -818,11 +788,11 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 			newVel[1] *= NormalGravityMultiplier
 		}
 	}
-	newVel[0] *= blockFriction
-	newVel[2] *= blockFriction
+	newVel[0] = dampHorizontal(newVel[0], blockFriction)
+	newVel[2] = dampHorizontal(newVel[2], blockFriction)
 	state.SetVel(newVel)
+	s.applyStandOnDamping(state)
 	s.applyInsideBlockEffects(state)
-	s.applyBubbleColumns(state)
 	return true
 }
 
@@ -937,49 +907,54 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 		state.FallDistance = 1
 	}
 
-	radians := math32.Pi / 180.0
-	yaw, pitch := state.Rotation.Z()*radians, state.Rotation.X()*radians
-	yawCos := MCCos(-yaw - math32.Pi)
-	yawSin := MCSin(-yaw - math32.Pi)
-	pitchCos := MCCos(pitch)
-	pitchSin := MCSin(pitch)
+	// The look vector uses the previous rotation plus the wrapped delta, with
+	// pitch negated before the table lookup; every product is rounded to float32.
+	const radians = float32(math32.Pi / 180.0)
+	yaw := wrappedGlideAngle(state.LastRotation.Z(), state.Rotation.Z())
+	lookPitch := wrappedGlideAngle(state.LastRotation.X(), state.Rotation.X()) * -radians
+	yawAngle := float32(yaw*-radians) - math32.Pi
+	lookPitchCos := MCCos(lookPitch)
+	lookX := MCSin(yawAngle) * -lookPitchCos
+	lookY := MCSin(lookPitch)
+	lookZ := MCCos(yawAngle) * -lookPitchCos
 
-	lookX := yawSin * -pitchCos
-	lookY := -pitchSin
-	lookZ := yawCos * -pitchCos
+	pitch := state.Rotation.X() * radians
+	pitchCos := MCCos(pitch)
+	lookHzSqr := float32(lookX*lookX) + float32(lookZ*lookZ)
+	lookLength := math32.Sqrt(float32(lookY*lookY) + float32(lookX*lookX) + float32(lookZ*lookZ))
+	sqrPitchCos := min(lookLength/0.4, 1) * pitchCos * pitchCos
 
 	vel := state.Vel
-	velHz := math32.Sqrt(vel[0]*vel[0] + vel[2]*vel[2])
-	lookHz := pitchCos
-	sqrPitchCos := pitchCos * pitchCos
+	velHz := math32.Sqrt(float32(vel[0]*vel[0]) + float32(vel[2]*vel[2]))
+	lookHz := math32.Sqrt(lookHzSqr)
 
 	gravity := state.Gravity
 	if state.SlowFalling {
 		gravity = SlowFallingGravity
 	}
-	vel[1] += -gravity + sqrPitchCos*(gravity*0.75)
-	if vel[1] < 0 && lookHz > GlideHorizontalLookEpsilon {
-		yAccel := vel[1] * -0.1 * sqrPitchCos
+	vel[1] -= float32(float32(float32(0.75*sqrPitchCos)-1) * -gravity)
+	if lookHzSqr > 0 && vel[1] < 0 {
+		yAccel := sqrPitchCos * -0.1 * vel[1]
+		vel[0] += float32(lookX*yAccel) / lookHz
 		vel[1] += yAccel
-		vel[0] += lookX * yAccel / lookHz
-		vel[2] += lookZ * yAccel / lookHz
+		vel[2] += float32(lookZ*yAccel) / lookHz
 	}
-	if pitch < 0 && lookHz > GlideHorizontalLookEpsilon {
-		yAccel := velHz * -pitchSin * 0.04
-		vel[1] += yAccel * 3.2
-		vel[0] -= lookX * yAccel / lookHz
-		vel[2] -= lookZ * yAccel / lookHz
+	if pitch < 0 {
+		yAccel := MCSin(pitch) * velHz * -0.04
+		vel[0] -= float32(yAccel*lookX) / lookHz
+		vel[1] += float32(3.2 * yAccel)
+		vel[2] -= float32(yAccel*lookZ) / lookHz
 	}
-	if lookHz > GlideHorizontalLookEpsilon {
-		vel[0] += (lookX/lookHz*velHz - vel[0]) * 0.1
-		vel[2] += (lookZ/lookHz*velHz - vel[2]) * 0.1
+	if lookHzSqr > 0 {
+		vel[0] += float32(float32(float32(lookX/lookHz*velHz)-vel[0]) * 0.1)
+		vel[2] += float32(float32(float32(lookZ/lookHz*velHz)-vel[2]) * 0.1)
 	}
 
 	if state.GlideBoostTicks > 0 {
 		oldVel := vel
-		vel[0] += (lookX * 0.1) + (((lookX * 1.5) - vel[0]) * 0.5)
-		vel[1] += (lookY * 0.1) + (((lookY * 1.5) - vel[1]) * 0.5)
-		vel[2] += (lookZ * 0.1) + (((lookZ * 1.5) - vel[2]) * 0.5)
+		vel[0] = vel[0] + float32(float32(float32(1.5*lookX)-vel[0])*0.5) + float32(lookX*0.1)
+		vel[1] = vel[1] + float32(float32(float32(lookY*1.5)-vel[1])*0.5) + float32(lookY*0.1)
+		vel[2] = vel[2] + float32(float32(float32(1.5*lookZ)-vel[2])*0.5) + float32(lookZ*0.1)
 		if debugf := s.Options.Debugf; debugf != nil {
 			debugf("applied glide boost (old=%v new=%v)", oldVel, vel)
 		}
@@ -995,51 +970,13 @@ func (s *Simulator) simulateGlide(state *MovementState) {
 	state.SetVel(vel)
 }
 
-func (s *Simulator) walkOnBlock(state *MovementState, blockUnder world.Block) {
-	if !state.OnGround || state.Sneaking {
-		if debugf := s.Options.Debugf; debugf != nil {
-			debugf("walkOnBlock: conditions not met (onGround=%v sneaking=%v)", state.OnGround, state.Sneaking)
-		}
-		return
+// wrappedGlideAngle returns previous + wrapDegrees(current - previous) in float32.
+func wrappedGlideAngle(previous, current float32) float32 {
+	delta := math32.Mod(current-previous+180, 360)
+	if delta < 0 {
+		delta += 360
 	}
-
-	oldVel := state.Vel
-	newVel := state.Vel
-	semantics := s.blockMovementSemantics(blockUnder)
-	if semantics.Bounce == movementblock.BounceSlime || semantics.Honey {
-		yMov := math32.Abs(newVel.Y())
-		if yMov < 0.1 && !state.PressingSneak {
-			d1 := 0.4 + yMov*0.2
-			newVel[0] *= d1
-			newVel[2] *= d1
-		}
-	}
-	state.SetVel(newVel)
-	if debugf := s.Options.Debugf; debugf != nil {
-		debugf("walkOnBlock: oldVel=%v newVel=%v", oldVel, newVel)
-	}
-}
-
-func (s *Simulator) landOnBlock(state *MovementState, old mgl32.Vec3, blockUnder world.Block) {
-	newVel := state.Vel
-	if old.Y() >= 0 || state.PressingSneak {
-		newVel[1] = 0
-		state.SetVel(newVel)
-		return
-	}
-
-	switch s.blockMovementSemantics(blockUnder).Bounce {
-	case movementblock.BounceSlime:
-		newVel[1] = SlimeBounceMultiplier * old.Y()
-		if math32.Abs(newVel[1]) < 1e-4 {
-			newVel[1] = 0.0
-		}
-	case movementblock.BounceBed:
-		newVel[1] = BedBounceMultiplier * old.Y()
-	default:
-		newVel[1] = 0
-	}
-	state.SetVel(newVel)
+	return delta + -180 + previous
 }
 
 func effectiveGravity(state *MovementState, velocity mgl32.Vec3) float32 {
@@ -1049,12 +986,11 @@ func effectiveGravity(state *MovementState, velocity mgl32.Vec3) float32 {
 	return state.Gravity
 }
 
-func (s *Simulator) setPostCollisionMotion(state *MovementState, oldVel mgl32.Vec3, oldOnGround bool, blockUnder world.Block) {
-	if !oldOnGround && state.CollideY {
-		s.landOnBlock(state, oldVel, blockUnder)
-	} else if state.CollideY {
+// setPostCollisionMotion clears blocked axes; a downward landing may rebound.
+func (s *Simulator) setPostCollisionMotion(state *MovementState, oldVel mgl32.Vec3, landedOn world.Block, landed bool) {
+	if state.CollideY {
 		newVel := state.Vel
-		newVel[1] = 0
+		newVel[1] = s.restitution(state, oldVel.Y(), landedOn, landed)
 		state.SetVel(newVel)
 	}
 
@@ -1117,9 +1053,7 @@ func (s *Simulator) attemptJump(state *MovementState) bool {
 	}
 
 	jumpHeight := state.JumpHeight
-	inBlock := s.blockAtPos(posFromVec3(state.Pos))
-	below := s.blockAtPos(posFromVec3(state.Pos.Sub(mgl32.Vec3{0, 0.1})))
-	if s.blockMovementSemantics(inBlock).Honey || s.blockMovementSemantics(below).Honey {
+	if s.jumpFactorBlockHoney(state) {
 		jumpHeight *= 0.6
 	}
 	newVel := JumpImpulse(state.Vel, jumpHeight, state.Rotation.Z(), state.Sprinting)
@@ -1198,9 +1132,16 @@ func calculateAutoStep(originalBB cube.BBox32, velocity mgl32.Vec3, bbList []cub
 }
 
 func (s *Simulator) tryCollisions(state *MovementState) bool {
+	_, known := s.moveWithCollisions(state)
+	return known
+}
+
+// moveWithCollisions resolves the move and returns the collision boxes it
+// considered, which also select the block a landing rebounds from.
+func (s *Simulator) moveWithCollisions(state *MovementState) ([]cube.BBox32, bool) {
 	w := s.World
 	if w == nil {
-		return true
+		return nil, true
 	}
 	s.prepareCollisionBox(state)
 	useSlideOffset := s.Options.UseSlideOffset
@@ -1264,7 +1205,7 @@ func (s *Simulator) tryCollisions(state *MovementState) bool {
 	if onGround && (xCollision || zCollision) {
 		stepProbeBB := state.BoundingBox(useSlideOffset).Extend(currVel).ExtendTowards(cube.FaceUp, StepHeight)
 		if !s.movementAreaLoaded(stepProbeBB) {
-			return false
+			return nil, false
 		}
 		stepResult := calculateAutoStep(state.BoundingBox(useSlideOffset), currVel, bbList, useOneWayCollisions)
 		stepBB, stepVel := stepResult.boundingBox, stepResult.velocity
@@ -1352,10 +1293,10 @@ func (s *Simulator) tryCollisions(state *MovementState) bool {
 	state.SetPos(endPos)
 	state.rememberCollisionBox(collisionBB, useSlideOffset)
 
-	yCollision = math32.Abs(currVel.Y()-collisionVel.Y()) >= 1e-5
-	state.CollideX = math32.Abs(currVel.X()-collisionVel.X()) >= 1e-5
+	yCollision = math32.Abs(currVel.Y()-collisionVel.Y()) > floatEpsilon
+	state.CollideX = math32.Abs(currVel.X()-collisionVel.X()) > floatEpsilon
 	state.CollideY = yCollision
-	state.CollideZ = math32.Abs(currVel.Z()-collisionVel.Z()) >= 1e-5
+	state.CollideZ = math32.Abs(currVel.Z()-collisionVel.Z()) > floatEpsilon
 
 	// FinalizeMoveSystemImpl derives ground contact from the requested Y
 	// movement, including after auto-step. A step taken during a jump is still
@@ -1363,7 +1304,7 @@ func (s *Simulator) tryCollisions(state *MovementState) bool {
 	state.OnGround = (yCollision && currVel.Y() < 0) ||
 		(state.OnGround && !yCollision && currVel.Y() == 0)
 	if !s.checkSupportingBlockPos(state, useSlideOffset, currVel) {
-		return false
+		return nil, false
 	}
 	state.SetVel(collisionVel)
 	if debugf := s.Options.Debugf; debugf != nil {
@@ -1378,26 +1319,23 @@ func (s *Simulator) tryCollisions(state *MovementState) bool {
 	if debugf := s.Options.Debugf; debugf != nil {
 		debugf("(server) xCollision=%v yCollision=%v zCollision=%v", state.CollideX, state.CollideY, state.CollideZ)
 	}
-	return true
+	return bbList, true
 }
 
-// avoidEdge limits sneaking movement to supported ground and reports whether
-// the complete support-probe volume is loaded.
-func (s *Simulator) avoidEdge(state *MovementState) bool {
+// avoidEdge clips this tick's sneaking displacement to supported ground. It
+// returns the velocity to retain after the move, whether the displacement was
+// clipped, and whether the complete support-probe volume is loaded.
+func (s *Simulator) avoidEdge(state *MovementState) (mgl32.Vec3, bool, bool) {
 	w := s.World
 	if w == nil {
-		return true
+		return state.Vel, false, true
 	}
-	if !state.Sneaking || !state.OnGround || state.Vel.Y() > 0 {
+	// Vanilla clips any grounded sneaking move, including the jump tick.
+	if !state.Sneaking || !state.OnGround {
 		if debugf := s.Options.Debugf; debugf != nil {
-			debugf(
-				"avoidEdge: conditions not met (sneaking=%v onGround=%v yVel=%v)",
-				state.Sneaking,
-				state.OnGround,
-				state.Vel.Y(),
-			)
+			debugf("avoidEdge: conditions not met (sneaking=%v onGround=%v)", state.Sneaking, state.OnGround)
 		}
-		return true
+		return state.Vel, false, true
 	}
 
 	edgeBoundry := float32(0.025)
@@ -1413,7 +1351,7 @@ func (s *Simulator) avoidEdge(state *MovementState) bool {
 	xMov, zMov := newVel.X(), newVel.Z()
 	probeVolume := bb.Extend(mgl32.Vec3{xMov, -StepHeight * 1.01, zMov})
 	if !s.movementAreaLoaded(probeVolume) {
-		return false
+		return state.Vel, false, false
 	}
 
 	i := 0
@@ -1465,37 +1403,21 @@ func (s *Simulator) avoidEdge(state *MovementState) bool {
 		zMov = 0
 	}
 
+	// Velocity survives the clip unless an axis is clipped to rest.
+	retained := oldVel
+	if math32.Abs(xMov) <= floatEpsilon {
+		retained[0] = 0
+	}
+	if math32.Abs(zMov) <= floatEpsilon {
+		retained[2] = 0
+	}
 	newVel[0] = xMov
 	newVel[2] = zMov
 	state.SetVel(newVel)
 	if debugf := s.Options.Debugf; debugf != nil {
 		debugf("(avoidEdge): oldVel=%v newVel=%v", oldVel, newVel)
 	}
-	return true
-}
-
-func (s *Simulator) isInsideCobweb(state *MovementState) bool {
-	if s.World == nil {
-		return false
-	}
-
-	bb := state.BoundingBox(s.Options.UseSlideOffset)
-	insideCobweb := false
-	for pos, b := range nearbyBlocks(bb.Grow(1), s.World) {
-		if s.blockAir(b) {
-			continue
-		}
-		if !bb.IntersectsWith(cube.Box32(0, 0, 0, 1, 1, 1).Translate(posVec3(pos))) {
-			continue
-		}
-		if s.blockMovementSemantics(b).Cobweb {
-			insideCobweb = true
-		}
-		if insideCobweb {
-			break
-		}
-	}
-	return insideCobweb
+	return retained, true, true
 }
 
 func nearbyBlocks(aabb cube.BBox32, w WorldProvider) iter.Seq2[cube.Pos, world.Block] {
@@ -1692,11 +1614,12 @@ func (s *Simulator) nearbyBBoxes(state *MovementState, aabb cube.BBox32) []cube.
 // movementCollisionContext builds the dynamic collision context for state.
 func (s *Simulator) movementCollisionContext(state *MovementState) MovementCollisionContext {
 	return MovementCollisionContext{
-		Position:     [3]float32(state.Pos),
-		Sneaking:     state.Sneaking,
-		Descending:   state.PressingDescend,
-		WantDown:     state.WantDown,
-		LeatherBoots: s.Equipment != nil && s.Equipment.WearingLeatherBoots(),
+		Position:            [3]float32(state.Pos),
+		Sneaking:            state.Sneaking,
+		Descending:          state.PressingDescend,
+		WantDown:            state.WantDown,
+		DescendThroughBlock: state.descendThroughBlock,
+		LeatherBoots:        s.Equipment != nil && s.Equipment.WearingLeatherBoots(),
 	}
 }
 
@@ -1747,6 +1670,7 @@ func (s *Simulator) canFitHeightKnown(state *MovementState, height float32) (fit
 	standing.swimWaterContact = false
 	standing.SwimWaterGraceTicks = 0
 	standing.PressingDescend = false
+	standing.descendThroughBlock = false
 	standing.WantDown = false
 	aabb := standing.BoundingBox(s.Options.UseSlideOffset)
 	if !s.movementAreaLoaded(aabb) {

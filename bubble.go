@@ -52,12 +52,11 @@ func (s *Simulator) applyBubbleColumns(state *MovementState) {
 	if !ok {
 		return
 	}
-	bb := state.BoundingBox(s.Options.UseSlideOffset)
-	min, max := bb.Min(), bb.Max()
+	minPos, maxPos := insideCellRange(state.BoundingBox(s.Options.UseSlideOffset))
 	found := false
-	for x := int(math32.Floor(min.X())); x < int(math32.Ceil(max.X())); x++ {
-		for y := int(math32.Floor(min.Y())); y < int(math32.Ceil(max.Y())); y++ {
-			for z := int(math32.Floor(min.Z())); z < int(math32.Ceil(max.Z())); z++ {
+	for x := minPos.X(); x <= maxPos.X(); x++ {
+		for y := minPos.Y(); y <= maxPos.Y(); y++ {
+			for z := minPos.Z(); z <= maxPos.Z(); z++ {
 				pos := cube.Pos{x, y, z}
 				direction, ok := provider.BubbleColumn(pos)
 				if !ok {

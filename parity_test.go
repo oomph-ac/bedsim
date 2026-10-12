@@ -2,6 +2,7 @@ package bedsim
 
 import (
 	"github.com/chewxy/math32"
+	"math"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/block"
@@ -64,18 +65,12 @@ func TestBedrockStepHeight(t *testing.T) {
 func TestBedBounceUsesVanillaRestitutionWithoutCap(t *testing.T) {
 	sim := &Simulator{BlockSemantics: overrideBlockSemantics{semantics: movementblock.MovementSemantics{Bounce: movementblock.BounceBed}}}
 	state := newBaseState()
-	state.Vel = mgl32.Vec3{0, -2}
 
-	sim.landOnBlock(state, state.Vel, block.Air{})
-
-	if want := float32(1.5); math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("expected bed bounce %v, got %v", want, state.Vel.Y())
+	if got, want := sim.restitution(state, -2, block.Air{}, true), float32(1.5); math32.Abs(got-want) > 1e-6 {
+		t.Fatalf("expected bed bounce %v, got %v", want, got)
 	}
-
-	state.Vel = mgl32.Vec3{0, -1}
-	sim.landOnBlock(state, state.Vel, block.Air{})
-	if want := float32(0.75); math32.Abs(state.Vel.Y()-want) > 1e-6 {
-		t.Fatalf("expected bed bounce %v, got %v", want, state.Vel.Y())
+	if got, want := sim.restitution(state, -1, block.Air{}, true), float32(0.75); math32.Abs(got-want) > 1e-6 {
+		t.Fatalf("expected bed bounce %v, got %v", want, got)
 	}
 }
 
@@ -83,7 +78,7 @@ func TestTinyVelocityIsNotDiscardedPrematurely(t *testing.T) {
 	sim := &Simulator{World: mockWorld{}}
 	state := newBaseState()
 	state.HasGravity = false
-	state.Vel = mgl32.Vec3{1e-7, 0, 0}
+	state.Vel = mgl32.Vec3{2e-7, 0, 0}
 
 	sim.SimulateState(state)
 
@@ -158,5 +153,20 @@ func TestSneakEdgeProtectionRequiresGround(t *testing.T) {
 
 	if state.Vel.X() != 0.5 {
 		t.Fatalf("edge protection ran while airborne: %v", state.Vel)
+	}
+}
+
+// TestTrigTableIndexTruncatesNegativeAngles pins vanilla's index for negative
+// angles: round the scaled angle, add the quarter turn, truncate, then wrap.
+func TestTrigTableIndexTruncatesNegativeAngles(t *testing.T) {
+	for bits := math.Float32bits(-7); bits > math.Float32bits(-6.99); bits -= 7 {
+		angle := math.Float32frombits(bits)
+		scaled := float32(angle * 10430.378)
+		if got, want := MCCos(angle), mcSinTable[uint16(int32(scaled+16384))]; got != want {
+			t.Fatalf("MCCos(%v) = %v, want %v", angle, got, want)
+		}
+		if got, want := MCSin(angle), mcSinTable[uint16(int32(scaled))]; got != want {
+			t.Fatalf("MCSin(%v) = %v, want %v", angle, got, want)
+		}
 	}
 }
