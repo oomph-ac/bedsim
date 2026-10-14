@@ -108,6 +108,21 @@ func (s *Simulator) restitution(state *MovementState, impactY float32, landedOn 
 	return max(bounciness*-impactY, 0)
 }
 
+// gravityAfterBounce returns the gravity left in a rebound tick after impact.
+// Requested and resolved vertical travel set the impact time; with negligible
+// gravity or travel the full gravity applies.
+func gravityAfterBounce(gravity, requestedY, resolvedY float32) float32 {
+	magnitude := math32.Abs(gravity)
+	distance := math32.Abs(resolvedY)
+	if magnitude <= floatEpsilon || distance <= floatEpsilon {
+		return gravity
+	}
+	speed := math32.Abs(requestedY)
+	impactSpeed := math32.Sqrt(float32(float32(magnitude+magnitude)*distance) + float32(speed*speed))
+	impactTime := math32.Abs((speed - impactSpeed) / gravity)
+	return magnitude * (1 - impactTime)
+}
+
 // standingOnBlock returns the block whose collision shape has the highest top
 // crossing the plane at minY-0.2 under the player's footprint; ties go to the
 // shape whose centre is nearest the plane's centre.
