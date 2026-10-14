@@ -3,6 +3,8 @@ package bedsim
 import (
 	"testing"
 
+	"github.com/chewxy/math32"
+
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
@@ -308,5 +310,83 @@ func TestLandingTieUsesVanillaGatheringOrder(t *testing.T) {
 				t.Fatalf("boundary landing vy=%v, want slime bounce %v", state.Vel.Y(), want)
 			}
 		})
+	}
+}
+
+// bounceLanding drops a player at gap above a full surface block with a
+// -0.5 vertical speed and runs the landing tick.
+func bounceLanding(t *testing.T, surface string, gap float32, configure func(*MovementState)) (*Simulator, *MovementState) {
+	t.Helper()
+	w := newGroundWorld()
+	w.place(cube.Pos{0, 0, 0}, semanticsNamedBlock{surface}, 1)
+	sim := &Simulator{World: w, BlockSemantics: encodedBlockSemantics{}}
+	state := groundState(mgl32.Vec3{0.5, 1 + gap, 0.5})
+	state.OnGround = false
+	state.Vel = mgl32.Vec3{0, -0.5, 0}
+	if configure != nil {
+		configure(state)
+	}
+	sim.SimulateState(state)
+	if !state.CollideY {
+		t.Fatalf("%s gap %v: expected a landing collision", surface, gap)
+	}
+	return sim, state
+}
+
+// A rebound tick applies only the gravity left after impact, then drag; the
+// next tick is ordinary.
+func TestBounceGravityUsesTravelBeforeImpact(t *testing.T) {
+	gaps := []float32{0.0625, 0.25, 0.4375}
+	for surface, want := range map[string][]float32{
+		"minecraft:slime": {0.42130393, 0.44934615, 0.47597167},
+		"minecraft:bed":   {0.29880393, 0.32684615, 0.35347167},
+	} {
+		for i, gap := range gaps {
+			sim, state := bounceLanding(t, surface, gap, nil)
+			if state.Pos.Y() != 1 || state.Mov.Y() != -gap {
+				t.Fatalf("%s gap %v: landed at y=%v after moving %v", surface, gap, state.Pos.Y(), state.Mov.Y())
+			}
+			landed := state.Vel.Y()
+			if math32.Abs(landed-want[i]) > floatEpsilon {
+				t.Fatalf("%s gap %v: rebound vy=%v, want %v", surface, gap, landed, want[i])
+			}
+
+			sim.SimulateState(state)
+			if state.CollideY || state.Mov.Y() != landed {
+				t.Fatalf("%s gap %v: rising tick collideY=%v mov=%v, want free move of %v", surface, gap, state.CollideY, state.Mov.Y(), landed)
+			}
+			if next := (landed - NormalGravity) * NormalGravityMultiplier; state.Vel.Y() != next {
+				t.Fatalf("%s gap %v: rising tick vy=%v, want full gravity %v", surface, gap, state.Vel.Y(), next)
+			}
+		}
+	}
+}
+
+// The correction scales a custom gravity, and an actor without gravity keeps
+// its rebound untouched.
+func TestBounceGravityFollowsCustomAndDisabledGravity(t *testing.T) {
+	for surface, tt := range map[string]struct{ rebound, customGravity float32 }{
+		"minecraft:slime": {0.5, 0.47002295},
+		"minecraft:bed":   {0.375, 0.34752294},
+	} {
+		_, state := bounceLanding(t, surface, 0.25, func(state *MovementState) { state.HasGravity = false })
+		if state.Vel.Y() != tt.rebound {
+			t.Fatalf("%s without gravity: vy=%v, want %v", surface, state.Vel.Y(), tt.rebound)
+		}
+		_, state = bounceLanding(t, surface, 0.25, func(state *MovementState) { state.Gravity = 0.04 })
+		if math32.Abs(state.Vel.Y()-tt.customGravity) > floatEpsilon {
+			t.Fatalf("%s with gravity 0.04: vy=%v, want %v", surface, state.Vel.Y(), tt.customGravity)
+		}
+	}
+}
+
+// A rebound with no measurable travel before impact keeps a full tick of
+// gravity; an epsilon gap clips to no travel.
+func TestBounceWithNegligibleTravelUsesFullGravity(t *testing.T) {
+	for _, gap := range []float32{0, floatEpsilon} {
+		_, state := bounceLanding(t, "minecraft:slime", gap, nil)
+		if want := (float32(0.5) - NormalGravity) * NormalGravityMultiplier; state.Vel.Y() != want {
+			t.Fatalf("gap %v: vy=%v, want %v", gap, state.Vel.Y(), want)
+		}
 	}
 }

@@ -759,9 +759,14 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 		oldVel = mgl32.Vec3{}
 	}
 	s.setPostCollisionMotion(state, oldVel, landedOn, landed)
+	bounced := state.CollideY && state.Vel.Y() > floatEpsilon
 	autoClimb := s.applyAutoClimb(state)
 
 	newVel := state.Vel
+	gravity := effectiveGravity(state, newVel)
+	if bounced {
+		gravity = gravityAfterBounce(gravity, oldVel.Y(), state.Mov.Y())
+	}
 	if scaffoldDescend {
 		// Descending through scaffolding suppresses gravity but keeps vertical drag.
 		if state.HasGravity {
@@ -773,11 +778,11 @@ func (s *Simulator) simulateMovement(state *MovementState) (known bool) {
 				levSpeed := LevitationGravityMultiplier * float32(amp+1)
 				newVel[1] += (levSpeed - newVel[1]) * 0.2
 			} else if state.HasGravity {
-				newVel[1] -= effectiveGravity(state, newVel)
+				newVel[1] -= gravity
 				newVel[1] *= NormalGravityMultiplier
 			}
 		} else if state.HasGravity {
-			newVel[1] -= effectiveGravity(state, newVel)
+			newVel[1] -= gravity
 			newVel[1] *= NormalGravityMultiplier
 		}
 	}
