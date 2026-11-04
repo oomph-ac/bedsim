@@ -1,6 +1,8 @@
 package bedsim
 
 const (
+	// SprintSpeedMultiplier scales the ground movement attribute while sprinting.
+	SprintSpeedMultiplier       = float32(1.3)
 	DefaultJumpHeight           = float32(0.42)
 	DefaultAirFriction          = float32(0.91)
 	DefaultBlockFriction        = float32(0.6)

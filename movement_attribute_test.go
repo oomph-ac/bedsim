@@ -19,9 +19,30 @@ func TestMovementSpeedWithoutSprint(t *testing.T) {
 		{name: "name alone is not identity", value: 0.13, want: 0.13, modifiers: []protocol.AttributeModifier{{ID: "custom", Name: "Sprinting speed boost", Amount: 0.3, Operation: 2, Operand: 2}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := MovementSpeedWithoutSprint(protocol.Attribute{AttributeValue: protocol.AttributeValue{Value: tt.value}, Modifiers: tt.modifiers})
+			got := MovementSpeedWithoutSprint(protocol.Attribute{AttributeValue: protocol.AttributeValue{Value: tt.value}, Modifiers: tt.modifiers}, false)
 			if got != tt.want {
 				t.Fatalf("got %.9g want %.9g", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMovementSpeedWithoutSprint_FlattenedUpdates checks attributes without modifier metadata.
+func TestMovementSpeedWithoutSprint_FlattenedUpdates(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		value     float32
+		sprinting bool
+		want      float32
+	}{
+		{"sprint", .13, true, .1},
+		{"speed effect while sprinting", .156, true, .120000005},
+		{"custom walking speed", .13, false, .13},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := MovementSpeedWithoutSprint(protocol.Attribute{AttributeValue: protocol.AttributeValue{Value: tc.value}}, tc.sprinting)
+			if got != tc.want {
+				t.Fatalf("walking speed=%g, want%g", got, tc.want)
 			}
 		})
 	}
