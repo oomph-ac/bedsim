@@ -308,7 +308,7 @@ func (s *Simulator) applyInput(state *MovementState, input InputState) (bool, mg
 		state.ServerUpdatedSpeed = false
 		state.MovementSpeed = state.DefaultMovementSpeed
 		if state.Sprinting {
-			state.MovementSpeed *= 1.3
+			state.MovementSpeed *= SprintSpeedMultiplier
 		}
 	}
 	state.AirSpeed = effectiveAirSpeed(state)
@@ -500,7 +500,7 @@ func (s *Simulator) applyLegacySprint(state *MovementState, input InputState) {
 		state.ServerUpdatedSpeed = false
 		state.MovementSpeed = state.DefaultMovementSpeed
 		if state.Sprinting {
-			state.MovementSpeed *= 1.3
+			state.MovementSpeed *= SprintSpeedMultiplier
 		}
 	}
 	state.AirSpeed = effectiveAirSpeed(state)
