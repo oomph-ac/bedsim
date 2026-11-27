@@ -20,12 +20,21 @@ type HeadLiquidObservation struct {
 // player pose, entity scale, partial liquid height, and the configured liquid
 // layer rather than a block-grid feet/head heuristic.
 func (s *Simulator) ObserveHeadLiquid(state *MovementState) HeadLiquidObservation {
-	observation := HeadLiquidObservation{}
 	if s == nil || state == nil || !finiteMovementState(state) {
-		return observation
+		return HeadLiquidObservation{}
 	}
-	position := state.EyePosition()
-	observation.Position = position
+	return s.ObserveLiquidAt(state.EyePosition())
+}
+
+// ObserveLiquidAt reports whether a continuous position, such as an eye
+// position the caller already resolved, is below the local water or lava
+// surface, with the same partial liquid height and liquid layer rules as
+// ObserveHeadLiquid.
+func (s *Simulator) ObserveLiquidAt(position mgl32.Vec3) HeadLiquidObservation {
+	if s == nil || !finiteVec3(position) {
+		return HeadLiquidObservation{}
+	}
+	observation := HeadLiquidObservation{Position: position}
 	if s.World == nil {
 		return observation
 	}

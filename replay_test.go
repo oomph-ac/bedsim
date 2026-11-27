@@ -1,6 +1,7 @@
 package bedsim
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -91,6 +92,33 @@ func TestSimulator_ObserveHeadLiquidReadsSecondLayerAndFailsClosed(t *testing.T)
 	unloadedWorld.chunkLoaded = false
 	if got := newLiquidSim(unloadedWorld).ObserveHeadLiquid(state); got.Known {
 		t.Fatalf("unloaded observation = %+v, want unknown", got)
+	}
+}
+
+func TestSimulator_ObserveLiquidAtComparesTheExactPosition(t *testing.T) {
+	t.Parallel()
+
+	sim := newLiquidSim(newLiquidWorld().
+		set(cube.Pos{0, -16, 0}, waterSource).
+		set(cube.Pos{0, -15, 0}, block.Air{}))
+	nan := float32(math.NaN())
+	tests := []struct {
+		name      string
+		position  mgl32.Vec3
+		wantKnown bool
+		wantWater bool
+	}{
+		{name: "on the surface", position: mgl32.Vec3{0.5, -15, 0.5}, wantKnown: true},
+		{name: "just below the surface", position: mgl32.Vec3{0.5, math.Nextafter32(-15, -16), 0.5}, wantKnown: true, wantWater: true},
+		{name: "non-finite", position: mgl32.Vec3{0.5, nan, 0.5}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := sim.ObserveLiquidAt(test.position)
+			if got.Known != test.wantKnown || got.Water != test.wantWater || got.Lava {
+				t.Fatalf("observation = %+v, want known=%v water=%v", got, test.wantKnown, test.wantWater)
+			}
+		})
 	}
 }
 
